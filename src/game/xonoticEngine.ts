@@ -11,6 +11,7 @@ export class XonoticEngine {
   public isFrozen: boolean = false;
   public roomId: string | null = null;
   public userId: string | null = null;
+  public username: string | null = null;
   public supabaseChannel: any = null;
   private walls: MapWall[] = [];
   private jumpPads: JumpPad[] = [];
@@ -283,6 +284,7 @@ export class XonoticEngine {
   public connectRealtime(roomId: string, userId: string, supabaseClient: any, username: string) {
     this.roomId = roomId;
     this.userId = userId;
+    this.username = username;
 
     const channel = supabaseClient.channel(`play_${roomId}`);
     this.supabaseChannel = channel;
@@ -426,7 +428,7 @@ export class XonoticEngine {
       event: 'player-state',
       payload: {
         id: this.userId,
-        username: this.userId, // use id as username placeholder
+        username: this.username || this.userId,
         pos: player.pos,
         vel: player.vel,
         yaw: player.yaw,

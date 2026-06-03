@@ -276,7 +276,8 @@ export default function App() {
 
     // Connect to real-time multiplayer room if context exists
     if (roomContext && user) {
-      engine.connectRealtime(roomContext.roomId, user.id, supabase, user.email || 'Anonymous');
+      const displayName = user.user_metadata?.username || user.email || 'Player';
+      engine.connectRealtime(roomContext.roomId, user.id, supabase, displayName);
     }
     
     // Smooth reset controls states

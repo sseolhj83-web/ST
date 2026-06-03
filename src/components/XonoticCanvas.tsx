@@ -649,6 +649,79 @@ function buildDemogorgonModel(bot: Bot): THREE.Group {
   return group;
 }
 
+// Builds a blue armored human figure for remote online players
+function buildRemotePlayerModel(bot: Bot): THREE.Group {
+  const group = new THREE.Group();
+  const mat = (color: string, emissive = '#000000') =>
+    new THREE.MeshStandardMaterial({ color, emissive, roughness: 0.4, metalness: 0.6 });
+
+  // Body
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.75, 0.28), mat('#1d4ed8', '#1e3a8a'));
+  torso.position.y = 1.05;
+  torso.castShadow = true;
+  group.add(torso);
+
+  // Chest stripe (cyan accent)
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.55, 0.3), mat('#06b6d4', '#0e7490'));
+  stripe.position.y = 1.05;
+  group.add(stripe);
+
+  // Head (helmet)
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.36, 0.36), mat('#1e40af', '#1e3a8a'));
+  head.position.y = 1.65;
+  head.castShadow = true;
+  group.add(head);
+
+  // Visor
+  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.12, 0.08), mat('#67e8f9', '#22d3ee'));
+  visor.position.set(0, 1.67, 0.2);
+  group.add(visor);
+
+  // Shoulder pads
+  [-0.37, 0.37].forEach((x) => {
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.28), mat('#1d4ed8'));
+    pad.position.set(x, 1.35, 0);
+    group.add(pad);
+  });
+
+  // Arms
+  [-0.38, 0.38].forEach((x) => {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.55, 0.14), mat('#1e3a8a'));
+    arm.position.set(x, 0.88, 0);
+    arm.castShadow = true;
+    group.add(arm);
+  });
+
+  // Legs
+  [-0.16, 0.16].forEach((x) => {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.55, 0.18), mat('#1e3a8a'));
+    leg.position.set(x, 0.35, 0);
+    leg.castShadow = true;
+    group.add(leg);
+  });
+
+  // Name label sprite above head
+  const canvas2d = document.createElement('canvas');
+  canvas2d.width = 256;
+  canvas2d.height = 64;
+  const ctx = canvas2d.getContext('2d')!;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(4, 4, 248, 56);
+  ctx.font = 'bold 28px monospace';
+  ctx.fillStyle = '#67e8f9';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(bot.name.slice(0, 16), 128, 34);
+  const tex = new THREE.CanvasTexture(canvas2d);
+  const spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
+  const sprite = new THREE.Sprite(spriteMat);
+  sprite.scale.set(1.8, 0.45, 1);
+  sprite.position.y = 2.35;
+  group.add(sprite);
+
+  return group;
+}
+
 // Deep recursive disposal helper to prevent WebGL memory leaks on dynamic bot/projectile spawns
 const disposeHierarchy = (obj: THREE.Object3D) => {
   obj.traverse((child) => {
@@ -1228,7 +1301,8 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     scene.add(gunGroup);
 
     // 7. Dynamic Meshes local cache Maps
-    const botMeshes = new Map<string, THREE.Group>();
+    const botMeshes = new Map<string, THREE.Group>();       // enemy Demogorgons
+    const remoteMeshes = new Map<string, THREE.Group>();    // online human players
     const npcMeshes = new Map<string, THREE.Group>();
     const projectileMeshes = new Map<string, THREE.Mesh>();
     const pickupMeshes = new Map<string, THREE.Group>();
@@ -1385,21 +1459,45 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           }
         }
 
-        // C. Render Bots
-        const activeBotIds = new Set(stateVal.bots.map(b => b.id));
+        // C. Render Bots (enemies) and Remote Players (teammates) separately
+        const activeEnemyIds = new Set(stateVal.bots.filter(b => !b.isTeammate).map(b => b.id));
+        const activeRemoteIds = new Set(stateVal.bots.filter(b => b.isTeammate).map(b => b.id));
 
         botMeshes.forEach((mesh, id) => {
-          if (!activeBotIds.has(id)) {
+          if (!activeEnemyIds.has(id)) {
             disposeHierarchy(mesh);
             scene.remove(mesh);
             botMeshes.delete(id);
           }
         });
+        remoteMeshes.forEach((mesh, id) => {
+          if (!activeRemoteIds.has(id)) {
+            disposeHierarchy(mesh);
+            scene.remove(mesh);
+            remoteMeshes.delete(id);
+          }
+        });
 
-        stateVal.bots.forEach(bot => {
+        // Render remote online players (blue human models, always visible)
+        stateVal.bots.filter(b => b.isTeammate).forEach(bot => {
+          let remGroup = remoteMeshes.get(bot.id);
+          if (!remGroup) {
+            remGroup = buildRemotePlayerModel(bot);
+            scene.add(remGroup);
+            remoteMeshes.set(bot.id, remGroup);
+          }
+          remGroup.visible = true;
+          remGroup.position.set(bot.pos.x, bot.pos.y - 1.0, bot.pos.z);
+          const vx = bot.vel.x, vz = bot.vel.z;
+          if (vx * vx + vz * vz > 0.05) {
+            remGroup.rotation.y = Math.atan2(vx, vz);
+          }
+        });
+
+        // Render enemy Demogorgons
+        stateVal.bots.filter(b => !b.isTeammate).forEach(bot => {
           let botGroup = botMeshes.get(bot.id);
           if (!botGroup) {
-            // Build magnificent 3D model representing this specific Demogorgon!
             botGroup = buildDemogorgonModel(bot);
             scene.add(botGroup);
             botMeshes.set(bot.id, botGroup);
