@@ -1,24 +1,24 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { XonoticEngine } from './game/xonoticEngine';
-import { XonoticGameState, WeaponType } from './game/xonoticTypes';
+import { XonoticGameState } from './game/xonoticTypes';
 import { XonoticCanvas } from './components/XonoticCanvas';
 import { XonoticHUD } from './components/XonoticHUD';
-import { RotateCcw, Play, Compass, Award, ShieldAlert } from 'lucide-react';
+import { RotateCcw, Award, ShieldAlert } from 'lucide-react';
+import { supabase } from './supabaseClient';
+import { Auth } from './components/Auth';
+import { Lobby } from './components/Lobby';
 
-type AppState = 'MENU' | 'PLAYING';
+type AppState = 'AUTH' | 'LOBBY' | 'PLAYING';
 
 export default function App() {
-  const [appState, setAppState] = useState<AppState>('MENU');
+  const [user, setUser] = useState<any>(null);
+  const [appState, setAppState] = useState<AppState>('AUTH');
   const [gameState, setGameState] = useState<XonoticGameState | null>(null);
   const [highScore, setHighScore] = useState(0);
   const [isPointerLocked, setIsPointerLocked] = useState(false);
   const [gameResult, setGameResult] = useState<'NONE' | 'VICTORY' | 'DEFEAT'>('NONE');
+  const [roomContext, setRoomContext] = useState<{ roomId: string; isHost: boolean; players: any[] } | null>(null);
 
   const engineRef = useRef<XonoticEngine | null>(null);
   const gameStateRef = useRef<XonoticGameState | null>(null);
@@ -28,7 +28,47 @@ export default function App() {
   const isRightMouseDownRef = useRef(false);
   const lastTimeRef = useRef(0);
   const animationFrameIdRef = useRef<number | null>(null);
-  const appStateRef = useRef<AppState>('MENU');
+  const appStateRef = useRef<AppState>('AUTH');
+
+  // Handle active session check on mount
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setUser(session.user);
+        setAppState('LOBBY');
+      } else {
+        setAppState('AUTH');
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        setUser(session.user);
+        setAppState('LOBBY');
+      } else {
+        setUser(null);
+        setAppState('AUTH');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Sync highscore from user_stats table on login
+  useEffect(() => {
+    if (!user) return;
+    const fetchHighScore = async () => {
+      const { data } = await supabase
+        .from('user_stats')
+        .select('highest_score')
+        .eq('user_id', user.id)
+        .single();
+      if (data) {
+        setHighScore(data.highest_score);
+      }
+    };
+    fetchHighScore();
+  }, [user]);
 
   // Keep appState synced with ref for thread-safe tick loop reading
   useEffect(() => {
@@ -128,12 +168,47 @@ export default function App() {
     };
   }, []);
 
-  // Sync highscore
-  useEffect(() => {
-    if (gameState && gameState.player.score > highScore) {
-      setHighScore(gameState.player.score);
+  // Save stats to Supabase on match completion
+  const saveStatsToSupabase = useCallback(async (score: number, deaths: number) => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from('user_stats')
+        .select('highest_score, total_frags, total_deaths, matches_played')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      const currentHighest = data ? data.highest_score : 0;
+      const currentFrags = data ? data.total_frags : 0;
+      const currentDeaths = data ? data.total_deaths : 0;
+      const currentMatches = data ? data.matches_played : 0;
+
+      const newHighest = Math.max(currentHighest, score);
+      const newFrags = currentFrags + score;
+      const newDeaths = currentDeaths + deaths;
+      const newMatches = currentMatches + 1;
+
+      const { error: upsertErr } = await supabase
+        .from('user_stats')
+        .upsert({
+          user_id: user.id,
+          highest_score: newHighest,
+          total_frags: newFrags,
+          total_deaths: newDeaths,
+          matches_played: newMatches,
+          updated_at: new Date().toISOString()
+        });
+
+      if (upsertErr) throw upsertErr;
+      setHighScore(newHighest);
+    } catch (err) {
+      console.error('Error saving user stats:', err);
     }
-  }, [gameState, highScore]);
+  }, [user]);
 
   // Main game tick animation frame
   const tick = useCallback((timestamp: number) => {
@@ -149,21 +224,24 @@ export default function App() {
       const enemiesCount = engine.state.bots.filter(b => !b.isTeammate).length;
       if (enemiesCount === 0) {
         setGameResult('VICTORY');
-        setAppState('MENU');
+        setAppState('LOBBY');
+        saveStatsToSupabase(engine.state.player.score, engine.state.player.deaths);
         return; // Break frame simulation
       }
 
       // 2. Defeat condition: Player died (HP reached zero)!
       if (engine.state.player.health <= 0) {
         setGameResult('DEFEAT');
-        setAppState('MENU');
+        setAppState('LOBBY');
+        saveStatsToSupabase(engine.state.player.score, engine.state.player.deaths);
         return; // Break frame simulation
       }
 
       // 3. Match Time Limit condition: 7 minutes (420 seconds)
       if (engine.state.matchTime >= 420) {
         setGameResult('VICTORY'); // survive and win!
-        setAppState('MENU');
+        setAppState('LOBBY');
+        saveStatsToSupabase(engine.state.player.score, engine.state.player.deaths);
         return; // Break frame simulation
       }
 
@@ -184,7 +262,7 @@ export default function App() {
     }
 
     animationFrameIdRef.current = requestAnimationFrame(tick);
-  }, []);
+  }, [saveStatsToSupabase]);
 
   // Activate game renderer execution - completely re-instantiates the engine for clean isolation
   const startGame = useCallback(() => {
@@ -195,6 +273,11 @@ export default function App() {
     engineRef.current = engine;
     gameStateRef.current = engine.state;
     setGameState(engine.state);
+
+    // Connect to real-time multiplayer room if context exists
+    if (roomContext && user) {
+      engine.connectRealtime(roomContext.roomId, user.id, supabase, user.email || 'Anonymous');
+    }
     
     // Smooth reset controls states
     keysRef.current = { w: false, s: false, a: false, d: false, space: false };
@@ -209,11 +292,11 @@ export default function App() {
       cancelAnimationFrame(animationFrameIdRef.current);
     }
     animationFrameIdRef.current = requestAnimationFrame(tick);
-  }, [tick]);
+  }, [tick, roomContext, user]);
 
   const stopGameToMenu = useCallback(() => {
     setGameResult('NONE');
-    setAppState('MENU');
+    setAppState('LOBBY');
     if (animationFrameIdRef.current) {
       cancelAnimationFrame(animationFrameIdRef.current);
     }
@@ -230,90 +313,42 @@ export default function App() {
     mouseDeltaRef.current.dy += dy * sensFactor;
   }, []);
 
+  const handleStartGameFromLobby = useCallback((roomId: string, isHost: boolean, currentPlayers: any[]) => {
+    setRoomContext({ roomId, isHost, players: currentPlayers });
+    startGame();
+  }, [startGame]);
+
   return (
     <div className="w-full h-screen bg-slate-950 text-white select-none overflow-hidden relative">
       <AnimatePresence mode="wait">
-        {appState === 'MENU' && (
+        {appState === 'AUTH' && (
           <motion.div
-            key="menu"
+            key="auth"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 flex flex-col items-center justify-center p-6 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black"
+            className="absolute inset-0"
           >
-            {/* Ambient glowing lines in background */}
-            <div className="absolute inset-0 bg-grid-pattern opacity-10 pointer-events-none" />
+            <Auth onAuthSuccess={(u) => { setUser(u); setAppState('LOBBY'); }} />
+          </motion.div>
+        )}
 
-            <div className="max-w-xl text-center relative z-10 w-full px-4">
-              {/* Sci-Fi title heading */}
-              <motion.div
-                initial={{ y: -30, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ duration: 0.8 }}
-                className="mb-8"
-              >
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-xs text-cyan-400 font-bold tracking-widest uppercase mb-4 shadow-[0_0_15px_rgba(6,182,212,0.1)]">
-                  <Compass className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '3s' }} />
-                  <span>3D SCI-FI ARENA SHOOTER</span>
-                </div>
-                <h1 className="text-6xl font-black tracking-tighter uppercase text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-indigo-500 to-pink-500 leading-none">
-                  XONOTIC
-                </h1>
-                <p className="text-sm font-light text-slate-400 mt-3 tracking-widest uppercase">
-                  WEB INSTAGIB CHRONICLES
-                </p>
-              </motion.div>
-
-              {/* Game Control Card panels */}
-              <motion.div
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: 0.2 }}
-                className="bg-slate-900/60 backdrop-blur-md rounded-2xl border border-white/10 p-6 shadow-2xl mb-8 text-left space-y-4"
-              >
-                <h3 className="text-cyan-400 font-bold uppercase tracking-wider text-sm border-b border-white/5 pb-2">
-                  ARENA MECHANICS (아레나 조작법)
-                </h3>
-                <div className="grid grid-cols-2 gap-4 text-xs font-mono text-slate-300">
-                  <div className="bg-white/5 p-3 rounded-xl border border-white/5">
-                    <span className="text-pink-400 block font-bold mb-1">WASD KEYS</span>
-                    W, A, S, D 이동 (Korean ㅈ, ㄴ, ㅁ, ㅇ 지원)
-                  </div>
-                  <div className="bg-white/5 p-3 rounded-xl border border-white/5">
-                    <span className="text-cyan-400 block font-bold mb-1">STRAFE JUMP</span>
-                    SPACEBAR 계속 입력 시 버니합 가속 (1000+ UPS!)
-                  </div>
-                  <div className="bg-white/5 p-3 rounded-xl border border-white/5">
-                    <span className="text-yellow-400 block font-bold mb-1">WEAPONS SWITCH</span>
-                    1: 블래스터, 2: 넥스 레이저, 3: 로켓, 4: 일렉트로
-                  </div>
-                  <div className="bg-white/5 p-3 rounded-xl border border-white/5">
-                    <span className="text-purple-400 block font-bold mb-1">ROCKET JUMP</span>
-                    발 밑에 로켓을 쏘며 점프하여 공중 발사!
-                  </div>
-                </div>
-              </motion.div>
-
-              {/* Score banner & Launch actions */}
-              <div className="flex flex-col items-center gap-5">
-                {highScore > 0 && (
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-sm font-medium">
-                    <Award className="w-4 h-4 text-yellow-400" />
-                    <span>최고 Frags 수: <strong className="font-black text-white">{highScore}</strong></span>
-                  </div>
-                )}
-
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={startGame}
-                  className="px-10 py-5 bg-gradient-to-r from-cyan-500 via-indigo-500 to-pink-500 hover:opacity-90 rounded-2xl font-black text-xl italic uppercase tracking-wider shadow-[0_0_30px_rgba(6,182,212,0.3)] border border-cyan-400/20 active:scale-95 transition-all flex items-center gap-3 cursor-pointer"
-                >
-                  <Play className="w-5 h-5 fill-current" />
-                  ENTER ARENA (경기장 입장)
-                </motion.button>
-              </div>
-            </div>
+        {appState === 'LOBBY' && (
+          <motion.div
+            key="lobby"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0"
+          >
+            <Lobby
+              user={user}
+              onLogout={() => {
+                setUser(null);
+                setAppState('AUTH');
+              }}
+              onStartGame={handleStartGameFromLobby}
+            />
 
             {/* Victory / Defeat Modal HUD Dialogues (Permanent Death / Finite bots result outcome) */}
             <AnimatePresence>
@@ -376,7 +411,6 @@ export default function App() {
                 </motion.div>
               )}
             </AnimatePresence>
-
           </motion.div>
         )}
 

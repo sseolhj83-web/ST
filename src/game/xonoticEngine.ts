@@ -9,6 +9,9 @@ import { getXonoticMap } from './xonoticMap';
 export class XonoticEngine {
   public state: XonoticGameState;
   public isFrozen: boolean = false;
+  public roomId: string | null = null;
+  public userId: string | null = null;
+  public supabaseChannel: any = null;
   private walls: MapWall[] = [];
   private jumpPads: JumpPad[] = [];
   private pickups: PickupItem[] = [];
@@ -268,7 +271,171 @@ export class XonoticEngine {
     this.updateProjectiles(dt);
     this.updatePickups(dt);
     this.checkCollisions();
+
+    // Broadcast player state to other players at ~15Hz
+    if (this.supabaseChannel && Math.random() < 0.25) {
+      this.broadcastPlayerState();
+    }
+
     this.onStateChange({ ...this.state });
+  }
+
+  public connectRealtime(roomId: string, userId: string, supabaseClient: any, username: string) {
+    this.roomId = roomId;
+    this.userId = userId;
+
+    const channel = supabaseClient.channel(`play_${roomId}`);
+    this.supabaseChannel = channel;
+
+    channel
+      .on('broadcast', { event: 'player-state' }, (payload: any) => {
+        const remoteData = payload.payload;
+        if (remoteData.id === this.userId) return; // Skip self
+
+        // Find or create other player as a bot in state.bots
+        let remotePlayer = this.state.bots.find(b => b.id === remoteData.id);
+        if (!remotePlayer) {
+          const newPlayerBot: Bot = {
+            id: remoteData.id,
+            name: remoteData.username || `Player_${remoteData.id.slice(0, 5)}`,
+            pos: remoteData.pos,
+            vel: remoteData.vel,
+            health: remoteData.health,
+            maxHealth: 100,
+            color: '#3b82f6', // Team color blue
+            radius: 0.8,
+            currentWeapon: remoteData.currentWeapon,
+            lastShootTime: 0,
+            targetPos: null,
+            state: 'wandering',
+            stateTimer: 0,
+            isTeammate: true, // Mark as blue teammate!
+          };
+          this.state.bots.push(newPlayerBot);
+          remotePlayer = newPlayerBot;
+        }
+
+        // Sync stats
+        remotePlayer.pos = remoteData.pos;
+        remotePlayer.vel = remoteData.vel;
+        remotePlayer.health = remoteData.health;
+        remotePlayer.currentWeapon = remoteData.currentWeapon;
+      })
+      .on('broadcast', { event: 'player-shoot' }, (payload: any) => {
+        const remoteData = payload.payload;
+        if (remoteData.id === this.userId) return; // Skip self
+
+        // Spawn projectile on other player shoot
+        this.spawnRemotePlayerProjectile(remoteData.id, remoteData.weapon, remoteData.pos, remoteData.yaw, remoteData.pitch);
+      })
+      .subscribe();
+  }
+
+  public spawnRemotePlayerProjectile(
+    ownerId: string,
+    weapon: WeaponType,
+    pos: { x: number; y: number; z: number },
+    yaw: number,
+    pitch: number
+  ) {
+    const lookX = Math.sin(yaw) * Math.cos(pitch);
+    const lookY = Math.sin(pitch);
+    const lookZ = -Math.cos(yaw) * Math.cos(pitch);
+
+    const weaponData = this.state.player.weapons[weapon];
+    const damage = weaponData ? weaponData.damage : 15;
+    const color = weaponData ? weaponData.color : '#06b6d4';
+
+    if (weapon === 'vaporizer') {
+      // Replicate Nex Laser Ray (instant hitscan line)
+      this.state.projectiles.push({
+        id: Math.random().toString(36).substr(2, 9),
+        type: 'plasma',
+        pos: { ...pos },
+        vel: { x: lookX * 300, y: lookY * 300, z: lookZ * 300 },
+        radius: 0.2,
+        damage: 0,
+        color: '#ec4899',
+        ownerId: ownerId,
+      });
+
+      // Hitscan detection against the local player!
+      const toPlayerX = this.state.player.pos.x - pos.x;
+      const toPlayerY = (this.state.player.pos.y + 0.8) - pos.y;
+      const toPlayerZ = this.state.player.pos.z - pos.z;
+      
+      const proj = toPlayerX * lookX + toPlayerY * lookY + toPlayerZ * lookZ;
+      if (proj > 0 && proj < 120) {
+        const perpX = toPlayerX - proj * lookX;
+        const perpY = toPlayerY - proj * lookY;
+        const perpZ = toPlayerZ - proj * lookZ;
+        const distPerp = Math.sqrt(perpX * perpX + perpY * perpY + perpZ * perpZ);
+
+        if (distPerp < 2.0) {
+          this.damagePlayer(85, ownerId);
+        }
+      }
+
+    } else if (weapon === 'rocket') {
+      this.state.projectiles.push({
+        id: Math.random().toString(36).substr(2, 9),
+        type: 'rocket',
+        pos: { ...pos },
+        vel: { x: lookX * 180, y: lookY * 180, z: lookZ * 180 },
+        radius: 0.8,
+        damage: damage,
+        color: color,
+        ownerId: ownerId,
+      });
+    } else if (weapon === 'grenade') {
+      this.state.projectiles.push({
+        id: Math.random().toString(36).substr(2, 9),
+        type: 'grenade',
+        pos: { ...pos },
+        vel: {
+          x: lookX * 42,
+          y: lookY * 42 + 7.5,
+          z: lookZ * 42
+        },
+        radius: 0.6,
+        damage: damage,
+        color: color,
+        ownerId: ownerId,
+        bounces: 0,
+        lifeTime: 2.2,
+      });
+    } else { // laser, electro
+      this.state.projectiles.push({
+        id: Math.random().toString(36).substr(2, 9),
+        type: 'plasma',
+        pos: { ...pos },
+        vel: { x: lookX * 450, y: lookY * 450, z: lookZ * 450 },
+        radius: 0.4,
+        damage: damage,
+        color: color,
+        ownerId: ownerId,
+      });
+    }
+  }
+
+  public broadcastPlayerState() {
+    if (!this.supabaseChannel) return;
+    const { player } = this.state;
+    this.supabaseChannel.send({
+      type: 'broadcast',
+      event: 'player-state',
+      payload: {
+        id: this.userId,
+        username: this.userId, // use id as username placeholder
+        pos: player.pos,
+        vel: player.vel,
+        yaw: player.yaw,
+        pitch: player.pitch,
+        currentWeapon: player.currentWeapon,
+        health: player.health,
+        score: player.score,
+      }
+    });
   }
 
   private updatePlayerPhysics(dt: number) {
@@ -598,6 +765,20 @@ export class XonoticEngine {
         damage: w.damage,
         color: player.currentWeapon === 'laser' ? '#06b6d4' : '#8b5cf6',
         ownerId: 'player',
+      });
+    }
+
+    if (owner === 'player' && this.supabaseChannel) {
+      this.supabaseChannel.send({
+        type: 'broadcast',
+        event: 'player-shoot',
+        payload: {
+          id: this.userId,
+          weapon: player.currentWeapon,
+          pos: { x: playerEyeX, y: playerEyeY, z: playerEyeZ },
+          yaw: player.yaw,
+          pitch: player.pitch,
+        }
       });
     }
   }
