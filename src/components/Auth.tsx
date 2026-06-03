@@ -29,7 +29,7 @@ export const Auth = ({ onAuthSuccess }: AuthProps) => {
         return;
       }
       
-      const { data, error } = await supabase.auth.signUp({
+      const { error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -39,15 +39,19 @@ export const Auth = ({ onAuthSuccess }: AuthProps) => {
         },
       });
 
-      if (error) {
-        setErrorMessage(error.message);
+      if (signUpError) {
+        setErrorMessage(signUpError.message);
       } else {
-        // 이메일 확인이 기본적으로 활성화되어 있을 수 있으므로 알림 표시
-        if (data.session) {
-          onAuthSuccess(data.user);
-        } else {
-          setInfoMessage('회원가입이 완료되었습니다! 이메일 인증 메일이 발송되었을 수 있으니 메일함을 확인해주세요. (인증 비활성화 시 즉시 로그인 가능)');
-          setIsSignUp(false);
+        // 이메일 인증 없이 즉시 로그인
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (signInError) {
+          setErrorMessage('가입은 완료되었으나 로그인에 실패했습니다: ' + signInError.message);
+        } else if (signInData.user) {
+          onAuthSuccess(signInData.user);
         }
       }
     } else {
