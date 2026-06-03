@@ -1,0 +1,23 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;700&display=swap');
+
+@theme {
+  --font-display: "Bungee", cursive;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  --game-bg: #111827;
+}
+
+body {
+  background-color: var(--game-bg);
+  color: white;
+  overflow: hidden;
+  user-select: none;
+}
+
+canvas {
+  display: block;
+  cursor: crosshair;
+}
