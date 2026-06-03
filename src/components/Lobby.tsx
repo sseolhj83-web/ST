@@ -291,14 +291,18 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
         .update({ status: 'playing' })
         .eq('id', activeRoom.id);
 
-      // 2. Broadcast start event to all players in the room channel
+      // 2. Broadcast start event to all OTHER players in the room channel
+      // (Supabase broadcast does NOT echo back to the sender)
       if (roomChannelRef.current) {
-        roomChannelRef.current.send({
+        await roomChannelRef.current.send({
           type: 'broadcast',
           event: 'start-game',
           payload: { players: roomPlayers },
         });
       }
+
+      // 3. Host starts the game directly (broadcast doesn't reach the sender)
+      onStartGame(activeRoom.id, true, roomPlayers);
     } catch (err: any) {
       alert(`게임 시작 에러: ${err.message}`);
     }
