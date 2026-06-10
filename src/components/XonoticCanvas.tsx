@@ -1566,11 +1566,11 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     body.position.set(0, -0.05, -0.5);
     gunGroup.add(body);
 
-    const mNeonGeo = new THREE.BoxGeometry(0.08, 0.08, 0.9);
-    const mNeonMat = new THREE.MeshBasicMaterial({ color: '#06b6d4' });
-    const mNeon = new THREE.Mesh(mNeonGeo, mNeonMat);
-    mNeon.position.set(0, 0.16, -0.6);
-    gunGroup.add(mNeon);
+    const gunNeonGeo = new THREE.BoxGeometry(0.08, 0.08, 0.9);
+    const gunNeonMat = new THREE.MeshBasicMaterial({ color: '#06b6d4' });
+    const gunNeon = new THREE.Mesh(gunNeonGeo, gunNeonMat);
+    gunNeon.position.set(0, 0.16, -0.6);
+    gunGroup.add(gunNeon);
 
     const mFlashGeo = new THREE.SphereGeometry(0.24, 8, 8);
     const mFlashMat = new THREE.MeshBasicMaterial({ color: '#f59e0b', transparent: true, opacity: 0.95 });
