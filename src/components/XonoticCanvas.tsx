@@ -995,201 +995,190 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     const ashParticles = new THREE.Points(particleGeometry, particleMaterial);
     scene.add(ashParticles);
 
-    // Generate withered low-poly trees scattered elegantly on the decayed field!
-    const treeCount = 45;
-    const treePositions: {x: number, z: number, scale: number}[] = [];
-    const rnd = (min: number, max: number) => min + Math.random() * (max - min);
-    for (let i = 0; i < treeCount; i++) {
-      let tx = rnd(-38, 38);
-      let tz = rnd(-38, 38);
-      // Ensure we keep trees away from spawn zones, active narrow pathways, and bridges to guarantee fluid navigation
-      while (
-        Math.sqrt(tx*tx + tz*tz) < 12 || 
-        (Math.abs(tx) > 22 && Math.abs(tz) < 6) || 
-        (Math.abs(tx) > 25 && Math.abs(tz) > 25)
-      ) {
-        tx = rnd(-38, 38);
-        tz = rnd(-38, 38);
+    // ── Dummy refs kept for animate-loop material switches ──
+    const trunkMat  = new THREE.MeshStandardMaterial({ color: '#16141a', roughness: 0.95 });
+    const foliageMat = new THREE.MeshStandardMaterial({ color: '#22c55e', roughness: 0.8 });
+    foliageMat.visible = false;
+    const vineMat   = new THREE.MeshStandardMaterial({ color: '#101d42', roughness: 0.9 });
+
+    // ═══════════════════════════════════════════════════
+    //   HAWKINS, INDIANA — 1980s American Rural Town
+    // ═══════════════════════════════════════════════════
+
+    // Shared materials
+    const mCream  = new THREE.MeshStandardMaterial({ color: '#ddd5b8', roughness: 0.85 });
+    const mBrick  = new THREE.MeshStandardMaterial({ color: '#9b4a35', roughness: 0.9 });
+    const mBlue   = new THREE.MeshStandardMaterial({ color: '#4a6fa5', roughness: 0.8 });
+    const mYellow = new THREE.MeshStandardMaterial({ color: '#c8a03a', roughness: 0.8 });
+    const mRoofDk = new THREE.MeshStandardMaterial({ color: '#3a3a2a', roughness: 0.9 });
+    const mRoofBr = new THREE.MeshStandardMaterial({ color: '#5c4a30', roughness: 0.9 });
+    const mWoodT  = new THREE.MeshStandardMaterial({ color: '#7a5c3a', roughness: 0.95 });
+    const mDoor   = new THREE.MeshStandardMaterial({ color: '#4a2c1a', roughness: 0.85 });
+    const mWin    = new THREE.MeshStandardMaterial({ color: '#9bc4e8', roughness: 0.1, metalness: 0.3, emissive: new THREE.Color('#3a72a8'), emissiveIntensity: 0.2 });
+    const mConc   = new THREE.MeshStandardMaterial({ color: '#a09080', roughness: 0.7 });
+    const mRoad   = new THREE.MeshStandardMaterial({ color: '#3a3a3a', roughness: 0.75 });
+    const mMkY    = new THREE.MeshStandardMaterial({ color: '#e8c040', roughness: 0.3, emissive: new THREE.Color('#b08020'), emissiveIntensity: 0.25 });
+    const mMkW    = new THREE.MeshStandardMaterial({ color: '#f0f0e0', roughness: 0.3, emissive: new THREE.Color('#c0c0b0'), emissiveIntensity: 0.12 });
+    const mPoleW  = new THREE.MeshStandardMaterial({ color: '#5c4828', roughness: 0.9 });
+    const mWireT  = new THREE.MeshStandardMaterial({ color: '#202020', roughness: 0.8 });
+    const mWhiteP = new THREE.MeshStandardMaterial({ color: '#f0ece0', roughness: 0.7 });
+    const mSignR  = new THREE.MeshStandardMaterial({ color: '#cc2020', roughness: 0.3, emissive: new THREE.Color('#880808'), emissiveIntensity: 0.35 });
+    const mSignW  = new THREE.MeshStandardMaterial({ color: '#fffff0', roughness: 0.3, emissive: new THREE.Color('#fffff0'), emissiveIntensity: 0.3 });
+    const mGrav   = new THREE.MeshStandardMaterial({ color: '#6a6058', roughness: 0.9 });
+    const mCarG   = new THREE.MeshStandardMaterial({ color: '#2d5a3a', roughness: 0.35, metalness: 0.5 });
+    const mCarB   = new THREE.MeshStandardMaterial({ color: '#253d6a', roughness: 0.35, metalness: 0.5 });
+    const mCarBe  = new THREE.MeshStandardMaterial({ color: '#c8a855', roughness: 0.4, metalness: 0.4 });
+    const mCarGl  = new THREE.MeshStandardMaterial({ color: '#88aacc', roughness: 0.1, metalness: 0.6, transparent: true, opacity: 0.65 });
+    const mCarTi  = new THREE.MeshStandardMaterial({ color: '#1a1a1a', roughness: 0.95 });
+
+    // Box helper
+    const addB = (w: number, h: number, d: number, px: number, py: number, pz: number,
+                  mat: THREE.MeshStandardMaterial, parent: THREE.Object3D = scene, shad = true) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      m.position.set(px, py, pz);
+      if (shad) { m.castShadow = true; m.receiveShadow = true; }
+      parent.add(m);
+      return m;
+    };
+
+    // ── ROADS ──
+    // Main Street (E-W, z=22)
+    addB(78, 0.12, 7,  0, 0.06, 22, mRoad, scene, false);
+    addB(78, 0.06, 1.5, 0, 0.03, 18.25, mConc, scene, false); // N shoulder
+    addB(78, 0.06, 1.5, 0, 0.03, 25.75, mConc, scene, false); // S shoulder
+    for (let rx = -37; rx < 37; rx += 5.5)
+      addB(3, 0.02, 0.2, rx, 0.14, 22, mMkY, scene, false);   // yellow center dashes
+    for (let rx = -37; rx < 37; rx += 4) {
+      addB(2.5, 0.02, 0.15, rx, 0.13, 18.6, mMkW, scene, false);
+      addB(2.5, 0.02, 0.15, rx, 0.13, 25.4, mMkW, scene, false);
+    }
+    // N-S connector (lab south gate → Main St.)
+    addB(5, 0.12, 7, 0, 0.06, 25.5, mRoad, scene, false);
+
+    // ── UTILITY POLES along south side of Main St. ──
+    const poleXs = [-36, -24, -12, 0, 12, 24, 36];
+    poleXs.forEach((px, pi) => {
+      addB(0.28, 11, 0.28, px, 5.5, 26.5, mPoleW);
+      addB(4.5, 0.2, 0.2,  px, 10.2, 26.5, mPoleW);
+      [-1.5, 1.5].forEach(ox => addB(0.2, 0.32, 0.2, px + ox, 10.1, 26.5, mWhiteP));
+      if (pi < poleXs.length - 1) {
+        const nx = poleXs[pi + 1];
+        addB(Math.abs(nx - px), 0.05, 0.05, (px + nx) / 2, 10.0, 26.5, mWireT, scene, false);
       }
-      treePositions.push({ x: tx, z: tz, scale: rnd(1.4, 2.5) }); // Enlarged tree scale size as requested
+    });
+
+    // ── PARKED CARS ──
+    const buildCar = (px: number, pz: number, ry: number, bMat: THREE.MeshStandardMaterial) => {
+      const g = new THREE.Group();
+      g.position.set(px, 0, pz);
+      g.rotation.y = ry;
+      addB(4.5, 1.3, 2,  0, 0.85, 0, bMat, g);
+      addB(2.8, 0.85, 1.7, -0.2, 1.95, 0, bMat, g);
+      addB(0.12, 0.75, 1.5,  1.15, 1.88, 0, mCarGl, g, false);
+      addB(0.12, 0.65, 1.5, -1.55, 1.85, 0, mCarGl, g, false);
+      [[-1.5,-1.05],[-1.5,1.05],[1.2,-1.05],[1.2,1.05]].forEach(([wx,wz]) =>
+        addB(0.6, 0.6, 0.38, wx, 0.3, wz, mCarTi, g));
+      scene.add(g);
+    };
+    buildCar(-22, 18.3, 0, mCarG);
+    buildCar( 14, 26,   Math.PI, mCarB);
+    buildCar( -8, 26,   Math.PI, mCarBe);
+
+    // ── RANCH HOUSE BUILDER ──
+    const buildRanch = (px: number, pz: number, ry: number,
+                        wMat: THREE.MeshStandardMaterial, rMat: THREE.MeshStandardMaterial) => {
+      const g = new THREE.Group();
+      g.position.set(px, 0, pz);
+      g.rotation.y = ry;
+      addB(10, 4, 7,    0, 2.0,  0,    wMat, g);  // body
+      addB(11, 1, 8,    0, 4.5,  0,    rMat, g);  // roof
+      addB(0.8, 2.5, 0.8, 3, 5.2, 1,  mBrick, g); // chimney
+      addB(1.1, 2.4, 0.2, 0, 1.2, 3.6, mDoor, g); // front door
+      [-3, 3].forEach(ox => addB(1.4, 1.2, 0.18, ox, 2.3, 3.6, mWin, g)); // front windows
+      addB(0.18, 1.2, 1.4,  5.1, 2.3, 0, mWin, g); // side windows
+      addB(0.18, 1.2, 1.4, -5.1, 2.3, 0, mWin, g);
+      addB(4, 0.3, 1.5, 0, 0.15, 4.25, mConc, g); // porch step
+      addB(0.12, 1.0, 0.12, 5.5, 0.5,  5, mWoodT, g); // mailbox post
+      addB(0.5,  0.35, 0.8,  5.5, 1.1,  5, mSignR, g); // mailbox
+      scene.add(g);
+    };
+    buildRanch(-26, -22, 0,         mCream,  mRoofDk); // Wheeler-style house
+    buildRanch( 27, -19, Math.PI,   mBlue,   mRoofDk); // Hargrove house
+    buildRanch(-28,  28, 0.15,      mYellow, mRoofBr); // Byers house
+
+    // ── MELVALD'S GENERAL STORE (x=26, z=28) ──
+    {
+      const g = new THREE.Group();
+      g.position.set(26, 0, 28);
+      addB(14, 5, 10,  0, 2.5, 0,    mBrick, g);
+      addB(15, 1, 11,  0, 5.5, 0,    mBrick, g);      // parapet
+      addB(12, 1.5, 0.4, 0, 5.0, 5.2, mSignR, g);     // sign board
+      addB(10, 0.8, 0.1,  0, 5.0, 5.42, mSignW, g);   // sign glow
+      [-4, 0, 4].forEach(ox => addB(2.5, 2, 0.2, ox, 2.0, 5.1, mWin, g));
+      addB(1.4, 2.8, 0.2,  0, 1.4, 5.1, mDoor, g);
+      addB(16, 0.12, 3, 0, 0.06, 7.5, mConc, g);      // sidewalk
+      scene.add(g);
     }
 
-    // Shared tree geometries and materials
-    const trunkGeo = new THREE.CylinderGeometry(0.06, 0.18, 3.2, 5);
-    const branchGeo1 = new THREE.CylinderGeometry(0.03, 0.07, 1.4, 4);
-    const branchGeo2 = new THREE.CylinderGeometry(0.015, 0.04, 0.9, 4);
-    const trunkMat = new THREE.MeshStandardMaterial({ color: '#16141a', roughness: 0.95, metalness: 0.05 }); // charcoal-black wood
-
-    // Leafy foliage for peaceful world (green low-poly dodecahedrons)
-    const foliageMat = new THREE.MeshStandardMaterial({
-      color: '#22c55e',
-      roughness: 0.8,
-      metalness: 0.05
-    });
-    foliageMat.visible = false; // defaults to invisible in the Upside Down
-
-    const leafGeoTop = new THREE.DodecahedronGeometry(0.65, 1);
-    const leafGeoBranch = new THREE.DodecahedronGeometry(0.42, 1);
-
-    treePositions.forEach(p => {
-      const treeGroup = new THREE.Group();
-      treeGroup.position.set(p.x, 0, p.z);
-      treeGroup.scale.set(p.scale, p.scale, p.scale);
-
-      // Main trunk cylinder (only trunk casts shadow!)
-      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-      trunk.position.y = 1.6;
-      trunk.castShadow = true;
-      treeGroup.add(trunk);
-
-      // Crooked branch 1 (leftwards and upwards) - disable minor shadows to prevent draw call explosion
-      const b1 = new THREE.Mesh(branchGeo1, trunkMat);
-      b1.position.set(-0.3, 2.3, 0.1);
-      b1.rotation.set(0.2, 0, 0.8 * (Math.random() * 0.4 + 0.8));
-      b1.castShadow = false;
-      treeGroup.add(b1);
-
-      // Secondary twig on branch 1
-      const b1b = new THREE.Mesh(branchGeo2, trunkMat);
-      b1b.position.set(-0.7, 2.8, 0.2);
-      b1b.rotation.set(-0.3, 0.2, 1.1);
-      b1b.castShadow = false;
-      treeGroup.add(b1b);
-
-      // Crooked branch 2 (rightwards and upwards)
-      const b2 = new THREE.Mesh(branchGeo1, trunkMat);
-      b2.position.set(0.3, 2.1, -0.2);
-      b2.rotation.set(-0.4, 0.1, -0.7 * (Math.random() * 0.4 + 0.8));
-      b2.castShadow = false;
-      treeGroup.add(b2);
-
-      // Secondary twig on branch 2
-      const b2b = new THREE.Mesh(branchGeo2, trunkMat);
-      b2b.position.set(0.8, 2.5, -0.4);
-      b2b.rotation.set(0.1, -0.3, -1.0);
-      b2b.castShadow = false;
-      treeGroup.add(b2b);
-
-      // Crooked branch 3 (pointing forward and upwards)
-      const b3 = new THREE.Mesh(branchGeo1, trunkMat);
-      b3.position.set(0.1, 1.8, 0.3);
-      b3.rotation.set(0.9, 0.5, 0.1);
-      b3.castShadow = false;
-      treeGroup.add(b3);
-
-      // Add leafy foliage on top of the main trunk - shadow receiver only
-      const fTop = new THREE.Mesh(leafGeoTop, foliageMat);
-      fTop.position.set(0, 3.2, 0);
-      fTop.castShadow = false;
-      fTop.receiveShadow = true;
-      treeGroup.add(fTop);
-
-      // Add leafy foliage on top of secondary twig 1
-      const fB1b = new THREE.Mesh(leafGeoBranch, foliageMat);
-      fB1b.position.set(-0.95, 3.1, 0.25);
-      fB1b.castShadow = false;
-      fB1b.receiveShadow = true;
-      treeGroup.add(fB1b);
-
-      // Add leafy foliage on top of secondary twig 2
-      const fB2b = new THREE.Mesh(leafGeoBranch, foliageMat);
-      fB2b.position.set(1.15, 2.8, -0.55);
-      fB2b.castShadow = false;
-      fB2b.receiveShadow = true;
-      treeGroup.add(fB2b);
-
-      // Add leafy foliage on top of crooked branch 3
-      const fB3 = new THREE.Mesh(leafGeoBranch, foliageMat);
-      fB3.position.set(0.15, 2.2, 0.45);
-      fB3.castShadow = false;
-      fB3.receiveShadow = true;
-      treeGroup.add(fB3);
-
-      scene.add(treeGroup);
-    });
-
-    // --- DARK BLUE VINES EVERYWHERE ---
-    // Pre-allocate to prevent garbage collection hiccups and memory overhead
-    const vineGeoVertical = new THREE.BoxGeometry(0.16, 1.8, 0.16);
-    const vineGeoHorizX = new THREE.BoxGeometry(1.8, 0.12, 0.12);
-    const vineGeoHorizZ = new THREE.BoxGeometry(0.12, 0.12, 1.8);
-    const vineGeoClimb = new THREE.BoxGeometry(0.15, 2.0, 0.15);
-
-    const vineMat = new THREE.MeshStandardMaterial({ color: '#101d42', roughness: 0.90, metalness: 0.1 }); // creepy deep dark blue index
-
-    // Vertical vines crawling on the Center Spire - Reduced density for high gameplay performance
-    for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 2) {
-      const vx = Math.cos(angle) * 4.05;
-      const vz = Math.sin(angle) * 4.05;
-      for (let vy = 1; vy < 24; vy += 3.0) {
-        const offset = Math.sin(vy * 0.7) * 0.5;
-        const vineNode = new THREE.Mesh(vineGeoVertical, vineMat);
-        if (Math.abs(vx) > Math.abs(vz)) {
-          vineNode.position.set(vx, vy, vz + offset);
-        } else {
-          vineNode.position.set(vx + offset, vy, vz);
-        }
-        vineNode.rotation.y = angle;
-        vineNode.rotation.z = Math.sin(vy) * 0.1;
-        scene.add(vineNode);
-      }
+    // ── HAWKINS GAS STATION (x=30, z=-5) ──
+    {
+      const g = new THREE.Group();
+      g.position.set(30, 0, -5);
+      addB(7, 4, 6,   0, 2, 0,   mWhiteP, g);         // building
+      addB(8, 0.6, 7, 0, 4.3, 0, mRoofDk, g);         // roof
+      addB(18, 0.5, 10, 0, 4.5, 0, mConc, g);          // canopy
+      [-7, 7].forEach(ox => addB(0.35, 4.5, 0.35, ox, 2.25, 0, mConc, g)); // posts
+      [-3, 3].forEach(ox => {
+        addB(0.9, 2.2, 0.55, ox, 1.1, 4.5, mSignR, g); // pump
+        addB(0.6, 0.5, 0.1,  ox, 1.6, 4.84, mSignW, g);// pump screen
+      });
+      addB(0.2, 9, 0.2,      -8, 4.5, 0,    mPoleW, g);// price pole
+      addB(3.5, 2.5, 0.4,    -8, 9.5, 0,    mSignR, g);// price sign
+      addB(3, 1.8, 0.1,      -8, 9.5, 0.26, mSignW, g);// glow
+      addB(1.2, 2.5, 0.2,     2, 1.25, 3.1, mDoor, g);
+      addB(1.5, 1.5, 0.2, -1.5, 2.0,  3.1, mWin, g);
+      addB(20, 0.1, 12, 0, 0.05, 0, mGrav, g, false);  // forecourt
+      scene.add(g);
     }
 
-    // Creeping vines across long bridges - Skipped middle pathway node, reduced density
-    const bridges = [
-      { x: 0, z: -20, lenX: 6, lenZ: 24 },
-      { x: 0, z: 20, lenX: 6, lenZ: 24 },
-      { x: -20, z: 0, lenX: 24, lenZ: 6 },
-      { x: 20, z: 0, lenX: 24, lenZ: 6 }
-    ];
-    bridges.forEach(b => {
-      if (b.lenX > b.lenZ) {
-        for (let side = -1; side <= 1; side += 2) { // only build on sides -1 and 1 (skip 0/middle)
-          const vz = b.z + side * (b.lenZ / 2 + 0.1);
-          for (let vx = b.x - b.lenX / 2 + 1.2; vx < b.x + b.lenX / 2; vx += 2.8) {
-            const vy = 10.3 + Math.sin(vx * 1.6) * 0.08;
-            const node = new THREE.Mesh(vineGeoHorizX, vineMat);
-            node.position.set(vx, vy, vz);
-            node.rotation.z = Math.sin(vx) * 0.04;
-            scene.add(node);
-          }
-        }
-      } else {
-        for (let side = -1; side <= 1; side += 2) { // side steps of 2 skips middle 0
-          const vx = b.x + side * (b.lenX / 2 + 0.1);
-          for (let vz = b.z - b.lenZ / 2 + 1.2; vz < b.z + b.lenZ / 2; vz += 2.8) {
-            const vy = 10.3 + Math.sin(vz * 1.6) * 0.08;
-            const node = new THREE.Mesh(vineGeoHorizZ, vineMat);
-            node.position.set(vx, vy, vz);
-            node.rotation.x = Math.sin(vz) * 0.04;
-            scene.add(node);
-          }
-        }
-      }
-    });
+    // ── FIRST COMMUNITY CHURCH (x=-26, z=-8) ──
+    {
+      const g = new THREE.Group();
+      g.position.set(-26, 0, -8);
+      addB(10, 5.5, 9,   0, 2.75, 0,    mWhiteP, g);  // nave
+      addB(11, 0.8, 10,  0, 5.9,  0,    mRoofDk, g);  // roof
+      addB(3.5, 8, 3.5,  0, 4,   -3,    mWhiteP, g);  // bell tower
+      addB(2.5, 0.8, 2.5, 0, 8.4,  -3,  mRoofDk, g);
+      addB(1.5, 1.5, 1.5, 0, 9.55, -3,  mRoofDk, g);
+      addB(0.5, 2, 0.5,   0, 11.3, -3,  mRoofDk, g);  // spire
+      addB(0.2, 1.5, 0.2, 0, 13.1, -3, mSignW, g);    // cross (vertical)
+      addB(1.2, 0.2, 0.2, 0, 13.2, -3, mSignW, g);    // cross (horizontal)
+      [-2.8, 2.8].forEach(ox => addB(1.2, 2, 0.2, ox, 3.0, 4.6, mWin, g));
+      addB(1.4, 3, 0.2, 0, 1.5, 4.6, mDoor, g);
+      addB(4, 0.35, 1.5, 0, 0.175, 5.5, mConc, g);    // steps
+      scene.add(g);
+    }
 
-    // Crawling climbing vines up all corners of the 4 outposts in the level! - optimized density
-    const outposts = [
-      { x: -28, z: -28 },
-      { x: 28, z: -28 },
-      { x: -28, z: 28 },
-      { x: 28, z: 28 }
-    ];
-    outposts.forEach(op => {
-      for (let sideX = -1; sideX <= 1; sideX += 2) {
-        for (let sideZ = -1; sideZ <= 1; sideZ += 2) {
-          const vx = op.x + sideX * 6.95;
-          const vz = op.z + sideZ * 6.95;
-          for (let vy = 0.5; vy < 12.0; vy += 3.6) {
-            const node = new THREE.Mesh(vineGeoClimb, vineMat);
-            node.position.set(vx, vy, vz);
-            node.rotation.y = Math.random() * Math.PI;
-            node.rotation.x = Math.sin(vy) * 0.08;
-            scene.add(node);
-          }
-        }
-      }
-    });
+    // ── HAWKINS MIDDLE SCHOOL (x=-8, z=-32) ──
+    {
+      const g = new THREE.Group();
+      g.position.set(-8, 0, -32);
+      addB(22, 6, 12,  0, 3, 0,    mBrick, g);
+      addB(23, 0.7, 13, 0, 6.35, 0, mRoofDk, g);
+      [-8,-4,0,4,8].forEach(ox =>
+        [1.5, 4].forEach(oy => addB(1.6, 1.4, 0.18, ox, oy, 6.1, mWin, g)));
+      [-0.7, 0.7].forEach(ox => addB(0.9, 2.6, 0.2, ox, 1.3, 6.1, mDoor, g));
+      addB(5, 0.4, 2,  0, 3.5, 7.2, mConc, g);        // entrance overhang
+      [-2, 2].forEach(ox => addB(0.3, 3.5, 0.3, ox, 1.75, 7.2, mConc, g));
+      addB(10, 1.5, 0.4, 0, 5.5, 6.2, mSignR, g);     // school sign
+      addB(9, 1.0, 0.1,  0, 5.5, 6.42, mSignW, g);
+      addB(0.15, 14, 0.15, -14, 7, 5, mConc, g);      // flagpole
+      addB(3, 1.8, 0.08, -12.2, 13, 5, mSignR, g);    // flag
+      addB(22, 0.1, 8, 0, 0.05, -8, mGrav, g, false); // parking lot
+      scene.add(g);
+    }
+
+    // (Vines removed — replaced by 1980s Hawkins rural town above)
 
     // --- THE GATE / DIMENSIONAL PORTAL (Behind Spawn point on North Wall) ---
     const portalGroup = new THREE.Group();
@@ -1348,11 +1337,10 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         vineMat.roughness = 0.8;
         // Warm brown healthy wood trees
         trunkMat.color.set('#78350f');
-        // Leafy foliage is fully visible and green
-        foliageMat.color.set('#16a34a'); // Beautiful lush grass green leaves
-        foliageMat.visible = true;
-        // Green lush grass ground
-        floorMat.color.set('#15803d');
+        // No foliage in Hawkins (replaced by buildings)
+        foliageMat.visible = false;
+        // Dry Indiana grass ground
+        floorMat.color.set('#6b7c45');
         // NO floating dust/spores in the peaceful world!
         ashParticles.visible = false;
         // Bright golden dandelion spores
@@ -1587,17 +1575,33 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
                 forearmGrp.rotation.x = -1.15 + Math.sin(time * 1.2) * (isMoving ? 0.18 : 0.04);
               }
             } else if (child.name === 'arm_right') {
-              // Menacing predator arm sway splayed wide
               const baseRotX = botGroup.userData.armRBaseRotX ?? -Math.PI / 6;
               const baseRotY = botGroup.userData.armRBaseRotY ?? 0.45;
               const baseRotZ = botGroup.userData.armRBaseRotZ ?? 0.75;
-              child.rotation.x = baseRotX + Math.cos(time * 1.2) * (isMoving ? 0.12 : 0.04);
-              child.rotation.y = baseRotY + Math.sin(time * 0.7) * 0.04;
-              child.rotation.z = baseRotZ + Math.cos(time * 0.8) * 0.03;
-              // Elastically swing forearm forearmGroup
               const forearmGrp = child.children[2];
-              if (forearmGrp) {
-                forearmGrp.rotation.x = -1.15 + Math.cos(time * 1.2) * (isMoving ? 0.18 : 0.04);
+
+              const meleeDuration = 500;
+              const timeSinceMelee = now - bot.lastMeleeTime;
+              const isSwiping = timeSinceMelee < meleeDuration;
+
+              if (isSwiping) {
+                // Claw swipe: arm raises then slashes forward
+                const t = timeSinceMelee / meleeDuration;
+                const swing = Math.sin(t * Math.PI); // 0→1→0 arc
+                child.rotation.x = baseRotX - 1.8 * swing;
+                child.rotation.y = baseRotY - 0.2 * swing;
+                child.rotation.z = baseRotZ - 0.5 * swing;
+                if (forearmGrp) {
+                  forearmGrp.rotation.x = -1.15 + 1.1 * swing;
+                }
+              } else {
+                // Normal idle/walk sway
+                child.rotation.x = baseRotX + Math.cos(time * 1.2) * (isMoving ? 0.12 : 0.04);
+                child.rotation.y = baseRotY + Math.sin(time * 0.7) * 0.04;
+                child.rotation.z = baseRotZ + Math.cos(time * 0.8) * 0.03;
+                if (forearmGrp) {
+                  forearmGrp.rotation.x = -1.15 + Math.cos(time * 1.2) * (isMoving ? 0.18 : 0.04);
+                }
               }
             }
           });

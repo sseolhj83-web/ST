@@ -44,6 +44,7 @@ export interface Bot {
   radius: number;
   currentWeapon: WeaponType;
   lastShootTime: number;
+  lastMeleeTime: number;
   targetPos: { x: number; y: number; z: number } | null;
   state: 'wandering' | 'hunting' | 'jumping';
   stateTimer: number;

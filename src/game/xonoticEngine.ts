@@ -117,6 +117,7 @@ export class XonoticEngine {
         radius: isStrongGuy ? 1.1 : 0.8, // Slightly larger size
         currentWeapon: isStrongGuy ? 'rocket' : (i % 4 === 0 ? 'laser' : i % 4 === 1 ? 'rocket' : i % 4 === 2 ? 'electro' : 'vaporizer'),
         lastShootTime: 0,
+        lastMeleeTime: 0,
         targetPos: null,
         state: 'wandering',
         stateTimer: 0,
@@ -613,16 +614,23 @@ export class XonoticEngine {
         }
       });
 
-      // Target shooting logic - Disabled per user request so they don't attack anymore
-      /*
-      if (bot.state === 'hunting' && targetEntity && distToTarget < 35) {
-        // Face target direction and fire
-        if (now - bot.lastShootTime > 1100) {
-          this.triggerBotFire(bot, targetEntity);
-          bot.lastShootTime = now;
+      // Melee attack: strike when close enough
+      if (!bot.isTeammate && bot.state === 'hunting' && targetEntity && distToTarget < 2.5) {
+        const meleeCooldown = bot.name.includes('우두머리') ? 1000 : 1200; // boss attacks faster
+        if (now - bot.lastMeleeTime > meleeCooldown) {
+          bot.lastMeleeTime = now;
+          const meleeDamage = bot.name.includes('우두머리') ? 40 : 25;
+          if (targetEntity.id === 'player') {
+            this.damagePlayer(meleeDamage, bot.id);
+          } else {
+            // Hit a bot target (teammate)
+            const targetBot = this.state.bots.find(b => b.id === targetEntity!.id);
+            if (targetBot && targetBot.health > 0) {
+              targetBot.health = Math.max(0, targetBot.health - meleeDamage);
+            }
+          }
         }
       }
-      */
     });
   }
 
@@ -1279,32 +1287,32 @@ export class XonoticEngine {
   private createNpcs(): PeacefulNpc[] {
     const spawned: PeacefulNpc[] = [];
     const npcNames = [
-      '마을 주민 김씨 👨',
-      '여행자 박씨 🎒',
-      '대장장이 이씨 🔨',
-      '약초학자 최씨 🌿',
-      '나무꾼 정씨 🪓',
-      '정원사 강씨 🌻',
-      '음악가 조씨 🎵'
+      'Mike Wheeler',
+      'Joyce Byers',
+      'Jim Hopper',
+      'Will Byers',
+      'Max Mayfield',
+      'Nancy Wheeler',
+      'Bob Newby'
     ];
     const npcPositions = [
-      { x: -8, y: 1.0, z: -12 },
-      { x: 15, y: 1.0, z: -15 },
-      { x: -20, y: 1.0, z: 18 },
-      { x: 22, y: 1.0, z: 10 },
-      { x: 2, y: 1.0, z: 26 },
+      { x: -8,  y: 1.0, z: -12 },
+      { x: 15,  y: 1.0, z: -15 },
+      { x: -20, y: 1.0, z: 18  },
+      { x: 22,  y: 1.0, z: 10  },
+      { x: 2,   y: 1.0, z: 26  },
       { x: -15, y: 1.0, z: -25 },
-      { x: 18, y: 1.0, z: 22 }
+      { x: 18,  y: 1.0, z: 22  }
     ];
-    const genders: ('man' | 'woman' | 'child' | 'elder')[] = ['man', 'woman', 'child', 'elder', 'man', 'woman', 'elder'];
+    const genders: ('man' | 'woman' | 'child' | 'elder')[] = ['child', 'woman', 'man', 'child', 'child', 'woman', 'man'];
     const clothesColors = [
-      '#4f46e5', // indigo
-      '#059669', // emerald
-      '#db2777', // rose pink
-      '#d97706', // amber
-      '#0284c7', // sky blue
-      '#8b5cf6', // purple
-      '#ef4444'  // red
+      '#4a3f8a', // Mike - purple-blue 80s jacket
+      '#8b4a2a', // Joyce - earthy flannel
+      '#2d4a2a', // Hopper - olive sheriff uniform
+      '#3a6a4a', // Will - green army jacket
+      '#c44040', // Max - red skater jacket
+      '#d4a060', // Nancy - tan 80s blouse
+      '#2a4a7a', // Bob - blue dress shirt
     ];
 
     for (let i = 0; i < npcNames.length; i++) {

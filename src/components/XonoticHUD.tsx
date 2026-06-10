@@ -87,7 +87,7 @@ export const XonoticHUD: React.FC<XonoticHUDProps> = ({
               title="클릭하거나 [P] 키를 눌러 뒤집힌 세계로 이동"
             >
               <span className="text-[10px] font-black text-emerald-400 font-sans tracking-tight flex items-center gap-1">
-                🌍 평화로운 세계 (Overworld)
+                🌍 호킨스 (Overworld)
               </span>
               <span className="text-[8px] text-emerald-300 font-sans leading-none mt-1 group-hover:text-amber-300 font-bold">
                 클릭 또는 P 키로 뒤집힌 세계 이동
@@ -97,13 +97,13 @@ export const XonoticHUD: React.FC<XonoticHUDProps> = ({
             <button
               onClick={onToggleDimension}
               className="bg-red-950/90 hover:bg-red-900 border border-red-500/60 rounded-xl px-4 py-2 flex flex-col items-center shadow-[0_0_15px_rgba(239,68,68,0.35)] text-center transition-all hover:scale-105 active:scale-95 cursor-pointer pointer-events-auto group"
-              title="클릭하거나 [P] 키를 눌러 평화로운 세계로 이동"
+              title="클릭하거나 [P] 키를 눌러 호킨스로 이동"
             >
               <span className="text-[10px] font-black text-red-500 font-sans tracking-tight flex items-center gap-1 animate-pulse">
                 💀 뒤집힌 세계 (Upside Down)
               </span>
               <span className="text-[8px] text-red-400 font-sans leading-none mt-1 group-hover:text-emerald-300 font-bold">
-                클릭 또는 P 키로 평화로운 세계 이동
+                클릭 또는 P 키로 호킨스 이동
               </span>
             </button>
           )}
