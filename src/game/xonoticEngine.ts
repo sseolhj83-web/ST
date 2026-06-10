@@ -446,10 +446,10 @@ export class XonoticEngine {
 
     // Apply simple boundary walls collision directly in X, Y, Z
     player.pos.x += player.vel.x * dt;
-    this.checkWallAxisBound(player.pos, player.vel, 'x', 1.2);
+    this.checkWallAxisBound(player.pos, player.vel, 'x', 0.8);
 
     player.pos.y += player.vel.y * dt;
-    player.onGround = this.checkWallAxisBound(player.pos, player.vel, 'y', 1.8);
+    player.onGround = this.checkWallAxisBound(player.pos, player.vel, 'y', 1.6);
 
     // Absolute fail-safe: Prevent falling below the floor (Y >= 1.0) under any circumstance
     if (player.pos.y < 1.0) {
@@ -459,7 +459,7 @@ export class XonoticEngine {
     }
 
     player.pos.z += player.vel.z * dt;
-    this.checkWallAxisBound(player.pos, player.vel, 'z', 1.2);
+    this.checkWallAxisBound(player.pos, player.vel, 'z', 0.8);
 
     // Jump pad checking for player
     this.jumpPads.forEach(jp => {
@@ -1302,7 +1302,7 @@ export class XonoticEngine {
       { x:  22, y: 1.0, z:  24 },  // Main St.
       { x:  30, y: 1.0, z:  -5 },  // gas station
       { x: -26, y: 1.0, z:  -8 },  // church
-      { x:  -8, y: 1.0, z: -32 },  // school
+      { x:  -8, y: 1.0, z: -50 },  // school (moved north)
     ];
     const genders: ('man' | 'woman' | 'child' | 'elder')[] = ['child', 'woman', 'man', 'child', 'child', 'woman', 'man'];
     const clothesColors = [

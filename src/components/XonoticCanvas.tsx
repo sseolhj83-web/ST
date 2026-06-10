@@ -641,10 +641,8 @@ function buildDemogorgonModel(bot: Bot): THREE.Group {
     isBoss: isStrong
   };
 
-  if (isStrong) {
-    // scale up the "우두머리 데모고르곤" boss!
-    group.scale.setScalar(1.52);
-  }
+  // Scale: human ~1.78 units tall, demogorgon should be ~1 head taller (~2.1 units)
+  group.scale.setScalar(isStrong ? 0.90 : 0.75);
 
   return group;
 }
@@ -928,6 +926,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // 5. Build static map geometry styled elegantly as the decayed Upside Down landscape with high visibility!
     const map = getXonoticMap();
     map.walls.forEach(wall => {
+      if (wall.collisionOnly) return; // Invisible collision-only walls (buildings use their own Canvas meshes)
       const geometry = new THREE.BoxGeometry(wall.size.x, wall.size.y, wall.size.z);
       
       let material: THREE.Material;
@@ -1106,7 +1105,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       addB(0.5,  0.35, 0.8,  5.5, 1.1,  5, mSignR, g); // mailbox
       scene.add(g);
     };
-    buildRanch(-26, -22, 0,         mCream,  mRoofDk); // Wheeler-style house
+    buildRanch(-26, -30, 0,         mCream,  mRoofDk); // Wheeler-style house
     buildRanch( 27, -19, Math.PI,   mBlue,   mRoofDk); // Hargrove house
     buildRanch(-28,  28, 0.15,      mYellow, mRoofBr); // Byers house
 
@@ -1163,10 +1162,10 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       scene.add(g);
     }
 
-    // ── HAWKINS MIDDLE SCHOOL (x=-8, z=-32) ──
+    // ── HAWKINS MIDDLE SCHOOL (x=-8, z=-50) ──
     {
       const g = new THREE.Group();
-      g.position.set(-8, 0, -32);
+      g.position.set(-8, 0, -50);
       addB(22, 6, 12,  0, 3, 0,    mBrick, g);
       addB(23, 0.7, 13, 0, 6.35, 0, mRoofDk, g);
       [-8,-4,0,4,8].forEach(ox =>
@@ -1431,7 +1430,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       try {
         // A. Position camera head-level with the player pos
         const { player } = stateVal;
-        camera.position.set(player.pos.x, player.pos.y + 0.8, player.pos.z);
+        camera.position.set(player.pos.x, player.pos.y + 0.55, player.pos.z);
         
         // Smoothly animate Field of View (Zoom / ADS)
         const targetFOV = player.isAiming ? 32 : 85;

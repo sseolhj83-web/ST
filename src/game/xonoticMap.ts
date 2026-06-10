@@ -214,5 +214,26 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   pickups.push({ id: 'ammo_7', type: 'ammo', pos: { x: -45, y: 1, z:  45 }, radius: 1, respawnTimer: 0, value: 20 });
   pickups.push({ id: 'ammo_8', type: 'ammo', pos: { x:  45, y: 1, z:  45 }, radius: 1, respawnTimer: 0, value: 20 });
 
+  // ── BUILDING COLLISION BOXES (collisionOnly: invisible, for all Canvas buildings) ──
+  // Ranch houses (body 10×4×7, matching Canvas buildRanch)
+  walls.push({ id: 'col_wheeler',  pos: { x: -26, y: 2.0, z: -30 }, size: { x: 10, y: 4, z: 7  }, color: '#000', collisionOnly: true });
+  walls.push({ id: 'col_hargrove', pos: { x:  27, y: 2.0, z: -19 }, size: { x: 10, y: 4, z: 7  }, color: '#000', collisionOnly: true });
+  walls.push({ id: 'col_byers',    pos: { x: -28, y: 2.0, z:  28 }, size: { x: 10, y: 4, z: 7  }, color: '#000', collisionOnly: true });
+  walls.push({ id: 'col_farm_out', pos: { x:  65, y: 2.0, z: -60 }, size: { x: 10, y: 4, z: 7  }, color: '#000', collisionOnly: true });
+  walls.push({ id: 'col_ranch_out',pos: { x: -60, y: 2.0, z: -40 }, size: { x: 10, y: 4, z: 7  }, color: '#000', collisionOnly: true });
+  // Melvald's General Store (14×5×10)
+  walls.push({ id: 'col_store',    pos: { x:  26, y: 2.5, z:  28 }, size: { x: 14, y: 5, z: 10 }, color: '#000', collisionOnly: true });
+  // Gas Station building (7×4×6)
+  walls.push({ id: 'col_gas',      pos: { x:  30, y: 2.0, z:  -5 }, size: { x: 7,  y: 4, z: 6  }, color: '#000', collisionOnly: true });
+  // Church nave (10×5.5×9) + bell tower (3.5×8×3.5)
+  walls.push({ id: 'col_church_n', pos: { x: -26, y: 2.75, z: -8  }, size: { x: 10, y: 5.5, z: 9   }, color: '#000', collisionOnly: true });
+  walls.push({ id: 'col_church_t', pos: { x: -26, y: 4.0,  z: -11 }, size: { x: 3.5, y: 8, z: 3.5 }, color: '#000', collisionOnly: true });
+  // Middle School (22×6×12)
+  walls.push({ id: 'col_school',   pos: { x:  -8, y: 3.0, z: -50 }, size: { x: 22, y: 6, z: 12 }, color: '#000', collisionOnly: true });
+  // Police Department (12×4.5×9)
+  walls.push({ id: 'col_police',   pos: { x: -55, y: 2.25, z:  30 }, size: { x: 12, y: 4.5, z: 9 }, color: '#000', collisionOnly: true });
+  // Public Library (14×5×10)
+  walls.push({ id: 'col_library',  pos: { x:  55, y: 2.5, z: -30 }, size: { x: 14, y: 5, z: 10 }, color: '#000', collisionOnly: true });
+
   return { walls, jumpPads, pickups };
 }

@@ -87,6 +87,7 @@ export interface MapWall {
   size: { x: number; y: number; z: number };
   color: string;
   emissive?: boolean;
+  collisionOnly?: boolean;
 }
 
 export interface PeacefulNpc {
