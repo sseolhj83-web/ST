@@ -1313,13 +1313,13 @@ export class XonoticEngine {
       'Bob Newby'
     ];
     const npcPositions = [
-      { x:  -8, y: 1.0, z: -12 },  // near lab
-      { x:  26, y: 1.0, z:  37 },  // near store
-      { x: -26, y: 1.0, z:  36 },  // near Byers house
-      { x:  22, y: 1.0, z:  24 },  // Main St.
-      { x:  30, y: 1.0, z:  -5 },  // gas station
-      { x: -26, y: 1.0, z:  -8 },  // church
-      { x: -20, y: 1.0, z: -50 },  // school (moved off N-S road)
+      { x:  -8, y: 1.0, z: -12 },  // Mike — near lab
+      { x:  20, y: 1.0, z:  38 },  // Joyce — near store
+      { x: -52, y: 1.0, z:  77 },  // Hopper — near Byers house
+      { x:  22, y: 1.0, z:  24 },  // Will — Main St.
+      { x:  42, y: 1.0, z: -15 },  // Max — gas station
+      { x: -42, y: 1.0, z: -18 },  // Nancy — church
+      { x: -33, y: 1.0, z: -52 },  // Bob — school
     ];
     const genders: ('man' | 'woman' | 'child' | 'elder')[] = ['child', 'woman', 'man', 'child', 'child', 'woman', 'man'];
     const clothesColors = [

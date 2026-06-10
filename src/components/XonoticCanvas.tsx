@@ -1058,6 +1058,16 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     addB(5, 0.12, 53, 0, 0.06, -51.5, mRoad, scene, false);
     for (let rz = -77; rz < -25; rz += 5.5)
       addB(0.2, 0.02, 3, 0, 0.14, rz, mMkY, scene, false);
+    // Maple Ave (E-W residential, z=55) — main residential street
+    addB(120, 0.12, 6, 0, 0.06, 55, mRoad, scene, false);
+    addB(120, 0.06, 1.4, 0, 0.03, 51.3, mConc, scene, false); // N shoulder
+    addB(120, 0.06, 1.4, 0, 0.03, 58.7, mConc, scene, false); // S shoulder
+    for (let rx = -59; rx < 59; rx += 5.5)
+      addB(3, 0.02, 0.2, rx, 0.14, 55, mMkY, scene, false);
+    // N-S west connector: x=-32, Main St (z=22) → Maple Ave (z=55)
+    addB(5, 0.12, 36, -32, 0.06, 38.5, mRoad, scene, false);
+    // N-S east connector: x=32
+    addB(5, 0.12, 36,  32, 0.06, 38.5, mRoad, scene, false);
 
     // ── UTILITY POLES along south side of Main St. (full length) ──
     const poleXs = [-72, -60, -48, -36, -24, -12, 0, 12, 24, 36, 48, 60, 72];
@@ -1084,90 +1094,147 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         addB(0.6, 0.6, 0.38, wx, 0.3, wz, mCarTi, g));
       scene.add(g);
     };
-    buildCar(-22, 18.3, 0, mCarG);
+    buildCar(-22, 18.3, 0,       mCarG);
     buildCar( 14, 26,   Math.PI, mCarB);
     buildCar( -8, 26,   Math.PI, mCarBe);
+    buildCar( 42, -18,  0,       mCarBe); // at gas station
 
-    // ── RANCH HOUSE BUILDER ──
+    // ── GABLED ROOF HELPER (ExtrudeGeometry triangle, rotated to sit on walls) ──
+    const makeGabledRoof = (bW: number, bD: number, wallTopY: number, roofH: number,
+                            mat: THREE.MeshStandardMaterial): THREE.Mesh => {
+      const dOver = bD / 2 + 0.55;
+      const L = bW + 1.1;
+      const profile = new THREE.Shape();
+      profile.moveTo(-dOver, 0);
+      profile.lineTo(0, roofH);
+      profile.lineTo(dOver, 0);
+      profile.closePath();
+      const geo = new THREE.ExtrudeGeometry(profile, { depth: L, bevelEnabled: false });
+      geo.rotateY(Math.PI / 2);
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.castShadow = true;
+      mesh.position.set(-L / 2, wallTopY, 0);
+      return mesh;
+    };
+
+    // ── 80s AMERICAN RANCH HOUSE BUILDER ──
     const buildRanch = (px: number, pz: number, ry: number,
                         wMat: THREE.MeshStandardMaterial, rMat: THREE.MeshStandardMaterial) => {
       const g = new THREE.Group();
       g.position.set(px, 0, pz);
       g.rotation.y = ry;
-      addB(10, 4, 7,    0, 2.0,  0,    wMat, g);  // body
-      addB(11, 1, 8,    0, 4.5,  0,    rMat, g);  // roof
-      addB(0.8, 2.5, 0.8, 3, 5.2, 1,  mBrick, g); // chimney
-      addB(1.1, 2.4, 0.2, 0, 1.2, 3.6, mDoor, g); // front door
-      [-3, 3].forEach(ox => addB(1.4, 1.2, 0.18, ox, 2.3, 3.6, mWin, g)); // front windows
-      addB(0.18, 1.2, 1.4,  5.1, 2.3, 0, mWin, g); // side windows
-      addB(0.18, 1.2, 1.4, -5.1, 2.3, 0, mWin, g);
-      addB(4, 0.3, 1.5, 0, 0.15, 4.25, mConc, g); // porch step
-      addB(0.12, 1.0, 0.12, 5.5, 0.5,  5, mWoodT, g); // mailbox post
-      addB(0.5,  0.35, 0.8,  5.5, 1.1,  5, mSignR, g); // mailbox
+      const bW = 11, bH = 3.8, bD = 8, foundH = 0.45;
+      const wallTop = bH + foundH;
+      // Foundation slab
+      addB(bW + 0.6, foundH + 0.1, bD + 0.6, 0, (foundH + 0.1) / 2, 0, mConc, g);
+      // Main walls
+      addB(bW, bH, bD, 0, bH / 2 + foundH, 0, wMat, g);
+      // Gabled roof
+      g.add(makeGabledRoof(bW, bD, wallTop, 2.6, rMat));
+      // Chimney
+      addB(0.9, 3.2, 0.9, 3.6, wallTop + 1.2, 0.6, mBrick, g);
+      // Porch deck & step
+      addB(5.2, 0.2, 2.5,  0, foundH + 0.1,  bD / 2 + 1.25, mConc, g);
+      addB(5.5, 0.1, 0.15, 0, foundH + 0.2,  bD / 2 + 2.55, mConc, g);
+      // Porch columns
+      [-2.1, 2.1].forEach(ox =>
+        addB(0.22, 2.5, 0.22, ox, foundH + 1.25, bD / 2 + 2.45, mWoodT, g));
+      // Porch railings
+      addB(4.6, 0.12, 0.1, 0, foundH + 2.55, bD / 2 + 2.45, mWoodT, g);
+      addB(4.6, 0.10, 0.1, 0, foundH + 0.75, bD / 2 + 2.45, mWoodT, g);
+      // Porch roof overhang
+      addB(5.6, 0.18, 2.8, 0, wallTop - 0.5, bD / 2 + 1.4, rMat, g);
+      // Front door + wood frame
+      addB(1.15, 2.5,  0.2,  0, foundH + 1.25,  bD / 2 + 0.01, mDoor, g);
+      addB(1.55, 2.85, 0.14, 0, foundH + 1.425, bD / 2 + 0.04, mWoodT, g);
+      // Front windows with frames & shutters
+      [-3.3, 3.3].forEach(ox => {
+        addB(1.6,  1.3,  0.18, ox, foundH + 2.3,  bD / 2 + 0.01, mWin, g);
+        addB(2.05, 1.65, 0.12, ox, foundH + 2.3,  bD / 2 + 0.04, mWoodT, g);
+        [-1.12, 1.12].forEach(sx =>
+          addB(0.38, 1.3, 0.1, ox + sx, foundH + 2.3, bD / 2 + 0.09, mRoofDk, g));
+      });
+      // Side windows
+      addB(0.14, 1.2, 1.5,  bW / 2 + 0.01, foundH + 2.2, 0, mWin, g);
+      addB(0.14, 1.2, 1.5, -bW / 2 - 0.01, foundH + 2.2, 0, mWin, g);
+      // Concrete driveway
+      addB(3.5, 0.08, bD + 4, bW / 2 + 1.75, 0.04, -2.0, mConc, g);
+      // Mailbox post + box
+      addB(0.12, 1.2, 0.12, bW / 2 + 6.5, 0.6, bD / 2 + 2.0, mWoodT, g);
+      addB(0.6,  0.4,  0.9, bW / 2 + 6.5, 1.3, bD / 2 + 2.0, mSignR, g);
       scene.add(g);
     };
-    buildRanch(-26, -30, 0,         mCream,  mRoofDk); // Wheeler-style house
-    buildRanch( 27, -19, Math.PI,   mBlue,   mRoofDk); // Hargrove house
-    buildRanch(-28,  34, 0.15,      mYellow, mRoofBr); // Byers house
 
-    // ── MELVALD'S GENERAL STORE (x=26, z=35) ──
+    // ── HAWKINS VILLAGE LAYOUT — buildings spread across the map ──
+    // Maple Ave north side row (z=66, all facing south toward road)
+    buildRanch(-38, 66, Math.PI,        mCream,  mRoofDk); // Wheeler house
+    buildRanch( 40, 66, Math.PI,        mBlue,   mRoofDk); // Hargrove house
+    // Back street row (z=76, facing south)
+    buildRanch(-52, 76, Math.PI,        mYellow, mRoofBr); // Byers house
+    buildRanch( 36, 76, Math.PI,        mCream,  mRoofBr); // Kellerman house
+    // Rural outskirts
+    buildRanch( 65, -62, 0.3,           mYellow, mRoofBr); // Abandoned farmhouse
+    buildRanch(-62, -44, Math.PI * 0.8, mCream,  mRoofDk); // Outer ranch
+
+    // ── MELVALD'S GENERAL STORE (x=20, z=36) ──
     {
       const g = new THREE.Group();
-      g.position.set(26, 0, 35);
-      addB(14, 5, 10,  0, 2.5, 0,    mBrick, g);
-      addB(15, 1, 11,  0, 5.5, 0,    mBrick, g);      // parapet
-      addB(12, 1.5, 0.4, 0, 5.0, 5.2, mSignR, g);     // sign board
-      addB(10, 0.8, 0.1,  0, 5.0, 5.42, mSignW, g);   // sign glow
+      g.position.set(20, 0, 36);
+      addB(14, 5, 10,  0, 2.5, 0,      mBrick, g);
+      addB(15, 1, 11,  0, 5.5, 0,      mBrick, g);
+      addB(12, 1.5, 0.4, 0, 5.0, 5.2,  mSignR, g);
+      addB(10, 0.8, 0.1,  0, 5.0, 5.42, mSignW, g);
       [-4, 0, 4].forEach(ox => addB(2.5, 2, 0.2, ox, 2.0, 5.1, mWin, g));
-      addB(1.4, 2.8, 0.2,  0, 1.4, 5.1, mDoor, g);
-      addB(16, 0.12, 3, 0, 0.06, 7.5, mConc, g);      // sidewalk
+      addB(1.4, 2.8, 0.2, 0, 1.4, 5.1, mDoor, g);
+      addB(16, 0.12, 3,   0, 0.06, 7.5, mConc, g);
       scene.add(g);
     }
 
-    // ── HAWKINS GAS STATION (x=30, z=-5) ──
+    // ── HAWKINS GAS STATION (x=42, z=-15) ──
     {
       const g = new THREE.Group();
-      g.position.set(30, 0, -5);
-      addB(7, 4, 6,   0, 2, 0,   mWhiteP, g);         // building
-      addB(8, 0.6, 7, 0, 4.3, 0, mRoofDk, g);         // roof
-      addB(18, 0.5, 10, 0, 4.5, 0, mConc, g);          // canopy
-      [-7, 7].forEach(ox => addB(0.35, 4.5, 0.35, ox, 2.25, 0, mConc, g)); // posts
+      g.position.set(42, 0, -15);
+      addB(7, 4, 6,   0, 2, 0,   mWhiteP, g);
+      addB(8, 0.6, 7, 0, 4.3, 0, mRoofDk, g);
+      addB(18, 0.5, 10, 0, 4.5, 0, mConc, g);
+      [-7, 7].forEach(ox => addB(0.35, 4.5, 0.35, ox, 2.25, 0, mConc, g));
       [-3, 3].forEach(ox => {
-        addB(0.9, 2.2, 0.55, ox, 1.1, 4.5, mSignR, g); // pump
-        addB(0.6, 0.5, 0.1,  ox, 1.6, 4.84, mSignW, g);// pump screen
+        addB(0.9, 2.2, 0.55, ox, 1.1, 4.5, mSignR, g);
+        addB(0.6, 0.5, 0.1,  ox, 1.6, 4.84, mSignW, g);
       });
-      addB(0.2, 9, 0.2,      -8, 4.5, 0,    mPoleW, g);// price pole
-      addB(3.5, 2.5, 0.4,    -8, 9.5, 0,    mSignR, g);// price sign
-      addB(3, 1.8, 0.1,      -8, 9.5, 0.26, mSignW, g);// glow
-      addB(1.2, 2.5, 0.2,     2, 1.25, 3.1, mDoor, g);
-      addB(1.5, 1.5, 0.2, -1.5, 2.0,  3.1, mWin, g);
-      addB(20, 0.1, 12, 0, 0.05, 0, mGrav, g, false);  // forecourt
+      addB(0.2, 9, 0.2,   -8, 4.5, 0,    mPoleW, g);
+      addB(3.5, 2.5, 0.4, -8, 9.5, 0,    mSignR, g);
+      addB(3, 1.8, 0.1,   -8, 9.5, 0.26, mSignW, g);
+      addB(1.2, 2.5, 0.2,  2, 1.25, 3.1, mDoor, g);
+      addB(1.5, 1.5, 0.2, -1.5, 2.0, 3.1, mWin, g);
+      addB(20, 0.1, 12, 0, 0.05, 0, mGrav, g, false);
       scene.add(g);
     }
 
-    // ── FIRST COMMUNITY CHURCH (x=-26, z=-8) ──
+    // ── FIRST COMMUNITY CHURCH (x=-42, z=-18) ──
     {
       const g = new THREE.Group();
-      g.position.set(-26, 0, -8);
-      addB(10, 5.5, 9,   0, 2.75, 0,    mWhiteP, g);  // nave
-      addB(11, 0.8, 10,  0, 5.9,  0,    mRoofDk, g);  // roof
-      addB(3.5, 8, 3.5,  0, 4,   -3,    mWhiteP, g);  // bell tower
-      addB(2.5, 0.8, 2.5, 0, 8.4,  -3,  mRoofDk, g);
-      addB(1.5, 1.5, 1.5, 0, 9.55, -3,  mRoofDk, g);
-      addB(0.5, 2, 0.5,   0, 11.3, -3,  mRoofDk, g);  // spire
-      addB(0.2, 1.5, 0.2, 0, 13.1, -3, mSignW, g);    // cross (vertical)
-      addB(1.2, 0.2, 0.2, 0, 13.2, -3, mSignW, g);    // cross (horizontal)
-      [-2.8, 2.8].forEach(ox => addB(1.2, 2, 0.2, ox, 3.0, 4.6, mWin, g));
-      addB(1.4, 3, 0.2, 0, 1.5, 4.6, mDoor, g);
-      addB(4, 0.35, 1.5, 0, 0.175, 5.5, mConc, g);    // steps
+      g.position.set(-42, 0, -18);
+      const naveW = 10, naveH = 5.5, naveD = 9;
+      addB(naveW, naveH, naveD, 0, naveH / 2, 0, mWhiteP, g);
+      g.add(makeGabledRoof(naveW, naveD, naveH, 2.8, mRoofDk));
+      addB(3.5, 8, 3.5, 0, 4,    -3.5, mWhiteP, g);
+      addB(2.5, 0.8, 2.5, 0, 8.4, -3.5, mRoofDk, g);
+      addB(1.5, 1.5, 1.5, 0, 9.55,-3.5, mRoofDk, g);
+      addB(0.5, 2, 0.5,   0, 11.3,-3.5, mRoofDk, g);
+      addB(0.2, 1.5, 0.2, 0, 13.1,-3.5, mSignW, g);
+      addB(1.2, 0.2, 0.2, 0, 13.2,-3.5, mSignW, g);
+      [-2.8, 2.8].forEach(ox => addB(1.2, 2, 0.2, ox, 3.0, naveD / 2 + 0.1, mWin, g));
+      addB(1.4, 3, 0.2, 0, 1.5, naveD / 2 + 0.1, mDoor, g);
+      addB(4, 0.35, 1.5, 0, 0.175, naveD / 2 + 1, mConc, g);
       scene.add(g);
     }
 
-    // ── HAWKINS MIDDLE SCHOOL (x=-20, z=-50) ──
+    // ── HAWKINS MIDDLE SCHOOL (x=-35, z=-52) ──
     {
       const g = new THREE.Group();
-      g.position.set(-20, 0, -50);
-      addB(22, 6, 12,  0, 3, 0,    mBrick, g);
+      g.position.set(-35, 0, -52);
+      addB(22, 6, 12, 0, 3, 0,    mBrick, g);
       addB(23, 0.7, 13, 0, 6.35, 0, mRoofDk, g);
       [-8,-4,0,4,8].forEach(ox =>
         [1.5, 4].forEach(oy => addB(1.6, 1.4, 0.18, ox, oy, 6.1, mWin, g)));
@@ -1182,27 +1249,25 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       scene.add(g);
     }
 
-    // ── OUTER AREA BUILDINGS (new in expanded map) ──
-
-    // Hawkins Police Department (x=-55, z=30)
+    // ── HAWKINS POLICE DEPARTMENT (x=-15, z=36) ──
     {
       const g = new THREE.Group();
-      g.position.set(-55, 0, 30);
+      g.position.set(-15, 0, 36);
       addB(12, 4.5, 9, 0, 2.25, 0, mBrick, g);
       addB(13, 0.7, 10, 0, 4.85, 0, mRoofDk, g);
       addB(10, 1.5, 0.4, 0, 4.2, 4.7, mSignR, g);
-      addB(9, 0.8, 0.1, 0, 4.2, 4.95, mSignW, g);
+      addB(9, 0.8, 0.1,  0, 4.2, 4.95, mSignW, g);
       [-3, 3].forEach(ox => addB(1.5, 1.4, 0.2, ox, 2.2, 4.6, mWin, g));
       addB(1.2, 2.6, 0.2, 0, 1.3, 4.6, mDoor, g);
-      addB(0.15, 10, 0.15, 7, 5, 3, mConc, g); // flagpole
-      addB(2.5, 1.5, 0.08, 8.2, 9, 3, mSignR, g); // flag
+      addB(0.15, 10, 0.15, 7, 5, 3, mConc, g);
+      addB(2.5, 1.5, 0.08, 8.2, 9, 3, mSignR, g);
       scene.add(g);
     }
 
-    // Hawkins Public Library (x=55, z=-30)
+    // ── HAWKINS PUBLIC LIBRARY (x=55, z=-32) ──
     {
       const g = new THREE.Group();
-      g.position.set(55, 0, -30);
+      g.position.set(55, 0, -32);
       addB(14, 5, 10, 0, 2.5, 0, mConc, g);
       addB(15, 0.8, 11, 0, 5.4, 0, mRoofDk, g);
       addB(12, 1.5, 0.4, 0, 5.0, 5.2, mBlue, g);
@@ -1212,14 +1277,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       addB(16, 0.1, 4, 0, 0.05, 7.5, mConc, g, false);
       scene.add(g);
     }
-
-    // Abandoned farmhouse (x=65, z=-60)
-    buildRanch(65, -60, 0.3, mYellow, mRoofBr);
-
-    // Ranch house near outer north (x=-60, z=-40)
-    buildRanch(-60, -40, Math.PI * 0.8, mCream, mRoofDk);
-
-    // (Vines removed — replaced by 1980s Hawkins rural town above)
 
     // --- THE GATE / DIMENSIONAL PORTAL (Behind Spawn point on North Wall) ---
     const portalGroup = new THREE.Group();
