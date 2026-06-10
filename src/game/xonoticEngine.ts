@@ -93,16 +93,16 @@ export class XonoticEngine {
       '광폭 데모고르곤 ⚡',
     ];
     const enemyPositions = [
-      { x: -15, y: 2, z: -15 },
-      { x: 15, y: 2, z: -15 },
-      { x: -25, y: 2, z: -25 },
-      { x: 25, y: 2, z: -25 },
-      { x: -20, y: 2, z: 20 },
-      { x: 20, y: 2, z: 20 },
-      { x: 0, y: 2, z: -30 },
-      { x: -30, y: 2, z: 0 },
-      { x: 30, y: 2, z: 0 },
-      { x: 3, y: 2, z: 30 },
+      { x: -15, y: 2, z: -15 },   // near lab NW
+      { x:  15, y: 2, z: -15 },   // near lab NE
+      { x: -48, y: 2, z: -48 },   // outer NW
+      { x:  48, y: 2, z: -48 },   // outer NE
+      { x: -48, y: 2, z:  48 },   // outer SW
+      { x:  48, y: 2, z:  48 },   // outer SE
+      { x:   0, y: 2, z: -62 },   // far north
+      { x: -62, y: 2, z:   0 },   // far west
+      { x:  62, y: 2, z:   0 },   // far east
+      { x:   0, y: 2, z:  62 },   // far south
     ];
     for (let i = 0; i < 10; i++) {
       const isStrongGuy = enemyNames[i].includes('강한 놈');
@@ -1224,7 +1224,7 @@ export class XonoticEngine {
     let touchedFloor = false;
 
     // Check boundary box
-    const playAreaSize = 38.5;
+    const playAreaSize = 78.5;
     if (axis === 'x') {
       if (pos.x < -playAreaSize + radius) { pos.x = -playAreaSize + radius; vel.x *= -0.2; }
       if (pos.x > playAreaSize - radius) { pos.x = playAreaSize - radius; vel.x *= -0.2; }
@@ -1233,7 +1233,7 @@ export class XonoticEngine {
       if (pos.z > playAreaSize - radius) { pos.z = playAreaSize - radius; vel.z *= -0.2; }
     } else if (axis === 'y') {
       if (pos.y < 1.0) { pos.y = 1.0; vel.y = 0; touchedFloor = true; } // ground floor
-      if (pos.y > 40) { pos.y = 40; vel.y = 0; }
+      if (pos.y > 60) { pos.y = 60; vel.y = 0; }
     }
 
     // Check dynamic wall objects
@@ -1296,13 +1296,13 @@ export class XonoticEngine {
       'Bob Newby'
     ];
     const npcPositions = [
-      { x: -8,  y: 1.0, z: -12 },
-      { x: 15,  y: 1.0, z: -15 },
-      { x: -20, y: 1.0, z: 18  },
-      { x: 22,  y: 1.0, z: 10  },
-      { x: 2,   y: 1.0, z: 26  },
-      { x: -15, y: 1.0, z: -25 },
-      { x: 18,  y: 1.0, z: 22  }
+      { x:  -8, y: 1.0, z: -12 },  // near lab
+      { x:  26, y: 1.0, z:  30 },  // near store
+      { x: -26, y: 1.0, z:  28 },  // near Byers house
+      { x:  22, y: 1.0, z:  24 },  // Main St.
+      { x:  30, y: 1.0, z:  -5 },  // gas station
+      { x: -26, y: 1.0, z:  -8 },  // church
+      { x:  -8, y: 1.0, z: -32 },  // school
     ];
     const genders: ('man' | 'woman' | 'child' | 'elder')[] = ['child', 'woman', 'man', 'child', 'child', 'woman', 'man'];
     const clothesColors = [
@@ -1379,10 +1379,10 @@ export class XonoticEngine {
       this.checkWallAxisBound(npc.pos, npc.vel, 'z', 0.8);
 
       // Level Boundaries boundary protection
-      if (npc.pos.x < -37.5) { npc.pos.x = -37.5; npc.vel.x *= -1; }
-      if (npc.pos.x > 37.5) { npc.pos.x = 37.5; npc.vel.x *= -1; }
-      if (npc.pos.z < -37.5) { npc.pos.z = -37.5; npc.vel.z *= -1; }
-      if (npc.pos.z > 37.5) { npc.pos.z = 37.5; npc.vel.z *= -1; }
+      if (npc.pos.x < -77.5) { npc.pos.x = -77.5; npc.vel.x *= -1; }
+      if (npc.pos.x > 77.5)  { npc.pos.x =  77.5; npc.vel.x *= -1; }
+      if (npc.pos.z < -77.5) { npc.pos.z = -77.5; npc.vel.z *= -1; }
+      if (npc.pos.z > 77.5)  { npc.pos.z =  77.5; npc.vel.z *= -1; }
       if (npc.pos.y < 1.0) {
         npc.pos.y = 1.0;
         npc.vel.y = 0;

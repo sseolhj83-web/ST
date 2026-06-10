@@ -11,8 +11,8 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   const pickups: PickupItem[] = [];
 
   // Arena Width & Length
-  const sizeX = 80;
-  const sizeZ = 80;
+  const sizeX = 160;
+  const sizeZ = 160;
 
   // 1. BOUNDARIES (FUTURISTIC WIREFRAME NEON WALLS & FLOORS)
   // Floor
@@ -138,86 +138,81 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   walls.push({ id: 'flood_bl', pos: { x: -11, y: 7, z: -8.5 }, size: { x: 0.6, y: 0.6, z: 0.6 }, color: '#fef9c3', emissive: true });
   walls.push({ id: 'flood_br', pos: { x:  11, y: 7, z: -8.5 }, size: { x: 0.6, y: 0.6, z: 0.6 }, color: '#fef9c3', emissive: true });
 
-  // Elevated Outpost structures in corners
-  // Top-left outpost
-  walls.push({ id: 'outpost_tl', pos: { x: -28, y: 6, z: -28 }, size: { x: 14, y: 12, z: 14 }, color: '#1e293b' });
-  walls.push({ id: 'outpost_tl_roof', pos: { x: -28, y: 12.5, z: -28 }, size: { x: 16, y: 1, z: 16 }, color: '#3b82f6' });
-  // Top-right outpost
-  walls.push({ id: 'outpost_tr', pos: { x: 28, y: 6, z: -28 }, size: { x: 14, y: 12, z: 14 }, color: '#1e293b' });
-  walls.push({ id: 'outpost_tr_roof', pos: { x: 28, y: 12.5, z: -28 }, size: { x: 16, y: 1, z: 16 }, color: '#3b82f6' });
-  // Bottom-left outpost
-  walls.push({ id: 'outpost_bl', pos: { x: -28, y: 6, z: 28 }, size: { x: 14, y: 12, z: 14 }, color: '#1e293b' });
-  walls.push({ id: 'outpost_bl_roof', pos: { x: -28, y: 12.5, z: 28 }, size: { x: 16, y: 1, z: 16 }, color: '#3b82f6' });
-  // Bottom-right outpost
-  walls.push({ id: 'outpost_br', pos: { x: 28, y: 6, z: 28 }, size: { x: 14, y: 12, z: 14 }, color: '#1e293b' });
-  walls.push({ id: 'outpost_br_roof', pos: { x: 28, y: 12.5, z: 28 }, size: { x: 16, y: 1, z: 16 }, color: '#3b82f6' });
+  // ── Inner Outposts (4 corners at ±28) ──
+  walls.push({ id: 'outpost_tl',      pos: { x: -28, y: 6,    z: -28 }, size: { x: 14, y: 12, z: 14 }, color: '#1e293b' });
+  walls.push({ id: 'outpost_tl_roof', pos: { x: -28, y: 12.5, z: -28 }, size: { x: 16, y: 1,  z: 16 }, color: '#3b82f6' });
+  walls.push({ id: 'outpost_tr',      pos: { x:  28, y: 6,    z: -28 }, size: { x: 14, y: 12, z: 14 }, color: '#1e293b' });
+  walls.push({ id: 'outpost_tr_roof', pos: { x:  28, y: 12.5, z: -28 }, size: { x: 16, y: 1,  z: 16 }, color: '#3b82f6' });
+  walls.push({ id: 'outpost_bl',      pos: { x: -28, y: 6,    z:  28 }, size: { x: 14, y: 12, z: 14 }, color: '#1e293b' });
+  walls.push({ id: 'outpost_bl_roof', pos: { x: -28, y: 12.5, z:  28 }, size: { x: 16, y: 1,  z: 16 }, color: '#3b82f6' });
+  walls.push({ id: 'outpost_br',      pos: { x:  28, y: 6,    z:  28 }, size: { x: 14, y: 12, z: 14 }, color: '#1e293b' });
+  walls.push({ id: 'outpost_br_roof', pos: { x:  28, y: 12.5, z:  28 }, size: { x: 16, y: 1,  z: 16 }, color: '#3b82f6' });
 
-  // 3. JUMP PADS (Launch the player with vectors!)
-  // Left jump pad shoots to Central Pillar Bridge
-  jumpPads.push({
-    id: 'jp_west',
-    pos: { x: -25, y: 0.1, z: 0 },
-    width: 6,
-    depth: 6,
-    force: { x: 32, y: 22, z: 0 },
-  });
-  // Right jump pad shoots to Central Pillar Bridge
-  jumpPads.push({
-    id: 'jp_east',
-    pos: { x: 25, y: 0.1, z: 0 },
-    width: 6,
-    depth: 6,
-    force: { x: -32, y: 22, z: 0 },
-  });
-  // Corner jump pads shooting upwards to outposts
-  jumpPads.push({
-    id: 'jp_tl',
-    pos: { x: -32, y: 0.1, z: -15 },
-    width: 5,
-    depth: 5,
-    force: { x: 0, y: 26, z: -18 },
-  });
-  jumpPads.push({
-    id: 'jp_tr',
-    pos: { x: 32, y: 0.1, z: -15 },
-    width: 5,
-    depth: 5,
-    force: { x: 0, y: 26, z: -18 },
-  });
-  jumpPads.push({
-    id: 'jp_bl',
-    pos: { x: -32, y: 0.1, z: 15 },
-    width: 5,
-    depth: 5,
-    force: { x: 0, y: 26, z: 18 },
-  });
-  jumpPads.push({
-    id: 'jp_br',
-    pos: { x: 32, y: 0.1, z: 15 },
-    width: 5,
-    depth: 5,
-    force: { x: 0, y: 26, z: 18 },
-  });
+  // ── Outer Outposts (4 corners at ±55) — new in expanded map ──
+  walls.push({ id: 'outer_tl',      pos: { x: -55, y: 6,    z: -55 }, size: { x: 14, y: 12, z: 14 }, color: '#172035' });
+  walls.push({ id: 'outer_tl_roof', pos: { x: -55, y: 12.5, z: -55 }, size: { x: 16, y: 1,  z: 16 }, color: '#1d4ed8' });
+  walls.push({ id: 'outer_tr',      pos: { x:  55, y: 6,    z: -55 }, size: { x: 14, y: 12, z: 14 }, color: '#172035' });
+  walls.push({ id: 'outer_tr_roof', pos: { x:  55, y: 12.5, z: -55 }, size: { x: 16, y: 1,  z: 16 }, color: '#1d4ed8' });
+  walls.push({ id: 'outer_bl',      pos: { x: -55, y: 6,    z:  55 }, size: { x: 14, y: 12, z: 14 }, color: '#172035' });
+  walls.push({ id: 'outer_bl_roof', pos: { x: -55, y: 12.5, z:  55 }, size: { x: 16, y: 1,  z: 16 }, color: '#1d4ed8' });
+  walls.push({ id: 'outer_br',      pos: { x:  55, y: 6,    z:  55 }, size: { x: 14, y: 12, z: 14 }, color: '#172035' });
+  walls.push({ id: 'outer_br_roof', pos: { x:  55, y: 12.5, z:  55 }, size: { x: 16, y: 1,  z: 16 }, color: '#1d4ed8' });
+
+  // ── Mid-field cover structures (new outer area) ──
+  walls.push({ id: 'mid_n',  pos: { x:  0,   y: 3, z: -50 }, size: { x: 10, y: 6, z: 6 }, color: '#1e293b' });
+  walls.push({ id: 'mid_s',  pos: { x:  0,   y: 3, z:  50 }, size: { x: 10, y: 6, z: 6 }, color: '#1e293b' });
+  walls.push({ id: 'mid_w',  pos: { x: -50,  y: 3, z:  0  }, size: { x: 6, y: 6, z: 10 }, color: '#1e293b' });
+  walls.push({ id: 'mid_e',  pos: { x:  50,  y: 3, z:  0  }, size: { x: 6, y: 6, z: 10 }, color: '#1e293b' });
+
+  // 3. JUMP PADS
+  // Inner pads (center ↔ lab)
+  jumpPads.push({ id: 'jp_west', pos: { x: -25, y: 0.1, z: 0  }, width: 6, depth: 6, force: { x:  32, y: 22, z:  0 } });
+  jumpPads.push({ id: 'jp_east', pos: { x:  25, y: 0.1, z: 0  }, width: 6, depth: 6, force: { x: -32, y: 22, z:  0 } });
+  // Inner corner pads → inner outposts
+  jumpPads.push({ id: 'jp_tl', pos: { x: -32, y: 0.1, z: -15 }, width: 5, depth: 5, force: { x:  0, y: 26, z: -18 } });
+  jumpPads.push({ id: 'jp_tr', pos: { x:  32, y: 0.1, z: -15 }, width: 5, depth: 5, force: { x:  0, y: 26, z: -18 } });
+  jumpPads.push({ id: 'jp_bl', pos: { x: -32, y: 0.1, z:  15 }, width: 5, depth: 5, force: { x:  0, y: 26, z:  18 } });
+  jumpPads.push({ id: 'jp_br', pos: { x:  32, y: 0.1, z:  15 }, width: 5, depth: 5, force: { x:  0, y: 26, z:  18 } });
+  // Outer pads → outer outposts
+  jumpPads.push({ id: 'jp_o_tl', pos: { x: -62, y: 0.1, z: -42 }, width: 5, depth: 5, force: { x:  0, y: 28, z: -22 } });
+  jumpPads.push({ id: 'jp_o_tr', pos: { x:  62, y: 0.1, z: -42 }, width: 5, depth: 5, force: { x:  0, y: 28, z: -22 } });
+  jumpPads.push({ id: 'jp_o_bl', pos: { x: -62, y: 0.1, z:  42 }, width: 5, depth: 5, force: { x:  0, y: 28, z:  22 } });
+  jumpPads.push({ id: 'jp_o_br', pos: { x:  62, y: 0.1, z:  42 }, width: 5, depth: 5, force: { x:  0, y: 28, z:  22 } });
 
   // 4. POWER PICKUPS
-  // Lab rooftop - Mega HP (hovering above roof ledge)
+  // Lab rooftop - Mega HP
   pickups.push({ id: 'mega_hp', type: 'health_mega', pos: { x: 0, y: 12.5, z: 0 }, radius: 2, respawnTimer: 0, value: 100 });
 
   // Near fence corners - Mega Armor
   pickups.push({ id: 'mega_arm_1', type: 'armor_mega', pos: { x: -14, y: 1.5, z: -12 }, radius: 1.8, respawnTimer: 0, value: 100 });
   pickups.push({ id: 'mega_arm_2', type: 'armor_mega', pos: { x:  14, y: 1.5, z: -12 }, radius: 1.8, respawnTimer: 0, value: 100 });
 
-  // Outpost rooftops - Weapon Pickups (Vaporizer, Rocket Launcher, and Grenades!)
-  pickups.push({ id: 'pick_vapor', type: 'weapon_vaporizer', pos: { x: -28, y: 14, z: -28 }, radius: 1.5, respawnTimer: 0, value: 1 });
-  pickups.push({ id: 'pick_rocket', type: 'weapon_rocket', pos: { x: 28, y: 14, z: 28 }, radius: 1.5, respawnTimer: 0, value: 1 });
-  pickups.push({ id: 'pick_grenade_1', type: 'weapon_grenade', pos: { x: 28, y: 14, z: -28 }, radius: 1.5, respawnTimer: 0, value: 1 });
-  pickups.push({ id: 'pick_grenade_2', type: 'weapon_grenade', pos: { x: -28, y: 14, z: 28 }, radius: 1.5, respawnTimer: 0, value: 1 });
+  // Inner outpost rooftops - Weapons
+  pickups.push({ id: 'pick_vapor',    type: 'weapon_vaporizer', pos: { x: -28, y: 14, z: -28 }, radius: 1.5, respawnTimer: 0, value: 1 });
+  pickups.push({ id: 'pick_rocket',   type: 'weapon_rocket',    pos: { x:  28, y: 14, z:  28 }, radius: 1.5, respawnTimer: 0, value: 1 });
+  pickups.push({ id: 'pick_grenade_1',type: 'weapon_grenade',   pos: { x:  28, y: 14, z: -28 }, radius: 1.5, respawnTimer: 0, value: 1 });
+  pickups.push({ id: 'pick_grenade_2',type: 'weapon_grenade',   pos: { x: -28, y: 14, z:  28 }, radius: 1.5, respawnTimer: 0, value: 1 });
 
-  // Floor Level Spawns - Regular Ammo drops
+  // Outer outpost rooftops - Weapons
+  pickups.push({ id: 'pick_o_vapor',  type: 'weapon_vaporizer', pos: { x: -55, y: 14, z: -55 }, radius: 1.5, respawnTimer: 0, value: 1 });
+  pickups.push({ id: 'pick_o_rocket', type: 'weapon_rocket',    pos: { x:  55, y: 14, z:  55 }, radius: 1.5, respawnTimer: 0, value: 1 });
+  pickups.push({ id: 'pick_o_gren_1', type: 'weapon_grenade',   pos: { x:  55, y: 14, z: -55 }, radius: 1.5, respawnTimer: 0, value: 1 });
+  pickups.push({ id: 'pick_o_gren_2', type: 'weapon_grenade',   pos: { x: -55, y: 14, z:  55 }, radius: 1.5, respawnTimer: 0, value: 1 });
+
+  // Outer armor drops
+  pickups.push({ id: 'armor_o_1', type: 'armor_mega', pos: { x: -55, y: 1.5, z:  0 }, radius: 1.8, respawnTimer: 0, value: 100 });
+  pickups.push({ id: 'armor_o_2', type: 'armor_mega', pos: { x:  55, y: 1.5, z:  0 }, radius: 1.8, respawnTimer: 0, value: 100 });
+
+  // Ammo drops — inner quadrants
   pickups.push({ id: 'ammo_1', type: 'ammo', pos: { x: -15, y: 1, z: -15 }, radius: 1, respawnTimer: 0, value: 20 });
-  pickups.push({ id: 'ammo_2', type: 'ammo', pos: { x: 15, y: 1, z: -15 }, radius: 1, respawnTimer: 0, value: 20 });
-  pickups.push({ id: 'ammo_3', type: 'ammo', pos: { x: -15, y: 1, z: 15 }, radius: 1, respawnTimer: 0, value: 20 });
-  pickups.push({ id: 'ammo_4', type: 'ammo', pos: { x: 15, y: 1, z: 15 }, radius: 1, respawnTimer: 0, value: 20 });
+  pickups.push({ id: 'ammo_2', type: 'ammo', pos: { x:  15, y: 1, z: -15 }, radius: 1, respawnTimer: 0, value: 20 });
+  pickups.push({ id: 'ammo_3', type: 'ammo', pos: { x: -15, y: 1, z:  15 }, radius: 1, respawnTimer: 0, value: 20 });
+  pickups.push({ id: 'ammo_4', type: 'ammo', pos: { x:  15, y: 1, z:  15 }, radius: 1, respawnTimer: 0, value: 20 });
+  // Ammo drops — outer quadrants
+  pickups.push({ id: 'ammo_5', type: 'ammo', pos: { x: -45, y: 1, z: -45 }, radius: 1, respawnTimer: 0, value: 20 });
+  pickups.push({ id: 'ammo_6', type: 'ammo', pos: { x:  45, y: 1, z: -45 }, radius: 1, respawnTimer: 0, value: 20 });
+  pickups.push({ id: 'ammo_7', type: 'ammo', pos: { x: -45, y: 1, z:  45 }, radius: 1, respawnTimer: 0, value: 20 });
+  pickups.push({ id: 'ammo_8', type: 'ammo', pos: { x:  45, y: 1, z:  45 }, radius: 1, respawnTimer: 0, value: 20 });
 
   return { walls, jumpPads, pickups };
 }

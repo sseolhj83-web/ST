@@ -905,10 +905,10 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     dirLight.shadow.mapSize.height = 1024;
     dirLight.shadow.camera.near = 0.5;
     dirLight.shadow.camera.far = 150;
-    dirLight.shadow.camera.left = -45; // Tight fit matching the 80x80 arena bounds
-    dirLight.shadow.camera.right = 45;
-    dirLight.shadow.camera.top = 45;
-    dirLight.shadow.camera.bottom = -45;
+    dirLight.shadow.camera.left = -90; // Expanded to match 160x160 arena
+    dirLight.shadow.camera.right = 90;
+    dirLight.shadow.camera.top = 90;
+    dirLight.shadow.camera.bottom = -90;
     dirLight.shadow.bias = -0.0005; // Eliminates shadow acne artifacts
     scene.add(dirLight);
 
@@ -966,7 +966,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     });
 
     // Subtle veins of the Upside Down grid (bioluminescent dark violet/red roots)
-    const gridHelper = new THREE.GridHelper(80, 80, '#581c87', '#120c1a');
+    const gridHelper = new THREE.GridHelper(160, 160, '#581c87', '#120c1a');
     gridHelper.position.y = 0.05;
     scene.add(gridHelper);
 
@@ -976,9 +976,9 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     const particlePositions = new Float32Array(particleCount * 3);
 
     for (let i = 0; i < particleCount; i++) {
-      particlePositions[i * 3] = (Math.random() - 0.5) * 80;
+      particlePositions[i * 3] = (Math.random() - 0.5) * 160;
       particlePositions[i * 3 + 1] = Math.random() * 25;
-      particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 80;
+      particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 160;
     }
 
     particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
@@ -1042,21 +1042,25 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     };
 
     // ── ROADS ──
-    // Main Street (E-W, z=22)
-    addB(78, 0.12, 7,  0, 0.06, 22, mRoad, scene, false);
-    addB(78, 0.06, 1.5, 0, 0.03, 18.25, mConc, scene, false); // N shoulder
-    addB(78, 0.06, 1.5, 0, 0.03, 25.75, mConc, scene, false); // S shoulder
-    for (let rx = -37; rx < 37; rx += 5.5)
-      addB(3, 0.02, 0.2, rx, 0.14, 22, mMkY, scene, false);   // yellow center dashes
-    for (let rx = -37; rx < 37; rx += 4) {
+    // Main Street (E-W, z=22) — full 160-unit width
+    addB(158, 0.12, 7,  0, 0.06, 22, mRoad, scene, false);
+    addB(158, 0.06, 1.5, 0, 0.03, 18.25, mConc, scene, false); // N shoulder
+    addB(158, 0.06, 1.5, 0, 0.03, 25.75, mConc, scene, false); // S shoulder
+    for (let rx = -77; rx < 77; rx += 5.5)
+      addB(3, 0.02, 0.2, rx, 0.14, 22, mMkY, scene, false);    // yellow center dashes
+    for (let rx = -77; rx < 77; rx += 4) {
       addB(2.5, 0.02, 0.15, rx, 0.13, 18.6, mMkW, scene, false);
       addB(2.5, 0.02, 0.15, rx, 0.13, 25.4, mMkW, scene, false);
     }
     // N-S connector (lab south gate → Main St.)
     addB(5, 0.12, 7, 0, 0.06, 25.5, mRoad, scene, false);
+    // N-S side road (z: -78 → -25, connecting north areas)
+    addB(5, 0.12, 53, 0, 0.06, -51.5, mRoad, scene, false);
+    for (let rz = -77; rz < -25; rz += 5.5)
+      addB(0.2, 0.02, 3, 0, 0.14, rz, mMkY, scene, false);
 
-    // ── UTILITY POLES along south side of Main St. ──
-    const poleXs = [-36, -24, -12, 0, 12, 24, 36];
+    // ── UTILITY POLES along south side of Main St. (full length) ──
+    const poleXs = [-72, -60, -48, -36, -24, -12, 0, 12, 24, 36, 48, 60, 72];
     poleXs.forEach((px, pi) => {
       addB(0.28, 11, 0.28, px, 5.5, 26.5, mPoleW);
       addB(4.5, 0.2, 0.2,  px, 10.2, 26.5, mPoleW);
@@ -1168,15 +1172,52 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       [-8,-4,0,4,8].forEach(ox =>
         [1.5, 4].forEach(oy => addB(1.6, 1.4, 0.18, ox, oy, 6.1, mWin, g)));
       [-0.7, 0.7].forEach(ox => addB(0.9, 2.6, 0.2, ox, 1.3, 6.1, mDoor, g));
-      addB(5, 0.4, 2,  0, 3.5, 7.2, mConc, g);        // entrance overhang
+      addB(5, 0.4, 2,  0, 3.5, 7.2, mConc, g);
       [-2, 2].forEach(ox => addB(0.3, 3.5, 0.3, ox, 1.75, 7.2, mConc, g));
-      addB(10, 1.5, 0.4, 0, 5.5, 6.2, mSignR, g);     // school sign
+      addB(10, 1.5, 0.4, 0, 5.5, 6.2, mSignR, g);
       addB(9, 1.0, 0.1,  0, 5.5, 6.42, mSignW, g);
-      addB(0.15, 14, 0.15, -14, 7, 5, mConc, g);      // flagpole
-      addB(3, 1.8, 0.08, -12.2, 13, 5, mSignR, g);    // flag
-      addB(22, 0.1, 8, 0, 0.05, -8, mGrav, g, false); // parking lot
+      addB(0.15, 14, 0.15, -14, 7, 5, mConc, g);
+      addB(3, 1.8, 0.08, -12.2, 13, 5, mSignR, g);
+      addB(22, 0.1, 8, 0, 0.05, -8, mGrav, g, false);
       scene.add(g);
     }
+
+    // ── OUTER AREA BUILDINGS (new in expanded map) ──
+
+    // Hawkins Police Department (x=-55, z=30)
+    {
+      const g = new THREE.Group();
+      g.position.set(-55, 0, 30);
+      addB(12, 4.5, 9, 0, 2.25, 0, mBrick, g);
+      addB(13, 0.7, 10, 0, 4.85, 0, mRoofDk, g);
+      addB(10, 1.5, 0.4, 0, 4.2, 4.7, mSignR, g);
+      addB(9, 0.8, 0.1, 0, 4.2, 4.95, mSignW, g);
+      [-3, 3].forEach(ox => addB(1.5, 1.4, 0.2, ox, 2.2, 4.6, mWin, g));
+      addB(1.2, 2.6, 0.2, 0, 1.3, 4.6, mDoor, g);
+      addB(0.15, 10, 0.15, 7, 5, 3, mConc, g); // flagpole
+      addB(2.5, 1.5, 0.08, 8.2, 9, 3, mSignR, g); // flag
+      scene.add(g);
+    }
+
+    // Hawkins Public Library (x=55, z=-30)
+    {
+      const g = new THREE.Group();
+      g.position.set(55, 0, -30);
+      addB(14, 5, 10, 0, 2.5, 0, mConc, g);
+      addB(15, 0.8, 11, 0, 5.4, 0, mRoofDk, g);
+      addB(12, 1.5, 0.4, 0, 5.0, 5.2, mBlue, g);
+      addB(10, 0.8, 0.1, 0, 5.0, 5.45, mSignW, g);
+      [-4.5, 0, 4.5].forEach(ox => addB(2.2, 2.2, 0.2, ox, 2.2, 5.1, mWin, g));
+      addB(1.4, 2.8, 0.2, 0, 1.4, 5.1, mDoor, g);
+      addB(16, 0.1, 4, 0, 0.05, 7.5, mConc, g, false);
+      scene.add(g);
+    }
+
+    // Abandoned farmhouse (x=65, z=-60)
+    buildRanch(65, -60, 0.3, mYellow, mRoofBr);
+
+    // Ranch house near outer north (x=-60, z=-40)
+    buildRanch(-60, -40, Math.PI * 0.8, mCream, mRoofDk);
 
     // (Vines removed — replaced by 1980s Hawkins rural town above)
 
