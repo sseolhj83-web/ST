@@ -233,8 +233,11 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   walls.push({ id: 'col_school',   pos: { x: -35, y: 3.0, z: -52 }, size: { x: 22, y: 6, z: 12 }, color: '#000', collisionOnly: true });
   // Police Department (12×4.5×9) — x=-15, z=36 (town center, clear of connector roads)
   walls.push({ id: 'col_police',   pos: { x: -15, y: 2.25, z:  36 }, size: { x: 12, y: 4.5, z: 9 }, color: '#000', collisionOnly: true });
-  // Public Library (14×5×10)
-  walls.push({ id: 'col_library',  pos: { x:  55, y: 2.5, z: -32 }, size: { x: 14, y: 5, z: 10 }, color: '#000', collisionOnly: true });
+  // Public Library — expanded w clock tower (16×5.5×12 main + 4.5×18×4.5 tower)
+  walls.push({ id: 'col_library',  pos: { x:  55, y: 2.75, z: -32 }, size: { x: 16, y: 5.5, z: 12 }, color: '#000', collisionOnly: true });
+  walls.push({ id: 'col_lib_tow',  pos: { x:  55, y: 9.0,  z: -32.5 }, size: { x: 4.5, y: 18, z: 4.5 }, color: '#000', collisionOnly: true });
+  // Hawk Theater (14×7×8) — between lab and Main St
+  walls.push({ id: 'col_theater',  pos: { x:  20, y: 3.5,  z:   8 }, size: { x: 14, y: 7, z: 8 }, color: '#000', collisionOnly: true });
 
   return { walls, jumpPads, pickups };
 }

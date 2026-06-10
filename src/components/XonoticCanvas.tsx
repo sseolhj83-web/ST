@@ -149,6 +149,30 @@ function buildHumanModel(npc: PeacefulNpc): THREE.Group {
   armRGroup.add(handR);
   group.add(armRGroup);
 
+  // ── Name label sprite (always faces camera) ──
+  const nc = document.createElement('canvas');
+  nc.width = 256; nc.height = 60;
+  const ctx = nc.getContext('2d')!;
+  ctx.clearRect(0, 0, 256, 60);
+  ctx.fillStyle = 'rgba(0,0,0,0.72)';
+  ctx.beginPath();
+  if ((ctx as any).roundRect) (ctx as any).roundRect(4, 4, 248, 52, 10);
+  else ctx.rect(4, 4, 248, 52);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = '#fffbe6';
+  ctx.font = 'bold 24px Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(npc.name, 128, 32);
+  const labelTex = new THREE.CanvasTexture(nc);
+  const labelSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTex, depthTest: false, transparent: true }));
+  labelSprite.scale.set(1.9, 0.45, 1);
+  labelSprite.position.set(0, 2.18, 0);
+  group.add(labelSprite);
+
   return group;
 }
 
@@ -1030,6 +1054,16 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     const mCarBe  = new THREE.MeshStandardMaterial({ color: '#c8a855', roughness: 0.4, metalness: 0.4 });
     const mCarGl  = new THREE.MeshStandardMaterial({ color: '#88aacc', roughness: 0.1, metalness: 0.6, transparent: true, opacity: 0.65 });
     const mCarTi  = new THREE.MeshStandardMaterial({ color: '#1a1a1a', roughness: 0.95 });
+    // Extra materials for building details
+    const mStone  = new THREE.MeshStandardMaterial({ color: '#888070', roughness: 0.85 }); // stone/mortar
+    const mAwnR   = new THREE.MeshStandardMaterial({ color: '#b82020', roughness: 0.7 });  // red awning
+    const mAwnW   = new THREE.MeshStandardMaterial({ color: '#f0ede0', roughness: 0.7 });  // white awning stripe
+    const mFlagR  = new THREE.MeshStandardMaterial({ color: '#cc1020', roughness: 0.5, emissive: new THREE.Color('#660810'), emissiveIntensity: 0.2 });
+    const mFlagW  = new THREE.MeshStandardMaterial({ color: '#f0f0e8', roughness: 0.5 });
+    const mFlagB  = new THREE.MeshStandardMaterial({ color: '#1a2a6a', roughness: 0.5 });
+    const mNeon   = new THREE.MeshStandardMaterial({ color: '#ffb020', roughness: 0.2, emissive: new THREE.Color('#cc8010'), emissiveIntensity: 0.8 }); // neon marquee
+    const mTheater = new THREE.MeshStandardMaterial({ color: '#2a1a0a', roughness: 0.8 }); // theater facade
+    const mFence  = new THREE.MeshStandardMaterial({ color: '#e8e4d8', roughness: 0.8 }); // white picket fence
 
     // Box helper
     const addB = (w: number, h: number, d: number, px: number, py: number, pz: number,
@@ -1069,17 +1103,52 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // N-S east connector: x=32
     addB(5, 0.12, 36,  32, 0.06, 38.5, mRoad, scene, false);
 
-    // ── UTILITY POLES along south side of Main St. (full length) ──
-    const poleXs = [-72, -60, -48, -36, -24, -12, 0, 12, 24, 36, 48, 60, 72];
-    poleXs.forEach((px, pi) => {
-      addB(0.28, 11, 0.28, px, 5.5, 26.5, mPoleW);
-      addB(4.5, 0.2, 0.2,  px, 10.2, 26.5, mPoleW);
-      [-1.5, 1.5].forEach(ox => addB(0.2, 0.32, 0.2, px + ox, 10.1, 26.5, mWhiteP));
-      if (pi < poleXs.length - 1) {
-        const nx = poleXs[pi + 1];
-        addB(Math.abs(nx - px), 0.05, 0.05, (px + nx) / 2, 10.0, 26.5, mWireT, scene, false);
-      }
-    });
+    // ── UTILITY POLES helper ──
+    const buildPoles = (
+      positions: number[], axis: 'x' | 'z',
+      fixedA: number,
+      poleH = 10, armLen = 3.8
+    ) => {
+      positions.forEach((p, pi) => {
+        const px = axis === 'x' ? p : fixedA;
+        const pz = axis === 'z' ? p : fixedA;
+        addB(0.26, poleH, 0.26, px, poleH / 2, pz, mPoleW);
+        // crossarm
+        if (axis === 'x') addB(armLen, 0.18, 0.18, px, poleH - 0.8, pz, mPoleW);
+        else              addB(0.18, 0.18, armLen, px, poleH - 0.8, pz, mPoleW);
+        // insulators
+        [-armLen / 2.8, armLen / 2.8].forEach(off => {
+          const ix = axis === 'x' ? px + off : px;
+          const iz = axis === 'z' ? pz + off : pz;
+          addB(0.18, 0.28, 0.18, ix, poleH - 1.0, iz, mWhiteP);
+        });
+        // wire to next pole
+        if (pi < positions.length - 1) {
+          const np = positions[pi + 1];
+          const npx = axis === 'x' ? np : fixedA;
+          const npz = axis === 'z' ? np : fixedA;
+          const len = Math.abs(np - p);
+          const mx = (px + npx) / 2;
+          const mz = (pz + npz) / 2;
+          if (axis === 'x') addB(len, 0.04, 0.04, mx, poleH - 1.2, mz, mWireT, scene, false);
+          else              addB(0.04, 0.04, len, mx, poleH - 1.2, mz, mWireT, scene, false);
+          // second wire (lower)
+          if (axis === 'x') addB(len, 0.04, 0.04, mx, poleH - 1.8, mz, mWireT, scene, false);
+          else              addB(0.04, 0.04, len, mx, poleH - 1.8, mz, mWireT, scene, false);
+        }
+      });
+    };
+
+    // Main Street — south shoulder (z=26.5)
+    buildPoles([-72,-60,-48,-36,-24,-12,0,12,24,36,48,60,72], 'x', 26.5, 11, 4.5);
+    // Maple Ave — south shoulder (z=60)
+    buildPoles([-54,-42,-30,-18,-6,6,18,30,42,54], 'x', 60, 9, 3.5);
+    // N-S main road — east shoulder (x=3.5)
+    buildPoles([-72,-64,-56,-48,-40,-32], 'z', 3.5, 9, 3.2);
+    // N-S west connector — west shoulder (x=-37)
+    buildPoles([26,34,42,50], 'z', -37, 8, 3.0);
+    // N-S east connector — east shoulder (x=37)
+    buildPoles([26,34,42,50], 'z', 37, 8, 3.0);
 
     // ── PARKED CARS ──
     const buildCar = (px: number, pz: number, ry: number, bMat: THREE.MeshStandardMaterial) => {
@@ -1162,6 +1231,17 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       // Mailbox post + box
       addB(0.12, 1.2, 0.12, bW / 2 + 6.5, 0.6, bD / 2 + 2.0, mWoodT, g);
       addB(0.6,  0.4,  0.9, bW / 2 + 6.5, 1.3, bD / 2 + 2.0, mSignR, g);
+      // White picket fence (front yard, flanking porch)
+      const fenceZ = bD / 2 + 3.4;
+      const fenceW = 8;
+      addB(fenceW, 0.12, 0.1, -bW / 2 - 1.2, 1.2, fenceZ, mFence, g); // left top rail
+      addB(fenceW, 0.12, 0.1, -bW / 2 - 1.2, 0.6, fenceZ, mFence, g); // left bot rail
+      for (let pi = 0; pi < 8; pi++)
+        addB(0.1, 1.1, 0.1, -bW / 2 - 1.2 - fenceW / 2 + pi * 1.15, 0.55, fenceZ, mFence, g);
+      addB(fenceW, 0.12, 0.1,  bW / 2 + 1.2, 1.2, fenceZ, mFence, g); // right top rail
+      addB(fenceW, 0.12, 0.1,  bW / 2 + 1.2, 0.6, fenceZ, mFence, g);
+      for (let pi = 0; pi < 8; pi++)
+        addB(0.1, 1.1, 0.1, bW / 2 + 1.2 - fenceW / 2 + pi * 1.15, 0.55, fenceZ, mFence, g);
       scene.add(g);
     };
 
@@ -1181,12 +1261,28 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       const g = new THREE.Group();
       g.position.set(20, 0, 36);
       addB(14, 5, 10,  0, 2.5, 0,      mBrick, g);
-      addB(15, 1, 11,  0, 5.5, 0,      mBrick, g);
+      addB(15, 1, 11,  0, 5.5, 0,      mBrick, g);    // parapet
+      // Sign board
       addB(12, 1.5, 0.4, 0, 5.0, 5.2,  mSignR, g);
       addB(10, 0.8, 0.1,  0, 5.0, 5.42, mSignW, g);
-      [-4, 0, 4].forEach(ox => addB(2.5, 2, 0.2, ox, 2.0, 5.1, mWin, g));
+      // Striped awning (alternating red/white panels)
+      [-4.5,-1.5,1.5,4.5].forEach((ox, i) =>
+        addB(2.8, 0.25, 2.2, ox, 4.05, 6.1, i % 2 === 0 ? mAwnR : mAwnW, g));
+      addB(14, 0.22, 0.3, 0, 4.05, 7.25, mAwnR, g); // awning valance
+      // Front windows (3) with wood frames
+      [-4, 0, 4].forEach(ox => {
+        addB(2.5, 2, 0.2, ox, 2.0, 5.1, mWin, g);
+        addB(0.15, 2.1, 0.12, ox - 1.35, 2.0, 5.14, mWoodT, g); // left jamb
+        addB(0.15, 2.1, 0.12, ox + 1.35, 2.0, 5.14, mWoodT, g); // right jamb
+      });
       addB(1.4, 2.8, 0.2, 0, 1.4, 5.1, mDoor, g);
-      addB(16, 0.12, 3,   0, 0.06, 7.5, mConc, g);
+      // Sidewalk + step + barrel + crates
+      addB(18, 0.12, 3.5, 0, 0.06, 7.5, mConc, g);
+      addB(14, 0.1, 0.12, 0, 0.1, 9.3, mConc, g);   // curb
+      addB(0.9, 1.3, 0.9, 5.5, 0.65, 7.0, mWoodT, g); // barrel
+      addB(0.7, 0.12, 0.7, 5.5, 1.36, 7.0, mConc, g);  // barrel lid
+      addB(1.2, 0.8, 0.9, -5.2, 0.4, 7.2, mWoodT, g);  // crate A
+      addB(1.0, 0.8, 1.0, -5.3, 1.2, 7.2, mWoodT, g);  // crate B stacked
       scene.add(g);
     }
 
@@ -1234,18 +1330,40 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     {
       const g = new THREE.Group();
       g.position.set(-35, 0, -52);
-      addB(22, 6, 12, 0, 3, 0,    mBrick, g);
+      // Main building + east wing
+      addB(22, 6, 12, 0, 3, 0, mBrick, g);
       addB(23, 0.7, 13, 0, 6.35, 0, mRoofDk, g);
+      addB(10, 5, 8, 16, 2.5, -2, mBrick, g);   // east wing
+      addB(11, 0.6, 9, 16, 5.3, -2, mRoofDk, g);
+      // Windows (main facade)
       [-8,-4,0,4,8].forEach(ox =>
         [1.5, 4].forEach(oy => addB(1.6, 1.4, 0.18, ox, oy, 6.1, mWin, g)));
+      // East wing windows
+      [13,17,21].forEach(ox =>
+        [1.5, 3.5].forEach(oy => addB(1.4, 1.2, 0.18, ox, oy, 2.1, mWin, g)));
+      // Main entrance
       [-0.7, 0.7].forEach(ox => addB(0.9, 2.6, 0.2, ox, 1.3, 6.1, mDoor, g));
       addB(5, 0.4, 2,  0, 3.5, 7.2, mConc, g);
       [-2, 2].forEach(ox => addB(0.3, 3.5, 0.3, ox, 1.75, 7.2, mConc, g));
+      // Sign
       addB(10, 1.5, 0.4, 0, 5.5, 6.2, mSignR, g);
       addB(9, 1.0, 0.1,  0, 5.5, 6.42, mSignW, g);
-      addB(0.15, 14, 0.15, -14, 7, 5, mConc, g);
-      addB(3, 1.8, 0.08, -12.2, 13, 5, mSignR, g);
-      addB(22, 0.1, 8, 0, 0.05, -8, mGrav, g, false);
+      // Flag pole + flag
+      addB(0.15, 13, 0.15, -14, 6.5, 5, mPoleW, g);
+      addB(3.0, 0.6, 0.06, -12.5, 12.4, 5, mFlagR, g);
+      addB(3.0, 0.6, 0.06, -12.5, 11.8, 5, mFlagW, g);
+      addB(3.0, 0.6, 0.06, -12.5, 11.2, 5, mFlagR, g);
+      addB(1.2, 1.8, 0.07, -13.1, 11.8, 5, mFlagB, g);
+      // Basketball hoop (pole + backboard + rim)
+      addB(0.2, 5.5, 0.2, -18, 2.75, -8, mConc, g);   // pole
+      addB(1.8, 1.2, 0.1, -17.4, 5.8, -8, mWhiteP, g); // backboard
+      addB(1.2, 0.12, 1.2, -17.4, 5.1, -8, mSignR, g, false); // rim (square approx)
+      // Parking lot + chain-link fence posts
+      addB(22, 0.1, 10, 0, 0.05, -9.5, mGrav, g, false);
+      for (let fx = -11; fx <= 11; fx += 3.5)
+        addB(0.12, 2.0, 0.12, fx, 1.0, -15, mConc, g);
+      addB(23, 0.1, 0.1, 0, 2.1, -15, mWireT, g, false); // top wire
+      addB(23, 0.1, 0.1, 0, 1.35, -15, mWireT, g, false);
       scene.add(g);
     }
 
@@ -1255,26 +1373,106 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       g.position.set(-15, 0, 36);
       addB(12, 4.5, 9, 0, 2.25, 0, mBrick, g);
       addB(13, 0.7, 10, 0, 4.85, 0, mRoofDk, g);
+      // Steps + entrance canopy
+      addB(6, 0.2, 2.0, 0, 0.1, 5.5, mConc, g);
+      addB(6, 0.15, 0.1, 0, 0.3, 6.55, mConc, g);   // step edge
+      addB(7, 0.18, 2.2, 0, 3.5, 5.6, mConc, g);    // entry canopy
+      [-2.8, 2.8].forEach(ox => addB(0.25, 3.5, 0.25, ox, 1.75, 5.6, mConc, g)); // canopy posts
+      // Sign
       addB(10, 1.5, 0.4, 0, 4.2, 4.7, mSignR, g);
-      addB(9, 0.8, 0.1,  0, 4.2, 4.95, mSignW, g);
-      [-3, 3].forEach(ox => addB(1.5, 1.4, 0.2, ox, 2.2, 4.6, mWin, g));
+      addB(9,  0.8, 0.1,  0, 4.2, 4.95, mSignW, g);
+      // Barred windows (windows + bars)
+      [-3.5, 3.5].forEach(ox => {
+        addB(1.5, 1.4, 0.2, ox, 2.2, 4.6, mWin, g);
+        [-0.45, 0, 0.45].forEach(bx => addB(0.08, 1.4, 0.12, ox + bx, 2.2, 4.65, mConc, g));
+      });
       addB(1.2, 2.6, 0.2, 0, 1.3, 4.6, mDoor, g);
-      addB(0.15, 10, 0.15, 7, 5, 3, mConc, g);
-      addB(2.5, 1.5, 0.08, 8.2, 9, 3, mSignR, g);
+      // American flag pole + flag panels
+      addB(0.15, 11, 0.15, 8, 5.5, 3.5, mPoleW, g);
+      addB(3.5, 0.7, 0.06, 9.75, 10.5, 3.5, mFlagR, g);
+      addB(3.5, 0.7, 0.06, 9.75, 9.8, 3.5, mFlagW, g);
+      addB(3.5, 0.7, 0.06, 9.75, 9.1, 3.5, mFlagR, g);
+      addB(1.4, 2.1, 0.07, 8.7, 9.8, 3.5, mFlagB, g);  // blue canton
+      // Parking lot
+      addB(14, 0.1, 9, 0, 0.05, -8, mGrav, g, false);
+      [-4.5, 0, 4.5].forEach(lx => addB(0.12, 0.05, 8, lx + 2.25, 0.12, -8, mMkW, g, false));
       scene.add(g);
     }
 
-    // ── HAWKINS PUBLIC LIBRARY (x=55, z=-32) ──
+    // ── HAWKINS PUBLIC LIBRARY — with CLOCK TOWER (x=55, z=-32) ──
+    // The visual heart of downtown Hawkins (inspired by Butts County Probate Court)
     {
       const g = new THREE.Group();
       g.position.set(55, 0, -32);
-      addB(14, 5, 10, 0, 2.5, 0, mConc, g);
-      addB(15, 0.8, 11, 0, 5.4, 0, mRoofDk, g);
-      addB(12, 1.5, 0.4, 0, 5.0, 5.2, mBlue, g);
-      addB(10, 0.8, 0.1, 0, 5.0, 5.45, mSignW, g);
-      [-4.5, 0, 4.5].forEach(ox => addB(2.2, 2.2, 0.2, ox, 2.2, 5.1, mWin, g));
-      addB(1.4, 2.8, 0.2, 0, 1.4, 5.1, mDoor, g);
-      addB(16, 0.1, 4, 0, 0.05, 7.5, mConc, g, false);
+      // Main building body (neoclassical / brick civic)
+      addB(16, 5.5, 12, 0, 2.75, 0, mBrick, g);
+      addB(17, 0.8, 13, 0, 5.9, 0, mConc, g);     // cornice
+      // Front portico with columns
+      addB(12, 6.5, 3.5, 0, 3.25, 7.75, mStone, g);   // portico base
+      [-4, -1.3, 1.3, 4].forEach(cx =>
+        addB(0.55, 6.5, 0.55, cx, 3.25, 9, mStone, g)); // 4 columns
+      addB(12.5, 0.5, 4, 0, 6.75, 7.75, mStone, g);   // entablature
+      // Front door (double)
+      [-0.55, 0.55].forEach(dx => addB(0.7, 2.8, 0.2, dx, 1.4, 7.0, mDoor, g));
+      // Fanlight above door
+      addB(1.8, 0.6, 0.2, 0, 3.15, 7.0, mWin, g);
+      // Arched windows on facade
+      [-5.5, 0, 5.5].forEach(ox => {
+        addB(2.2, 2.5, 0.2, ox, 3.5, 6.1, mWin, g);
+        addB(2.5, 0.3, 0.14, ox, 4.9, 6.14, mConc, g); // arch cap
+      });
+      // Broad entrance steps
+      [0, 1, 2].forEach(step =>
+        addB(14 - step * 0.8, 0.22, 1.2, 0, step * 0.22, 7.65 + step * 1.2 + 0.6, mConc, g));
+      // ── CLOCK TOWER (Hawkins landmark) ──
+      addB(4.5, 10, 4.5, 0, 8, -0.5, mStone, g);      // tower shaft
+      addB(5.0, 0.5, 5.0, 0, 13.25, -0.5, mConc, g);  // clock band
+      // Clock faces (4 sides)
+      [[0, 0, 5.5 / 2 + 0.26], [0, 0, -(5.5 / 2 + 0.26)],
+       [5.5 / 2 + 0.26, 0, 0], [-(5.5 / 2 + 0.26), 0, 0]].forEach(([cx, cy, cz]) =>
+        addB(Math.abs(cz) > 0.5 ? 3.5 : 0.2, 3.5, Math.abs(cz) > 0.5 ? 0.2 : 3.5,
+             cx, 13.25, cz, mWin, g));
+      addB(5.2, 0.5, 5.2, 0, 15.25, -0.5, mConc, g); // belfry cornice
+      addB(3.2, 4.5, 3.2, 0, 17.75, -0.5, mRoofDk, g); // pyramid spire base
+      addB(0.5, 2.5, 0.5, 0, 20.75, -0.5, mRoofDk, g); // spire tip
+      addB(0.15, 1.5, 0.15, 0, 22.5, -0.5, mPoleW, g); // flagpole on tower
+      // Side wings
+      [-8, 8].forEach(wx => {
+        addB(4, 4, 10, wx, 2, 0, mBrick, g);           // wing
+        addB(4.5, 0.6, 10.5, wx, 4.3, 0, mConc, g);   // wing cornice
+        addB(2.5, 2, 0.2, wx, 2.2, 5.1, mWin, g);     // wing window
+      });
+      // Library sign on portico
+      addB(9, 1.0, 0.15, 0, 5.6, 9.55, mSignW, g);
+      // Sidewalk / plaza
+      addB(22, 0.1, 8, 0, 0.05, 12, mConc, g, false);
+      scene.add(g);
+    }
+
+    // ── HAWK THEATER (x=20, z=8) — between lab and Main St, iconic 80s cinema ──
+    {
+      const g = new THREE.Group();
+      g.position.set(20, 0, 8);
+      // Facade body
+      addB(14, 7, 8, 0, 3.5, 0, mTheater, g);
+      addB(15, 0.8, 9, 0, 7.4, 0, mTheater, g);     // parapet
+      // Vertical marquee tower center
+      addB(4, 11, 1.0, 0, 5.5, 4.6, mTheater, g);   // marquee structure
+      addB(3.6, 10, 0.2, 0, 5.5, 5.15, mNeon, g);   // neon front face
+      // MARQUEE box jutting out
+      addB(8, 3.5, 3, 0, 3.8, 6.0, mTheater, g);    // marquee box
+      addB(8.5, 0.2, 3.2, 0, 5.55, 6.0, mNeon, g);  // neon top
+      addB(8.5, 0.2, 3.2, 0, 2.05, 6.0, mNeon, g);  // neon bottom
+      [-3.8, 3.8].forEach(ox => addB(0.2, 3.5, 3.2, ox, 3.8, 6.0, mNeon, g)); // sides
+      // Ticket booth protrusion
+      addB(3, 3.5, 2.5, 0, 1.75, 5.75, mConc, g);
+      addB(1.0, 2.2, 0.2, 0, 1.1, 7.0, mWin, g);   // ticket window
+      // Windows (upper, flanking marquee)
+      [-5, 5].forEach(ox => addB(2.2, 2.2, 0.2, ox, 4.5, 4.1, mWin, g));
+      // Doors (double)
+      [-1.2, 1.2].forEach(dx => addB(0.9, 2.5, 0.2, dx, 1.25, 4.1, mDoor, g));
+      // Sidewalk
+      addB(18, 0.1, 4, 0, 0.05, 6.5, mConc, g, false);
       scene.add(g);
     }
 
