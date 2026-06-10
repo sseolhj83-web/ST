@@ -1108,12 +1108,12 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     };
     buildRanch(-26, -30, 0,         mCream,  mRoofDk); // Wheeler-style house
     buildRanch( 27, -19, Math.PI,   mBlue,   mRoofDk); // Hargrove house
-    buildRanch(-28,  28, 0.15,      mYellow, mRoofBr); // Byers house
+    buildRanch(-28,  34, 0.15,      mYellow, mRoofBr); // Byers house
 
-    // ── MELVALD'S GENERAL STORE (x=26, z=28) ──
+    // ── MELVALD'S GENERAL STORE (x=26, z=35) ──
     {
       const g = new THREE.Group();
-      g.position.set(26, 0, 28);
+      g.position.set(26, 0, 35);
       addB(14, 5, 10,  0, 2.5, 0,    mBrick, g);
       addB(15, 1, 11,  0, 5.5, 0,    mBrick, g);      // parapet
       addB(12, 1.5, 0.4, 0, 5.0, 5.2, mSignR, g);     // sign board
@@ -1163,10 +1163,10 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       scene.add(g);
     }
 
-    // ── HAWKINS MIDDLE SCHOOL (x=-8, z=-50) ──
+    // ── HAWKINS MIDDLE SCHOOL (x=-20, z=-50) ──
     {
       const g = new THREE.Group();
-      g.position.set(-8, 0, -50);
+      g.position.set(-20, 0, -50);
       addB(22, 6, 12,  0, 3, 0,    mBrick, g);
       addB(23, 0.7, 13, 0, 6.35, 0, mRoofDk, g);
       [-8,-4,0,4,8].forEach(ox =>
