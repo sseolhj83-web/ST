@@ -641,8 +641,9 @@ function buildDemogorgonModel(bot: Bot): THREE.Group {
     isBoss: isStrong
   };
 
-  // Scale: human ~1.78 units tall, demogorgon should be ~1 head taller (~2.1 units)
-  group.scale.setScalar(isStrong ? 0.90 : 0.75);
+  // All demogorgons same height ~2.1 units (human 1.78 + 1 head ~0.32)
+  // Boss model has larger proportions (legH/bodyH bigger), so needs smaller scale to match same height
+  group.scale.setScalar(isStrong ? 0.60 : 0.75);
 
   return group;
 }

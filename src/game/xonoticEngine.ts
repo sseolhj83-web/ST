@@ -584,6 +584,20 @@ export class XonoticEngine {
         bot.vel.y = 12; // jump randomly to platforms
       }
 
+      // Separation: push bots apart when too close (prevents visual clumping)
+      bots.forEach(other => {
+        if (other.id === bot.id || other.health <= 0) return;
+        const sdx = bot.pos.x - other.pos.x;
+        const sdz = bot.pos.z - other.pos.z;
+        const sDist = Math.sqrt(sdx * sdx + sdz * sdz);
+        const minSep = 2.8;
+        if (sDist < minSep && sDist > 0.01) {
+          const force = ((minSep - sDist) / minSep) * 7;
+          bot.vel.x += (sdx / sDist) * force;
+          bot.vel.z += (sdz / sDist) * force;
+        }
+      });
+
       // Apply Bot physics
       bot.vel.y += this.gravity * dt;
       bot.pos.x += bot.vel.x * dt;
@@ -1220,7 +1234,7 @@ export class XonoticEngine {
     return false;
   }
 
-  private checkWallAxisBound(pos: { x: number; y: number; z: number }, vel: { x: number; y: number; z: number }, axis: 'x' | 'y' | 'z', radius: number): boolean {
+  private checkWallAxisBound(pos: { x: number; y: number; z: number }, vel: { x: number; y: number; z: number }, axis: 'x' | 'y' | 'z', radius: number, skipCollisionOnly = false): boolean {
     let touchedFloor = false;
 
     // Check boundary box
@@ -1238,11 +1252,14 @@ export class XonoticEngine {
 
     // Check dynamic wall objects
     for (const wall of this.walls) {
+      // NPCs skip collisionOnly building walls (they can enter buildings; lab walls are not collisionOnly)
+      if (skipCollisionOnly && wall.collisionOnly) continue;
+
       // Skip X/Z collision for floors, bridges, roofs, and decorative neons to avoid getting stuck or teleported
-      const isPlatform = 
-        wall.id.startsWith('floor') || 
-        wall.id.startsWith('bridge') || 
-        wall.id.endsWith('roof') || 
+      const isPlatform =
+        wall.id.startsWith('floor') ||
+        wall.id.startsWith('bridge') ||
+        wall.id.endsWith('roof') ||
         !!wall.emissive;
       
       if ((axis === 'x' || axis === 'z') && isPlatform) {
@@ -1367,16 +1384,16 @@ export class XonoticEngine {
 
       // Update position coordinates with collision checks against walls
       npc.pos.x += npc.vel.x * dt;
-      this.checkWallAxisBound(npc.pos, npc.vel, 'x', 0.8);
+      this.checkWallAxisBound(npc.pos, npc.vel, 'x', 0.8, true); // skipCollisionOnly: NPCs can enter buildings
 
       npc.pos.y += npc.vel.y * dt;
-      const onFloor = this.checkWallAxisBound(npc.pos, npc.vel, 'y', 1.6);
+      const onFloor = this.checkWallAxisBound(npc.pos, npc.vel, 'y', 1.6, true);
       if (onFloor) {
         npc.vel.y = 0;
       }
 
       npc.pos.z += npc.vel.z * dt;
-      this.checkWallAxisBound(npc.pos, npc.vel, 'z', 0.8);
+      this.checkWallAxisBound(npc.pos, npc.vel, 'z', 0.8, true);
 
       // Level Boundaries boundary protection
       if (npc.pos.x < -77.5) { npc.pos.x = -77.5; npc.vel.x *= -1; }
