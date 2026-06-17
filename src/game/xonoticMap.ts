@@ -139,11 +139,6 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   walls.push({ id: 'flood_br', pos: { x:  11, y: 7, z: -8.5 }, size: { x: 0.6, y: 0.6, z: 0.6 }, color: '#fef9c3', emissive: true });
 
 
-  // ── Mid-field cover structures (new outer area) ──
-  walls.push({ id: 'mid_n',  pos: { x:  0,   y: 3, z: -50 }, size: { x: 10, y: 6, z: 6 }, color: '#1e293b' });
-  walls.push({ id: 'mid_s',  pos: { x:  0,   y: 3, z:  50 }, size: { x: 10, y: 6, z: 6 }, color: '#1e293b' });
-  walls.push({ id: 'mid_w',  pos: { x: -50,  y: 3, z:  0  }, size: { x: 6, y: 6, z: 10 }, color: '#1e293b' });
-  walls.push({ id: 'mid_e',  pos: { x:  50,  y: 3, z:  0  }, size: { x: 6, y: 6, z: 10 }, color: '#1e293b' });
 
   // 4. POWER PICKUPS
   // Lab rooftop - Mega HP
