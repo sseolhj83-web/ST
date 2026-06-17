@@ -138,15 +138,6 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   walls.push({ id: 'flood_bl', pos: { x: -11, y: 7, z: -8.5 }, size: { x: 0.6, y: 0.6, z: 0.6 }, color: '#fef9c3', emissive: true });
   walls.push({ id: 'flood_br', pos: { x:  11, y: 7, z: -8.5 }, size: { x: 0.6, y: 0.6, z: 0.6 }, color: '#fef9c3', emissive: true });
 
-  // ── Outer Outposts (4 corners at ±55) — new in expanded map ──
-  walls.push({ id: 'outer_tl',      pos: { x: -55, y: 6,    z: -55 }, size: { x: 14, y: 12, z: 14 }, color: '#172035' });
-  walls.push({ id: 'outer_tl_roof', pos: { x: -55, y: 12.5, z: -55 }, size: { x: 16, y: 1,  z: 16 }, color: '#1d4ed8' });
-  walls.push({ id: 'outer_tr',      pos: { x:  55, y: 6,    z: -55 }, size: { x: 14, y: 12, z: 14 }, color: '#172035' });
-  walls.push({ id: 'outer_tr_roof', pos: { x:  55, y: 12.5, z: -55 }, size: { x: 16, y: 1,  z: 16 }, color: '#1d4ed8' });
-  walls.push({ id: 'outer_bl',      pos: { x: -55, y: 6,    z:  55 }, size: { x: 14, y: 12, z: 14 }, color: '#172035' });
-  walls.push({ id: 'outer_bl_roof', pos: { x: -55, y: 12.5, z:  55 }, size: { x: 16, y: 1,  z: 16 }, color: '#1d4ed8' });
-  walls.push({ id: 'outer_br',      pos: { x:  55, y: 6,    z:  55 }, size: { x: 14, y: 12, z: 14 }, color: '#172035' });
-  walls.push({ id: 'outer_br_roof', pos: { x:  55, y: 12.5, z:  55 }, size: { x: 16, y: 1,  z: 16 }, color: '#1d4ed8' });
 
   // ── Mid-field cover structures (new outer area) ──
   walls.push({ id: 'mid_n',  pos: { x:  0,   y: 3, z: -50 }, size: { x: 10, y: 6, z: 6 }, color: '#1e293b' });
@@ -162,11 +153,6 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   pickups.push({ id: 'mega_arm_1', type: 'armor_mega', pos: { x: -14, y: 1.5, z: -12 }, radius: 1.8, respawnTimer: 0, value: 100 });
   pickups.push({ id: 'mega_arm_2', type: 'armor_mega', pos: { x:  14, y: 1.5, z: -12 }, radius: 1.8, respawnTimer: 0, value: 100 });
 
-  // Outer outpost rooftops - Weapons
-  pickups.push({ id: 'pick_o_vapor',  type: 'weapon_vaporizer', pos: { x: -55, y: 14, z: -55 }, radius: 1.5, respawnTimer: 0, value: 1 });
-  pickups.push({ id: 'pick_o_rocket', type: 'weapon_rocket',    pos: { x:  55, y: 14, z:  55 }, radius: 1.5, respawnTimer: 0, value: 1 });
-  pickups.push({ id: 'pick_o_gren_1', type: 'weapon_grenade',   pos: { x:  55, y: 14, z: -55 }, radius: 1.5, respawnTimer: 0, value: 1 });
-  pickups.push({ id: 'pick_o_gren_2', type: 'weapon_grenade',   pos: { x: -55, y: 14, z:  55 }, radius: 1.5, respawnTimer: 0, value: 1 });
 
   // Outer armor drops
   pickups.push({ id: 'armor_o_1', type: 'armor_mega', pos: { x: -55, y: 1.5, z:  0 }, radius: 1.8, respawnTimer: 0, value: 100 });

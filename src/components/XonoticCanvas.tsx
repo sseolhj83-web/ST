@@ -1102,6 +1102,15 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     addB(5, 0.12, 36, -32, 0.06, 38.5, mRoad, scene, false);
     // N-S east connector: x=32
     addB(5, 0.12, 36,  32, 0.06, 38.5, mRoad, scene, false);
+    // N-S west connector 남쪽 연장: Maple Ave (z=55) → 주거지 (z=78)
+    addB(5, 0.12, 23, -32, 0.06, 66.5, mRoad, scene, false);
+    // N-S east connector 남쪽 연장: Maple Ave (z=55) → 주거지 (z=78)
+    addB(5, 0.12, 23,  32, 0.06, 66.5, mRoad, scene, false);
+    // 북쪽 도로 → Main Street 연결: 연구소 동쪽 우회
+    // E-W 교차로 (z=-25): 북쪽 도로(x=0) → 우회도로(x=20)
+    addB(22, 0.12, 5, 10, 0.06, -25, mRoad, scene, false);
+    // N-S 우회도로 (x=20): z=-25 → Main Street (z=19)
+    addB(5, 0.12, 44, 20, 0.06, -3, mRoad, scene, false);
 
     // ── UTILITY POLES helper ──
     const buildPoles = (
