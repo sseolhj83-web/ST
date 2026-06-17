@@ -223,26 +223,29 @@ export default function App() {
       // 1. Victory condition: All enemies are dead (Teammates are excluded)!
       const enemiesCount = engine.state.bots.filter(b => !b.isTeammate).length;
       if (enemiesCount === 0) {
+        if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
         setGameResult('VICTORY');
         setAppState('LOBBY');
         saveStatsToSupabase(engine.state.player.score, engine.state.player.deaths);
-        return; // Break frame simulation
+        return;
       }
 
       // 2. Defeat condition: Player died (HP reached zero)!
       if (engine.state.player.health <= 0) {
+        if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
         setGameResult('DEFEAT');
         setAppState('LOBBY');
         saveStatsToSupabase(engine.state.player.score, engine.state.player.deaths);
-        return; // Break frame simulation
+        return;
       }
 
       // 3. Match Time Limit condition: 7 minutes (420 seconds)
       if (engine.state.matchTime >= 420) {
-        setGameResult('VICTORY'); // survive and win!
+        if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
+        setGameResult('VICTORY');
         setAppState('LOBBY');
         saveStatsToSupabase(engine.state.player.score, engine.state.player.deaths);
-        return; // Break frame simulation
+        return;
       }
 
       // Step 1: Feed player view movement controls
@@ -296,11 +299,13 @@ export default function App() {
   }, [tick, roomContext, user]);
 
   const stopGameToMenu = useCallback(() => {
-    setGameResult('NONE');
-    setAppState('LOBBY');
     if (animationFrameIdRef.current) {
       cancelAnimationFrame(animationFrameIdRef.current);
+      animationFrameIdRef.current = null;
     }
+    engineRef.current = null;
+    setGameResult('NONE');
+    setAppState('LOBBY');
   }, []);
 
   const handlePointerLockChange = useCallback((locked: boolean) => {
@@ -358,7 +363,7 @@ export default function App() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="absolute inset-0 z-55 flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl"
+                  className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl"
                 >
                   <motion.div
                     initial={{ scale: 0.92, y: 15 }}
