@@ -326,8 +326,8 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
         <div className="flex items-center gap-3">
           <Gamepad2 className="w-8 h-8 text-cyan-400 animate-pulse" />
           <div>
-            <h1 className="text-2xl font-black tracking-tighter uppercase text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-indigo-500">
-              Xonotic Lobby
+            <h1 className="text-2xl font-black tracking-tighter text-red-600">
+              기묘한 이야기
             </h1>
             <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest leading-none mt-1">
               Command Center

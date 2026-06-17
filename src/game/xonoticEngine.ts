@@ -461,17 +461,6 @@ export class XonoticEngine {
     player.pos.z += player.vel.z * dt;
     this.checkWallAxisBound(player.pos, player.vel, 'z', 0.8);
 
-    // Jump pad checking for player
-    this.jumpPads.forEach(jp => {
-      const insideX = Math.abs(player.pos.x - jp.pos.x) < jp.width / 2 + 1;
-      const insideZ = Math.abs(player.pos.z - jp.pos.z) < jp.depth / 2 + 1;
-      const insideY = player.pos.y > jp.pos.y && player.pos.y < jp.pos.y + 2.5;
-
-      if (insideX && insideZ && insideY) {
-        player.vel = { ...jp.force };
-        player.onGround = false;
-      }
-    });
   }
 
   private updateBotAI(dt: number) {
@@ -618,15 +607,6 @@ export class XonoticEngine {
       if (botOnGround) {
         bot.vel.y = 0;
       }
-
-      // Simple jump pad triggers for bots
-      this.jumpPads.forEach(jp => {
-        if (Math.abs(bot.pos.x - jp.pos.x) < jp.width / 2 + 1 &&
-            Math.abs(bot.pos.z - jp.pos.z) < jp.depth / 2 + 1 &&
-            bot.pos.y > jp.pos.y && bot.pos.y < jp.pos.y + 2.5) {
-          bot.vel = { ...jp.force };
-        }
-      });
 
       // Melee attack: strike when close enough
       if (!bot.isTeammate && bot.state === 'hunting' && targetEntity && distToTarget < 2.5) {

@@ -138,16 +138,6 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   walls.push({ id: 'flood_bl', pos: { x: -11, y: 7, z: -8.5 }, size: { x: 0.6, y: 0.6, z: 0.6 }, color: '#fef9c3', emissive: true });
   walls.push({ id: 'flood_br', pos: { x:  11, y: 7, z: -8.5 }, size: { x: 0.6, y: 0.6, z: 0.6 }, color: '#fef9c3', emissive: true });
 
-  // ── Inner Outposts (4 corners at ±28) ──
-  walls.push({ id: 'outpost_tl',      pos: { x: -28, y: 6,    z: -28 }, size: { x: 14, y: 12, z: 14 }, color: '#1e293b' });
-  walls.push({ id: 'outpost_tl_roof', pos: { x: -28, y: 12.5, z: -28 }, size: { x: 16, y: 1,  z: 16 }, color: '#3b82f6' });
-  walls.push({ id: 'outpost_tr',      pos: { x:  28, y: 6,    z: -28 }, size: { x: 14, y: 12, z: 14 }, color: '#1e293b' });
-  walls.push({ id: 'outpost_tr_roof', pos: { x:  28, y: 12.5, z: -28 }, size: { x: 16, y: 1,  z: 16 }, color: '#3b82f6' });
-  walls.push({ id: 'outpost_bl',      pos: { x: -28, y: 6,    z:  28 }, size: { x: 14, y: 12, z: 14 }, color: '#1e293b' });
-  walls.push({ id: 'outpost_bl_roof', pos: { x: -28, y: 12.5, z:  28 }, size: { x: 16, y: 1,  z: 16 }, color: '#3b82f6' });
-  walls.push({ id: 'outpost_br',      pos: { x:  28, y: 6,    z:  28 }, size: { x: 14, y: 12, z: 14 }, color: '#1e293b' });
-  walls.push({ id: 'outpost_br_roof', pos: { x:  28, y: 12.5, z:  28 }, size: { x: 16, y: 1,  z: 16 }, color: '#3b82f6' });
-
   // ── Outer Outposts (4 corners at ±55) — new in expanded map ──
   walls.push({ id: 'outer_tl',      pos: { x: -55, y: 6,    z: -55 }, size: { x: 14, y: 12, z: 14 }, color: '#172035' });
   walls.push({ id: 'outer_tl_roof', pos: { x: -55, y: 12.5, z: -55 }, size: { x: 16, y: 1,  z: 16 }, color: '#1d4ed8' });
@@ -164,21 +154,6 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   walls.push({ id: 'mid_w',  pos: { x: -50,  y: 3, z:  0  }, size: { x: 6, y: 6, z: 10 }, color: '#1e293b' });
   walls.push({ id: 'mid_e',  pos: { x:  50,  y: 3, z:  0  }, size: { x: 6, y: 6, z: 10 }, color: '#1e293b' });
 
-  // 3. JUMP PADS
-  // Inner pads (center ↔ lab)
-  jumpPads.push({ id: 'jp_west', pos: { x: -25, y: 0.1, z: 0  }, width: 6, depth: 6, force: { x:  32, y: 22, z:  0 } });
-  jumpPads.push({ id: 'jp_east', pos: { x:  25, y: 0.1, z: 0  }, width: 6, depth: 6, force: { x: -32, y: 22, z:  0 } });
-  // Inner corner pads → inner outposts
-  jumpPads.push({ id: 'jp_tl', pos: { x: -32, y: 0.1, z: -15 }, width: 5, depth: 5, force: { x:  0, y: 26, z: -18 } });
-  jumpPads.push({ id: 'jp_tr', pos: { x:  32, y: 0.1, z: -15 }, width: 5, depth: 5, force: { x:  0, y: 26, z: -18 } });
-  jumpPads.push({ id: 'jp_bl', pos: { x: -32, y: 0.1, z:  15 }, width: 5, depth: 5, force: { x:  0, y: 26, z:  18 } });
-  jumpPads.push({ id: 'jp_br', pos: { x:  32, y: 0.1, z:  15 }, width: 5, depth: 5, force: { x:  0, y: 26, z:  18 } });
-  // Outer pads → outer outposts
-  jumpPads.push({ id: 'jp_o_tl', pos: { x: -62, y: 0.1, z: -42 }, width: 5, depth: 5, force: { x:  0, y: 28, z: -22 } });
-  jumpPads.push({ id: 'jp_o_tr', pos: { x:  62, y: 0.1, z: -42 }, width: 5, depth: 5, force: { x:  0, y: 28, z: -22 } });
-  jumpPads.push({ id: 'jp_o_bl', pos: { x: -62, y: 0.1, z:  42 }, width: 5, depth: 5, force: { x:  0, y: 28, z:  22 } });
-  jumpPads.push({ id: 'jp_o_br', pos: { x:  62, y: 0.1, z:  42 }, width: 5, depth: 5, force: { x:  0, y: 28, z:  22 } });
-
   // 4. POWER PICKUPS
   // Lab rooftop - Mega HP
   pickups.push({ id: 'mega_hp', type: 'health_mega', pos: { x: 0, y: 12.5, z: 0 }, radius: 2, respawnTimer: 0, value: 100 });
@@ -186,12 +161,6 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   // Near fence corners - Mega Armor
   pickups.push({ id: 'mega_arm_1', type: 'armor_mega', pos: { x: -14, y: 1.5, z: -12 }, radius: 1.8, respawnTimer: 0, value: 100 });
   pickups.push({ id: 'mega_arm_2', type: 'armor_mega', pos: { x:  14, y: 1.5, z: -12 }, radius: 1.8, respawnTimer: 0, value: 100 });
-
-  // Inner outpost rooftops - Weapons
-  pickups.push({ id: 'pick_vapor',    type: 'weapon_vaporizer', pos: { x: -28, y: 14, z: -28 }, radius: 1.5, respawnTimer: 0, value: 1 });
-  pickups.push({ id: 'pick_rocket',   type: 'weapon_rocket',    pos: { x:  28, y: 14, z:  28 }, radius: 1.5, respawnTimer: 0, value: 1 });
-  pickups.push({ id: 'pick_grenade_1',type: 'weapon_grenade',   pos: { x:  28, y: 14, z: -28 }, radius: 1.5, respawnTimer: 0, value: 1 });
-  pickups.push({ id: 'pick_grenade_2',type: 'weapon_grenade',   pos: { x: -28, y: 14, z:  28 }, radius: 1.5, respawnTimer: 0, value: 1 });
 
   // Outer outpost rooftops - Weapons
   pickups.push({ id: 'pick_o_vapor',  type: 'weapon_vaporizer', pos: { x: -55, y: 14, z: -55 }, radius: 1.5, respawnTimer: 0, value: 1 });

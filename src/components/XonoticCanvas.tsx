@@ -964,10 +964,10 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           roughness: 0.85,
           metalness: 0.05,
         });
-      } else if (wall.id.startsWith('outpost') || wall.id.startsWith('wall_')) {
+      } else if (wall.id.startsWith('wall_')) {
         // Ash-stained metallic grey obsidian stone walls
         material = new THREE.MeshStandardMaterial({
-          color: new THREE.Color('#323247'), // textured ash-grey rock blocks for high structural clarity
+          color: new THREE.Color('#323247'),
           roughness: 0.75,
           metalness: 0.15,
         });
@@ -1531,24 +1531,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
 
     scene.add(portalGroup);
 
-    // Jump pads (styled as glowing alien organic flesh pads)
-    map.jumpPads.forEach(jp => {
-      const padGroup = new THREE.Group();
-      padGroup.position.set(jp.pos.x, jp.pos.y, jp.pos.z);
-
-      const pGeometry = new THREE.BoxGeometry(jp.width, 0.4, jp.depth);
-      const pMaterial = new THREE.MeshStandardMaterial({ color: '#130c14', roughness: 0.95 }); // alien wood
-      const baseMesh = new THREE.Mesh(pGeometry, pMaterial);
-      padGroup.add(baseMesh);
-
-      const neonGeo = new THREE.BoxGeometry(jp.width - 0.8, 0.45, jp.depth - 0.8);
-      const neonMaterial = new THREE.MeshBasicMaterial({ color: '#be123c' }); // Glowing blood organic jump pad!
-      const neonMesh = new THREE.Mesh(neonGeo, neonMaterial);
-      padGroup.add(neonMesh);
-
-
-      scene.add(padGroup);
-    });
 
     // 6. First-Person Viewmodel Gun Setup
     const gunGroup = new THREE.Group();
