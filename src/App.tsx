@@ -30,6 +30,8 @@ export default function App() {
   const lastTimeRef = useRef(0);
   const animationFrameIdRef = useRef<number | null>(null);
   const appStateRef = useRef<AppState>('AUTH');
+  const userRef = useRef<any>(null);
+  const saveStatsRef = useRef<(score: number, deaths: number) => void>(() => {});
 
   // Auto-dismiss game result banner after 3 seconds
   useEffect(() => {
@@ -73,7 +75,8 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
         setUser(session.user);
-        setAppState('LOBBY');
+        // Don't override PLAYING state (e.g. on token refresh mid-game)
+        setAppState(prev => prev === 'PLAYING' ? prev : 'LOBBY');
       } else {
         setUser(null);
         setAppState('AUTH');
@@ -99,10 +102,10 @@ export default function App() {
     fetchHighScore();
   }, [user]);
 
-  // Keep appState synced with ref for thread-safe tick loop reading
-  useEffect(() => {
-    appStateRef.current = appState;
-  }, [appState]);
+  // Keep mutable values synced with refs for use inside RAF/engine callbacks
+  useEffect(() => { appStateRef.current = appState; }, [appState]);
+  useEffect(() => { userRef.current = user; }, [user]);
+  useEffect(() => { saveStatsRef.current = saveStatsToSupabase; }, [saveStatsToSupabase]);
 
   // Initialize key listeners once. Bound to engineRef.current dynamically to avoid stale closures
   useEffect(() => {
@@ -239,28 +242,6 @@ export default function App() {
     }
   }, [user]);
 
-  // Centralised game-over handler — called from useEffect, not inside RAF
-  const triggerGameOver = useCallback((result: 'VICTORY' | 'DEFEAT', engine: any) => {
-    if (animationFrameIdRef.current) {
-      cancelAnimationFrame(animationFrameIdRef.current);
-      animationFrameIdRef.current = null;
-    }
-    try { if (engine?.supabaseChannel) engine.supabaseChannel.unsubscribe(); } catch {}
-    engineRef.current = null;
-    setGameResult(result);
-    setAppState('LOBBY');
-    saveStatsToSupabase(engine.state.player.score, engine.state.player.deaths);
-  }, [saveStatsToSupabase]);
-
-  // Game-over detection: runs after every gameState update (more reliable than inside RAF)
-  useEffect(() => {
-    if (appState !== 'PLAYING' || !gameState || !engineRef.current) return;
-    const enemies = gameState.bots.filter((b: any) => !b.isTeammate);
-    const isDefeat  = gameState.player.health <= 0;
-    const isVictory = enemies.length === 0 || gameState.matchTime >= 420;
-    if (!isDefeat && !isVictory) return;
-    triggerGameOver(isDefeat ? 'DEFEAT' : 'VICTORY', engineRef.current);
-  }, [gameState, appState, triggerGameOver]);
 
   // Main game tick animation frame — only runs physics, no game-over logic
   const tick = useCallback((timestamp: number) => {
@@ -288,7 +269,7 @@ export default function App() {
       engine.stepSimulator(dt);
     }
 
-    // Only reschedule if engine is still alive (cleared by triggerGameOver)
+    // Only reschedule if engine is still alive (cleared on game-over)
     if (engineRef.current) {
       animationFrameIdRef.current = requestAnimationFrame(tick);
     }
@@ -296,9 +277,32 @@ export default function App() {
 
   // Activate game renderer execution - completely re-instantiates the engine for clean isolation
   const startGame = useCallback(() => {
+    let gameOverFired = false; // prevent double-fire within same game session
+
     const engine = new XonoticEngine((updatedState) => {
       gameStateRef.current = updatedState;
       setGameState({ ...updatedState });
+
+      // Game-over detection runs synchronously every frame — no React batching delay
+      if (gameOverFired || appStateRef.current !== 'PLAYING') return;
+      const enemies = updatedState.bots.filter((b: any) => !b.isTeammate);
+      const isDefeat  = updatedState.player.health <= 0;
+      const isVictory = enemies.length === 0 || updatedState.matchTime >= 420;
+      if (!isDefeat && !isVictory) return;
+
+      gameOverFired = true;
+      if (animationFrameIdRef.current) {
+        cancelAnimationFrame(animationFrameIdRef.current);
+        animationFrameIdRef.current = null;
+      }
+      try { if (engine.supabaseChannel) engine.supabaseChannel.unsubscribe(); } catch {}
+      engineRef.current = null;
+      setGameResult(isDefeat ? 'DEFEAT' : 'VICTORY');
+      setAppState('LOBBY');
+      // Save stats via ref — always uses current user/saveStats function
+      if (userRef.current) {
+        saveStatsRef.current(updatedState.player.score, updatedState.player.deaths);
+      }
     });
     engineRef.current = engine;
     gameStateRef.current = engine.state;
