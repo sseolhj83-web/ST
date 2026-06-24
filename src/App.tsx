@@ -239,7 +239,30 @@ export default function App() {
     }
   }, [user]);
 
-  // Main game tick animation frame
+  // Centralised game-over handler — called from useEffect, not inside RAF
+  const triggerGameOver = useCallback((result: 'VICTORY' | 'DEFEAT', engine: any) => {
+    if (animationFrameIdRef.current) {
+      cancelAnimationFrame(animationFrameIdRef.current);
+      animationFrameIdRef.current = null;
+    }
+    try { if (engine?.supabaseChannel) engine.supabaseChannel.unsubscribe(); } catch {}
+    engineRef.current = null;
+    setGameResult(result);
+    setAppState('LOBBY');
+    saveStatsToSupabase(engine.state.player.score, engine.state.player.deaths);
+  }, [saveStatsToSupabase]);
+
+  // Game-over detection: runs after every gameState update (more reliable than inside RAF)
+  useEffect(() => {
+    if (appState !== 'PLAYING' || !gameState || !engineRef.current) return;
+    const enemies = gameState.bots.filter((b: any) => !b.isTeammate);
+    const isDefeat  = gameState.player.health <= 0;
+    const isVictory = enemies.length === 0 || gameState.matchTime >= 420;
+    if (!isDefeat && !isVictory) return;
+    triggerGameOver(isDefeat ? 'DEFEAT' : 'VICTORY', engineRef.current);
+  }, [gameState, appState, triggerGameOver]);
+
+  // Main game tick animation frame — only runs physics, no game-over logic
   const tick = useCallback((timestamp: number) => {
     if (!lastTimeRef.current) {
       lastTimeRef.current = timestamp;
@@ -249,34 +272,6 @@ export default function App() {
 
     const engine = engineRef.current;
     if (engine && appStateRef.current === 'PLAYING') {
-      const endGame = (result: 'VICTORY' | 'DEFEAT') => {
-        if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
-        if (engine.supabaseChannel) engine.supabaseChannel.unsubscribe();
-        engineRef.current = null;
-        setGameResult(result);
-        setAppState('LOBBY');
-        saveStatsToSupabase(engine.state.player.score, engine.state.player.deaths);
-      };
-
-      // 1. Victory condition: All enemies are dead (Teammates are excluded)!
-      const enemiesCount = engine.state.bots.filter(b => !b.isTeammate).length;
-      if (enemiesCount === 0) {
-        endGame('VICTORY');
-        return;
-      }
-
-      // 2. Defeat condition: Player died (HP reached zero)!
-      if (engine.state.player.health <= 0) {
-        endGame('DEFEAT');
-        return;
-      }
-
-      // 3. Match Time Limit condition: 7 minutes (420 seconds)
-      if (engine.state.matchTime >= 420) {
-        endGame('VICTORY');
-        return;
-      }
-
       // Step 1: Feed player view movement controls
       engine.updateInputs(
         keysRef.current,
@@ -293,8 +288,11 @@ export default function App() {
       engine.stepSimulator(dt);
     }
 
-    animationFrameIdRef.current = requestAnimationFrame(tick);
-  }, [saveStatsToSupabase]);
+    // Only reschedule if engine is still alive (cleared by triggerGameOver)
+    if (engineRef.current) {
+      animationFrameIdRef.current = requestAnimationFrame(tick);
+    }
+  }, []);
 
   // Activate game renderer execution - completely re-instantiates the engine for clean isolation
   const startGame = useCallback(() => {
