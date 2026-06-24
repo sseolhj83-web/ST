@@ -1255,15 +1255,17 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     };
 
     // ── HAWKINS VILLAGE LAYOUT — buildings spread across the map ──
-    // Maple Ave north side row (z=66, all facing south toward road)
-    buildRanch(-44, 66, Math.PI,        mCream,  mRoofDk); // Wheeler house
-    buildRanch( 40, 66, Math.PI,        mBlue,   mRoofDk); // Hargrove house
-    // Back street row (z=76, facing south)
-    buildRanch(-52, 76, Math.PI,        mYellow, mRoofBr); // Byers house
-    buildRanch( 44, 76, Math.PI,        mCream,  mRoofBr); // Kellerman house
-    // Rural outskirts
-    buildRanch( 65, -62, 0.3,           mYellow, mRoofBr); // Abandoned farmhouse
-    buildRanch(-62, -44, Math.PI * 0.8, mCream,  mRoofDk); // Outer ranch
+    // Maple Ave south side row (z=66, facing north toward road at z=55)
+    buildRanch(-52, 66, Math.PI, mCream,  mRoofDk); // Wheeler house
+    buildRanch(-16, 66, Math.PI, mBrick,  mRoofBr); // Henderson house
+    buildRanch( 16, 66, Math.PI, mYellow, mRoofDk); // Sinclair house
+    buildRanch( 52, 66, Math.PI, mBlue,   mRoofDk); // Hargrove house
+    // Maple Ave north side (z=42, facing south toward road)
+    buildRanch(-52, 42, 0, mConc,  mRoofBr); // Byers house
+    buildRanch( 52, 42, 0, mCream, mRoofBr); // Kellerman house
+    // Rural outskirts (axis-aligned)
+    buildRanch( 65, -62, 0, mYellow, mRoofBr); // Abandoned farmhouse
+    buildRanch(-62, -44, 0, mCream,  mRoofDk); // Outer ranch
 
     // ── MELVALD'S GENERAL STORE (x=20, z=36) ──
     {

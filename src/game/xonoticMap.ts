@@ -165,11 +165,13 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   pickups.push({ id: 'ammo_8', type: 'ammo', pos: { x:  45, y: 1, z:  45 }, radius: 1, respawnTimer: 0, value: 20 });
 
   // ── BUILDING COLLISION BOXES (collisionOnly: invisible, for all Canvas buildings) ──
-  // Ranch houses — spread-out village positions (body 11×3.8×8 with 0.45 foundation)
-  walls.push({ id: 'col_wheeler',   pos: { x: -44, y: 2.2, z:  66 }, size: { x: 11, y: 4.7, z: 8  }, color: '#000', collisionOnly: true });
-  walls.push({ id: 'col_hargrove',  pos: { x:  40, y: 2.2, z:  66 }, size: { x: 11, y: 4.7, z: 8  }, color: '#000', collisionOnly: true });
-  walls.push({ id: 'col_byers',     pos: { x: -52, y: 2.2, z:  76 }, size: { x: 11, y: 4.7, z: 8  }, color: '#000', collisionOnly: true });
-  walls.push({ id: 'col_kellerman', pos: { x:  44, y: 2.2, z:  76 }, size: { x: 11, y: 4.7, z: 8  }, color: '#000', collisionOnly: true });
+  // Ranch houses — Maple Ave south row (z=66) + north row (z=42) + outskirts
+  walls.push({ id: 'col_wheeler',   pos: { x: -52, y: 2.2, z:  66 }, size: { x: 11, y: 4.7, z: 8  }, color: '#000', collisionOnly: true });
+  walls.push({ id: 'col_henderson', pos: { x: -16, y: 2.2, z:  66 }, size: { x: 11, y: 4.7, z: 8  }, color: '#000', collisionOnly: true });
+  walls.push({ id: 'col_sinclair',  pos: { x:  16, y: 2.2, z:  66 }, size: { x: 11, y: 4.7, z: 8  }, color: '#000', collisionOnly: true });
+  walls.push({ id: 'col_hargrove',  pos: { x:  52, y: 2.2, z:  66 }, size: { x: 11, y: 4.7, z: 8  }, color: '#000', collisionOnly: true });
+  walls.push({ id: 'col_byers',     pos: { x: -52, y: 2.2, z:  42 }, size: { x: 11, y: 4.7, z: 8  }, color: '#000', collisionOnly: true });
+  walls.push({ id: 'col_kellerman', pos: { x:  52, y: 2.2, z:  42 }, size: { x: 11, y: 4.7, z: 8  }, color: '#000', collisionOnly: true });
   walls.push({ id: 'col_farm_out',  pos: { x:  65, y: 2.2, z: -62 }, size: { x: 11, y: 4.7, z: 8  }, color: '#000', collisionOnly: true });
   walls.push({ id: 'col_ranch_out', pos: { x: -62, y: 2.2, z: -44 }, size: { x: 11, y: 4.7, z: 8  }, color: '#000', collisionOnly: true });
   // Melvald's General Store (14×5×10)
