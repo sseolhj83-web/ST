@@ -4,6 +4,7 @@ import { XonoticEngine } from './game/xonoticEngine';
 import { XonoticGameState } from './game/xonoticTypes';
 import { XonoticCanvas } from './components/XonoticCanvas';
 import { XonoticHUD } from './components/XonoticHUD';
+import { MobileControls } from './components/MobileControls';
 import { RotateCcw, Award, ShieldAlert } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { Auth } from './components/Auth';
@@ -29,6 +30,27 @@ export default function App() {
   const lastTimeRef = useRef(0);
   const animationFrameIdRef = useRef<number | null>(null);
   const appStateRef = useRef<AppState>('AUTH');
+
+  // Mobile detection
+  const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  const [isPortrait, setIsPortrait] = useState(() =>
+    typeof window !== 'undefined' && window.innerWidth < window.innerHeight
+  );
+
+  useEffect(() => {
+    if (!isMobile) return;
+    // Request landscape lock (best-effort, not supported on all browsers)
+    if (screen.orientation && (screen.orientation as any).lock) {
+      (screen.orientation as any).lock('landscape').catch(() => {});
+    }
+    const onResize = () => setIsPortrait(window.innerWidth < window.innerHeight);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
+  }, [isMobile]);
 
   // Handle active session check on mount
   useEffect(() => {
@@ -325,7 +347,23 @@ export default function App() {
   }, [startGame]);
 
   return (
-    <div className="w-full h-screen bg-slate-950 text-white select-none overflow-hidden relative">
+    <div className="w-full h-screen bg-slate-950 text-white select-none overflow-hidden relative" style={{ touchAction: 'none' }}>
+      {/* Portrait-mode rotation prompt (mobile only) */}
+      {isMobile && isPortrait && (
+        <div
+          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center gap-6"
+          style={{ background: 'rgba(2,6,23,0.97)' }}
+        >
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+            <rect x="18" y="8" width="28" height="48" rx="4" stroke="white" strokeWidth="3" fill="none"/>
+            <path d="M50 32 A22 22 0 0 1 14 32" stroke="#3b82f6" strokeWidth="3" strokeLinecap="round" fill="none"/>
+            <polyline points="46,26 50,32 44,35" fill="none" stroke="#3b82f6" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <p className="text-white text-lg font-bold">기기를 가로로 돌려주세요</p>
+          <p className="text-slate-400 text-sm">게임은 가로 모드에서만 플레이할 수 있습니다</p>
+        </div>
+      )}
+
       <AnimatePresence mode="wait">
         {appState === 'AUTH' && (
           <motion.div
@@ -453,6 +491,15 @@ export default function App() {
                 space: keysRef.current.space,
               }}
             />
+
+            {/* Mobile touch controls (only on touch devices) */}
+            {isMobile && (
+              <MobileControls
+                keysRef={keysRef}
+                mouseDeltaRef={mouseDeltaRef}
+                isMouseDownRef={isMouseDownRef}
+              />
+            )}
 
             {/* Exit/Return button back to lobby menu */}
             <div className="absolute top-6 left-6 z-50 pointer-events-auto">
