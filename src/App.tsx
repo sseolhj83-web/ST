@@ -249,31 +249,31 @@ export default function App() {
 
     const engine = engineRef.current;
     if (engine && appStateRef.current === 'PLAYING') {
+      const endGame = (result: 'VICTORY' | 'DEFEAT') => {
+        if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
+        if (engine.supabaseChannel) engine.supabaseChannel.unsubscribe();
+        engineRef.current = null;
+        setGameResult(result);
+        setAppState('LOBBY');
+        saveStatsToSupabase(engine.state.player.score, engine.state.player.deaths);
+      };
+
       // 1. Victory condition: All enemies are dead (Teammates are excluded)!
       const enemiesCount = engine.state.bots.filter(b => !b.isTeammate).length;
       if (enemiesCount === 0) {
-        if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
-        setGameResult('VICTORY');
-        setAppState('LOBBY');
-        saveStatsToSupabase(engine.state.player.score, engine.state.player.deaths);
+        endGame('VICTORY');
         return;
       }
 
       // 2. Defeat condition: Player died (HP reached zero)!
       if (engine.state.player.health <= 0) {
-        if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
-        setGameResult('DEFEAT');
-        setAppState('LOBBY');
-        saveStatsToSupabase(engine.state.player.score, engine.state.player.deaths);
+        endGame('DEFEAT');
         return;
       }
 
       // 3. Match Time Limit condition: 7 minutes (420 seconds)
       if (engine.state.matchTime >= 420) {
-        if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
-        setGameResult('VICTORY');
-        setAppState('LOBBY');
-        saveStatsToSupabase(engine.state.player.score, engine.state.player.deaths);
+        endGame('VICTORY');
         return;
       }
 
@@ -332,6 +332,9 @@ export default function App() {
       cancelAnimationFrame(animationFrameIdRef.current);
       animationFrameIdRef.current = null;
     }
+    if (engineRef.current?.supabaseChannel) {
+      engineRef.current.supabaseChannel.unsubscribe();
+    }
     engineRef.current = null;
     setGameResult('NONE');
     setAppState('LOBBY');
@@ -371,7 +374,7 @@ export default function App() {
         </div>
       )}
 
-      <AnimatePresence mode="wait">
+      <AnimatePresence>
         {appState === 'AUTH' && (
           <motion.div
             key="auth"
@@ -433,6 +436,7 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
             className="absolute inset-0"
           >
             {/* Custom high-performance 3D canvas rendering engine */}
