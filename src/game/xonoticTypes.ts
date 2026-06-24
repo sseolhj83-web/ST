@@ -49,6 +49,7 @@ export interface Bot {
   state: 'wandering' | 'hunting' | 'jumping';
   stateTimer: number;
   isTeammate?: boolean;
+  isRemotePlayer?: boolean; // true = real online player (not AI)
 }
 
 export interface Projectile {

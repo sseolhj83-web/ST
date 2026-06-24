@@ -274,8 +274,8 @@ export class XonoticEngine {
     this.updatePickups(dt);
     this.checkCollisions();
 
-    // Broadcast player state to other players at ~15Hz
-    if (this.supabaseChannel && Math.random() < 0.25) {
+    // Broadcast player state to other players at ~30Hz
+    if (this.supabaseChannel && Math.random() < 0.5) {
       this.broadcastPlayerState();
     }
 
@@ -301,28 +301,35 @@ export class XonoticEngine {
           const newPlayerBot: Bot = {
             id: remoteData.id,
             name: remoteData.username || `Player_${remoteData.id.slice(0, 5)}`,
-            pos: remoteData.pos,
-            vel: remoteData.vel,
+            pos: { x: remoteData.pos.x, y: remoteData.pos.y, z: remoteData.pos.z },
+            vel: { x: remoteData.vel.x, y: remoteData.vel.y, z: remoteData.vel.z },
             health: remoteData.health,
             maxHealth: 100,
-            color: '#3b82f6', // Team color blue
+            color: '#3b82f6',
             radius: 0.8,
             currentWeapon: remoteData.currentWeapon,
             lastShootTime: 0,
+            lastMeleeTime: 0,
             targetPos: null,
             state: 'wandering',
             stateTimer: 0,
-            isTeammate: true, // Mark as blue teammate!
+            isTeammate: true,
+            isRemotePlayer: true, // Real online player — no AI control
           };
           this.state.bots.push(newPlayerBot);
           remotePlayer = newPlayerBot;
         }
 
-        // Sync stats
-        remotePlayer.pos = remoteData.pos;
-        remotePlayer.vel = remoteData.vel;
+        // In-place update to preserve object reference stability
+        remotePlayer.pos.x = remoteData.pos.x;
+        remotePlayer.pos.y = remoteData.pos.y;
+        remotePlayer.pos.z = remoteData.pos.z;
+        remotePlayer.vel.x = remoteData.vel.x;
+        remotePlayer.vel.y = remoteData.vel.y;
+        remotePlayer.vel.z = remoteData.vel.z;
         remotePlayer.health = remoteData.health;
         remotePlayer.currentWeapon = remoteData.currentWeapon;
+        if (remoteData.username) remotePlayer.name = remoteData.username;
       })
       .on('broadcast', { event: 'player-shoot' }, (payload: any) => {
         const remoteData = payload.payload;
@@ -486,6 +493,16 @@ export class XonoticEngine {
     const now = performance.now();
 
     bots.forEach(bot => {
+      // Remote online players: apply dead-reckoning physics only, no AI
+      if (bot.isRemotePlayer) {
+        bot.vel.y += this.gravity * dt;
+        bot.pos.x += bot.vel.x * dt;
+        bot.pos.y += bot.vel.y * dt;
+        bot.pos.z += bot.vel.z * dt;
+        if (bot.pos.y < 1.0) { bot.pos.y = 1.0; bot.vel.y = 0; }
+        return;
+      }
+
       bot.stateTimer -= dt;
       
       // Target Selection Logic based on teams (Friendly Teammate Blue vs Red Enemies)
