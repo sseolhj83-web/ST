@@ -31,6 +31,13 @@ export default function App() {
   const animationFrameIdRef = useRef<number | null>(null);
   const appStateRef = useRef<AppState>('AUTH');
 
+  // Auto-dismiss game result banner after 3 seconds
+  useEffect(() => {
+    if (gameResult === 'NONE') return;
+    const timer = setTimeout(() => setGameResult('NONE'), 3000);
+    return () => clearTimeout(timer);
+  }, [gameResult]);
+
   // Mobile detection
   const isMobile = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
   const [isPortrait, setIsPortrait] = useState(() =>
@@ -394,64 +401,26 @@ export default function App() {
               onStartGame={handleStartGameFromLobby}
             />
 
-            {/* Victory / Defeat Modal HUD Dialogues (Permanent Death / Finite bots result outcome) */}
+            {/* 게임 결과 토스트 배너 (로비 상단에 잠깐 표시) */}
             <AnimatePresence>
               {gameResult !== 'NONE' && (
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl"
+                  initial={{ opacity: 0, y: -30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.35 }}
+                  className="absolute top-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
                 >
-                  <motion.div
-                    initial={{ scale: 0.92, y: 15 }}
-                    animate={{ scale: 1, y: 0 }}
-                    exit={{ scale: 0.95, y: 10 }}
-                    className="max-w-md w-full bg-slate-900 border-2 rounded-3xl p-8 text-center shadow-[0_0_60px_rgba(0,0,0,0.85)] flex flex-col items-center gap-6 border-cyan-500/35"
-                  >
-                    {gameResult === 'VICTORY' ? (
-                      <>
-                        <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/35 flex items-center justify-center text-emerald-400">
-                          <Award className="w-9 h-9 fill-current animate-bounce" />
-                        </div>
-                        <div>
-                          <h2 className="text-4xl font-black text-emerald-400 uppercase tracking-tighter">VICTORY (승리!)</h2>
-                          <p className="text-sm font-sans mt-2 text-slate-400 font-medium leading-relaxed">적들을 완벽하게 섬멸했습니다. 아레나의 진정한 정복자입니다!</p>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="w-16 h-16 rounded-full bg-rose-500/10 border border-rose-500/35 flex items-center justify-center text-rose-500">
-                          <ShieldAlert className="w-9 h-9 animate-pulse" />
-                        </div>
-                        <div>
-                          <h2 className="text-4xl font-black text-rose-500 uppercase tracking-tighter">DEFEAT (패배!)</h2>
-                          <p className="text-sm font-sans mt-2 text-slate-400 font-medium leading-relaxed">전사하셨습니다. 이번 매치 플레이에서는 부활이 지원되지 않습니다.</p>
-                        </div>
-                      </>
-                    )}
-
-                    {/* Stats display block */}
-                    <div className="w-full bg-slate-950 rounded-2xl border border-white/5 p-4 grid grid-cols-2 gap-4 font-mono text-xs">
-                      <div className="text-left border-r border-white/5 pr-4 flex flex-col justify-center">
-                        <span className="text-slate-500 text-[10px] uppercase block tracking-wider mb-0.5">ELIMINATIONS</span>
-                        <span className="text-xl font-bold text-cyan-400">{gameState?.player.score} Frags</span>
-                      </div>
-                      <div className="text-left pl-2 flex flex-col justify-center">
-                        <span className="text-slate-500 text-[10px] uppercase block tracking-wider mb-0.5">SURVIVED TIME</span>
-                        <span className="text-xl font-bold text-white">
-                          {gameState ? `${Math.floor(gameState.matchTime / 60)}분 ${Math.floor(gameState.matchTime % 60)}초` : '0초'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => setGameResult('NONE')}
-                      className="w-full py-4 bg-gradient-to-r from-cyan-500 via-indigo-500 to-pink-500 hover:opacity-95 text-white font-mono rounded-2xl font-black text-sm uppercase tracking-widest active:scale-95 transition-all cursor-pointer shadow-xl border border-white/10"
-                    >
-                      확인 및 메인 로비
-                    </button>
-                  </motion.div>
+                  <div className={`flex items-center gap-3 px-6 py-3 rounded-2xl font-mono font-bold text-sm shadow-xl border backdrop-blur-md ${
+                    gameResult === 'VICTORY'
+                      ? 'bg-emerald-900/80 border-emerald-500/50 text-emerald-300'
+                      : 'bg-rose-900/80 border-rose-500/50 text-rose-300'
+                  }`}>
+                    {gameResult === 'VICTORY'
+                      ? <Award className="w-5 h-5" />
+                      : <ShieldAlert className="w-5 h-5" />}
+                    {gameResult === 'VICTORY' ? '승리! 로비로 복귀합니다.' : '패배! 로비로 복귀합니다.'}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
