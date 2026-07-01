@@ -2300,53 +2300,60 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     window.addEventListener('resize', handleResize);
 
     return () => {
+      // Stop the render loop first regardless of what happens during resource teardown below.
       cancelAnimationFrame(animationId);
       window.removeEventListener('resize', handleResize);
-      if (mountRef.current && renderer.domElement) {
-        if (mountRef.current.contains(renderer.domElement)) {
-          mountRef.current.removeChild(renderer.domElement);
+      try {
+        if (mountRef.current && renderer.domElement) {
+          if (mountRef.current.contains(renderer.domElement)) {
+            mountRef.current.removeChild(renderer.domElement);
+          }
         }
+        activeLightnings.forEach(bolt => {
+          scene.remove(bolt);
+        });
+        activeLightnings.length = 0;
+
+        // Dispose of the pre-allocated shared lightning static assets
+        unitCylinderGeo.dispose();
+        boltMat.dispose();
+        branchMat.dispose();
+        botMeshes.forEach(mesh => {
+          disposeHierarchy(mesh);
+          scene.remove(mesh);
+        });
+        botMeshes.clear();
+
+        npcMeshes.forEach(mesh => {
+          disposeHierarchy(mesh);
+          scene.remove(mesh);
+        });
+        npcMeshes.clear();
+
+        particleGeometry.dispose();
+        particleMaterial.dispose();
+
+        // Dispose of shared tree and vine geometries to prevent resource leakage on unmount
+        trunkGeo.dispose();
+        branchGeo1.dispose();
+        branchGeo2.dispose();
+        leafGeoTop.dispose();
+        leafGeoBranch.dispose();
+        trunkMat.dispose();
+        foliageMat.dispose();
+
+        vineGeoVertical.dispose();
+        vineGeoHorizX.dispose();
+        vineGeoHorizZ.dispose();
+        vineGeoClimb.dispose();
+        vineMat.dispose();
+
+        renderer.dispose();
+      } catch (err) {
+        // Never let a WebGL resource-teardown error crash the unmount — worst case is a leaked
+        // buffer, not a blank screen for the player.
+        console.error('XonoticCanvas teardown error:', err);
       }
-      activeLightnings.forEach(bolt => {
-        scene.remove(bolt);
-      });
-      activeLightnings.length = 0;
-
-      // Dispose of the pre-allocated shared lightning static assets
-      unitCylinderGeo.dispose();
-      boltMat.dispose();
-      branchMat.dispose();
-      botMeshes.forEach(mesh => {
-        disposeHierarchy(mesh);
-        scene.remove(mesh);
-      });
-      botMeshes.clear();
-
-      npcMeshes.forEach(mesh => {
-        disposeHierarchy(mesh);
-        scene.remove(mesh);
-      });
-      npcMeshes.clear();
-
-      particleGeometry.dispose();
-      particleMaterial.dispose();
-
-      // Dispose of shared tree and vine geometries to prevent resource leakage on unmount
-      trunkGeo.dispose();
-      branchGeo1.dispose();
-      branchGeo2.dispose();
-      leafGeoTop.dispose();
-      leafGeoBranch.dispose();
-      trunkMat.dispose();
-      foliageMat.dispose();
-
-      vineGeoVertical.dispose();
-      vineGeoHorizX.dispose();
-      vineGeoHorizZ.dispose();
-      vineGeoClimb.dispose();
-      vineMat.dispose();
-
-      renderer.dispose();
     };
   }, []);
 

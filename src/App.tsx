@@ -9,6 +9,7 @@ import { RotateCcw, Award, ShieldAlert } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { Auth } from './components/Auth';
 import { Lobby } from './components/Lobby';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 type AppState = 'AUTH' | 'LOBBY' | 'PLAYING';
 
@@ -440,51 +441,53 @@ export default function App() {
             transition={{ duration: 0.15 }}
             className="absolute inset-0"
           >
-            {/* Custom high-performance 3D canvas rendering engine */}
-            <XonoticCanvas
-              state={gameState}
-              gameStateRef={gameStateRef}
-              onPointerLockChange={handlePointerLockChange}
-              onMouseMove={handleMouseMove}
-            />
-
-            {/* Futuristic Sci-fi HUD element layout overlay with keys telemetry diagnostic */}
-            <XonoticHUD
-              player={gameState.player}
-              bots={gameState.bots}
-              fragFeed={gameState.fragFeed}
-              matchTime={gameState.matchTime}
-              isFrozen={gameState.isFrozen}
-              dimension={gameState.dimension}
-              onToggleDimension={() => engineRef.current?.toggleDimension()}
-              activeKeys={{
-                w: keysRef.current.w,
-                a: keysRef.current.a,
-                s: keysRef.current.s,
-                d: keysRef.current.d,
-                space: keysRef.current.space,
-              }}
-            />
-
-            {/* Mobile touch controls (only on touch devices) */}
-            {isMobile && (
-              <MobileControls
-                keysRef={keysRef}
-                mouseDeltaRef={mouseDeltaRef}
-                isMouseDownRef={isMouseDownRef}
+            <ErrorBoundary onReset={stopGameToMenu}>
+              {/* Custom high-performance 3D canvas rendering engine */}
+              <XonoticCanvas
+                state={gameState}
+                gameStateRef={gameStateRef}
+                onPointerLockChange={handlePointerLockChange}
+                onMouseMove={handleMouseMove}
               />
-            )}
 
-            {/* Exit/Return button back to lobby menu */}
-            <div className="absolute top-6 left-6 z-50 pointer-events-auto">
-              <button
-                onClick={stopGameToMenu}
-                className="flex items-center gap-1.5 px-4 py-2 border border-white/10 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-bold uppercase transition-all tracking-wider font-mono cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                RETURN TO LOBBY
-              </button>
-            </div>
+              {/* Futuristic Sci-fi HUD element layout overlay with keys telemetry diagnostic */}
+              <XonoticHUD
+                player={gameState.player}
+                bots={gameState.bots}
+                fragFeed={gameState.fragFeed}
+                matchTime={gameState.matchTime}
+                isFrozen={gameState.isFrozen}
+                dimension={gameState.dimension}
+                onToggleDimension={() => engineRef.current?.toggleDimension()}
+                activeKeys={{
+                  w: keysRef.current.w,
+                  a: keysRef.current.a,
+                  s: keysRef.current.s,
+                  d: keysRef.current.d,
+                  space: keysRef.current.space,
+                }}
+              />
+
+              {/* Mobile touch controls (only on touch devices) */}
+              {isMobile && (
+                <MobileControls
+                  keysRef={keysRef}
+                  mouseDeltaRef={mouseDeltaRef}
+                  isMouseDownRef={isMouseDownRef}
+                />
+              )}
+
+              {/* Exit/Return button back to lobby menu */}
+              <div className="absolute top-6 left-6 z-50 pointer-events-auto">
+                <button
+                  onClick={stopGameToMenu}
+                  className="flex items-center gap-1.5 px-4 py-2 border border-white/10 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-bold uppercase transition-all tracking-wider font-mono cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  RETURN TO LOBBY
+                </button>
+              </div>
+            </ErrorBoundary>
           </motion.div>
         )}
       </AnimatePresence>
