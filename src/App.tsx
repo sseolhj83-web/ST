@@ -102,6 +102,48 @@ export default function App() {
     fetchHighScore();
   }, [user]);
 
+  // Save stats to Supabase on match completion
+  const saveStatsToSupabase = useCallback(async (score: number, deaths: number) => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from('user_stats')
+        .select('highest_score, total_frags, total_deaths, matches_played')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      const currentHighest = data ? data.highest_score : 0;
+      const currentFrags = data ? data.total_frags : 0;
+      const currentDeaths = data ? data.total_deaths : 0;
+      const currentMatches = data ? data.matches_played : 0;
+
+      const newHighest = Math.max(currentHighest, score);
+      const newFrags = currentFrags + score;
+      const newDeaths = currentDeaths + deaths;
+      const newMatches = currentMatches + 1;
+
+      const { error: upsertErr } = await supabase
+        .from('user_stats')
+        .upsert({
+          user_id: user.id,
+          highest_score: newHighest,
+          total_frags: newFrags,
+          total_deaths: newDeaths,
+          matches_played: newMatches,
+          updated_at: new Date().toISOString()
+        });
+
+      if (upsertErr) throw upsertErr;
+      setHighScore(newHighest);
+    } catch (err) {
+      console.error('Error saving user stats:', err);
+    }
+  }, [user]);
+
   // Keep mutable values synced with refs for use inside RAF/engine callbacks
   useEffect(() => { appStateRef.current = appState; }, [appState]);
   useEffect(() => { userRef.current = user; }, [user]);
@@ -200,49 +242,6 @@ export default function App() {
     };
   }, []);
 
-  // Save stats to Supabase on match completion
-  const saveStatsToSupabase = useCallback(async (score: number, deaths: number) => {
-    if (!user) return;
-    try {
-      const { data, error } = await supabase
-        .from('user_stats')
-        .select('highest_score, total_frags, total_deaths, matches_played')
-        .eq('user_id', user.id)
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        throw error;
-      }
-
-      const currentHighest = data ? data.highest_score : 0;
-      const currentFrags = data ? data.total_frags : 0;
-      const currentDeaths = data ? data.total_deaths : 0;
-      const currentMatches = data ? data.matches_played : 0;
-
-      const newHighest = Math.max(currentHighest, score);
-      const newFrags = currentFrags + score;
-      const newDeaths = currentDeaths + deaths;
-      const newMatches = currentMatches + 1;
-
-      const { error: upsertErr } = await supabase
-        .from('user_stats')
-        .upsert({
-          user_id: user.id,
-          highest_score: newHighest,
-          total_frags: newFrags,
-          total_deaths: newDeaths,
-          matches_played: newMatches,
-          updated_at: new Date().toISOString()
-        });
-
-      if (upsertErr) throw upsertErr;
-      setHighScore(newHighest);
-    } catch (err) {
-      console.error('Error saving user stats:', err);
-    }
-  }, [user]);
-
-
   // Main game tick animation frame — only runs physics, no game-over logic
   const tick = useCallback((timestamp: number) => {
     if (!lastTimeRef.current) {
@@ -315,7 +314,7 @@ export default function App() {
     }
     
     // Smooth reset controls states
-    keysRef.current = { w: false, s: false, a: false, d: false, space: false };
+    keysRef.current = { w: false, s: false, a: false, d: false, space: false, arrowleft: false, arrowright: false, arrowup: false, arrowdown: false };
     mouseDeltaRef.current = { dx: 0, dy: 0 };
     isMouseDownRef.current = false;
     
