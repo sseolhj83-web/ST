@@ -817,8 +817,8 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // Static, pre-allocated shared geometry and materials for all 3D red lightning bolts.
     // Minimizes memory creation and garbage collection pressure to maintain a solid 60+ FPS.
     const unitCylinderGeo = new THREE.CylinderGeometry(1.0, 1.0, 1.0, 4);
-    const boltMat = new THREE.MeshBasicMaterial({ color: '#f43f5e' }); // Intense glowing neon red
-    const branchMat = new THREE.MeshBasicMaterial({ color: '#ef4444' });
+    const boltMat = new THREE.MeshBasicMaterial({ color: '#fef9c3' }); // sparking fluorescent-white arc
+    const branchMat = new THREE.MeshBasicMaterial({ color: '#fde68a' });
 
     // Helper to generate an authentic, jagged, branching 3D red lightning bolt that stays high in the sky
     const createLightningBolt = (startX: number, startZ: number, endX: number, endZ: number): THREE.Group => {
@@ -895,10 +895,10 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       return group;
     };
 
-    // 1. Create Scene & The Upside Down dark background with subtle atmospheric fog
+    // 1. Create Scene & the sickly fluorescent-lit Backrooms haze
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#101222'); // Made background brighter for crisp visual target visibility
-    scene.fog = new THREE.FogExp2('#0f111e', 0.002); // Thin brightened ash fog for maximum tactical clarity
+    scene.background = new THREE.Color('#8a7f4a'); // hazy mustard-yellow backrooms air
+    scene.fog = new THREE.FogExp2('#7a6f42', 0.006); // thicker haze — corridors vanish into the same murk
     sceneRef.current = scene;
 
     // 2. Camera Setup (Generous 85-degree Quake-style Field of View)
@@ -917,11 +917,11 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // 4. Lighting Rig (Elevated cold atmospheric illumination for maximum gameplay visibility)
-    const ambientLight = new THREE.AmbientLight('#444a73', 5.8); // Higher neutral ambient light (returned to beautiful 5.8)
+    // 4. Lighting Rig (flat, oppressive buzzing-fluorescent illumination — no directional "sun" feel)
+    const ambientLight = new THREE.AmbientLight('#fef9c3', 6.2); // warm fluorescent wash
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight('#7482be', 8.2); // Directional sunlight (returned to beautiful 8.2)
+    const dirLight = new THREE.DirectionalLight('#fdf6b2', 6.0); // soft overhead fill, low-ceiling rooms don't need harsh directional sun
     dirLight.position.set(30, 80, 30);
     dirLight.castShadow = true;
     dirLight.shadow.mapSize.width = 1024; // Balanced quality/performance shadow resolution
@@ -935,50 +935,37 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     dirLight.shadow.bias = -0.0005; // Eliminates shadow acne artifacts
     scene.add(dirLight);
 
-    const accentColors = ['#dc2626', '#cd153f', '#7c3aed']; // Ominous red, dark raspberry crimson, deep purple
+    const accentColors = ['#fde68a', '#facc15', '#eab308']; // warm fluorescent flicker accents, no more red/purple horror lighting
     for (let i = 0; i < 3; i++) {
-      const pointLight = new THREE.PointLight(accentColors[i], 18, 55);
+      const pointLight = new THREE.PointLight(accentColors[i], 12, 55);
       pointLight.position.set((i - 1) * 20, 10, (i - 1) * -15);
       scene.add(pointLight);
     }
 
     const floorMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#1a1926'),
-      roughness: 0.90,
-      metalness: 0.01,
+      color: new THREE.Color('#9c9166'),
+      roughness: 0.92,
+      metalness: 0.0,
     });
 
-    // 5. Build static map geometry styled elegantly as the decayed Upside Down landscape with high visibility!
+    // 5. Build static map geometry — the Backrooms: damp yellow wallpaper, popcorn ceilings, buzzing tubes
     const map = getXonoticMap();
     map.walls.forEach(wall => {
-      if (wall.collisionOnly) return; // Invisible collision-only walls (buildings use their own Canvas meshes)
+      if (wall.collisionOnly) return; // Invisible collision-only walls
       const geometry = new THREE.BoxGeometry(wall.size.x, wall.size.y, wall.size.z);
-      
+
       let material: THREE.Material;
       if (wall.id === 'floor_main') {
         material = floorMat;
-      } else if (wall.id.startsWith('bridge') || wall.id.startsWith('center_spire')) {
-        // Visible dark maroon wooden/organic planks covered in spores
-        material = new THREE.MeshStandardMaterial({
-          color: new THREE.Color('#42222a'), // lighter greyish-maroon flesh-like wood tones
-          roughness: 0.85,
-          metalness: 0.05,
-        });
-      } else if (wall.id.startsWith('wall_')) {
-        // Ash-stained metallic grey obsidian stone walls
-        material = new THREE.MeshStandardMaterial({
-          color: new THREE.Color('#323247'),
-          roughness: 0.75,
-          metalness: 0.15,
-        });
       } else if (wall.emissive) {
-        // Bioluminescent red fleshy egg sacs / alien growths
-        material = new THREE.MeshBasicMaterial({ color: new THREE.Color('#ea580c') }); 
+        // Buzzing fluorescent light fixtures
+        material = new THREE.MeshBasicMaterial({ color: new THREE.Color(wall.color) });
       } else {
+        // Damp, worn yellow wallpaper / popcorn ceiling — matte, no gloss
         material = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(wall.color).multiplyScalar(0.7), // Richer colors for visual separation
-          roughness: 0.8,
-          metalness: 0.1,
+          color: new THREE.Color(wall.color),
+          roughness: 0.95,
+          metalness: 0.0,
         });
       }
 
@@ -989,12 +976,12 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       scene.add(mesh);
     });
 
-    // Subtle veins of the Upside Down grid (bioluminescent dark violet/red roots)
-    const gridHelper = new THREE.GridHelper(160, 160, '#581c87', '#120c1a');
+    // Faint carpet-tile seams
+    const gridHelper = new THREE.GridHelper(160, 80, '#7a7048', '#7a7048');
     gridHelper.position.y = 0.05;
     scene.add(gridHelper);
 
-    // --- FLOATING ASH / SPORES (The Upside Down Particle System with increased count) ---
+    // --- FLOATING DUST MOTES / MOLD SPORES drifting in the fluorescent light beams ---
     const particleCount = 750; // Raised dust density for drift richness
     const particleGeometry = new THREE.BufferGeometry();
     const particlePositions = new Float32Array(particleCount * 3);
@@ -1008,8 +995,8 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
 
     const particleMaterial = new THREE.PointsMaterial({
-      color: '#cbd5e1', // ash and dust floating particles
-      size: 0.16,
+      color: '#fef9c3', // dust motes floating in the fluorescent light
+      size: 0.14,
       transparent: true,
       opacity: 0.75,
       blending: THREE.AdditiveBlending,
@@ -1019,477 +1006,12 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     const ashParticles = new THREE.Points(particleGeometry, particleMaterial);
     scene.add(ashParticles);
 
-    // ── Dummy refs kept for animate-loop material switches ──
-    const trunkMat  = new THREE.MeshStandardMaterial({ color: '#16141a', roughness: 0.95 });
-    const foliageMat = new THREE.MeshStandardMaterial({ color: '#22c55e', roughness: 0.8 });
-    foliageMat.visible = false;
-    const vineMat   = new THREE.MeshStandardMaterial({ color: '#101d42', roughness: 0.9 });
-
-    // ═══════════════════════════════════════════════════
-    //   HAWKINS, INDIANA — 1980s American Rural Town
-    // ═══════════════════════════════════════════════════
-
-    // Shared materials
-    const mCream  = new THREE.MeshStandardMaterial({ color: '#ddd5b8', roughness: 0.85 });
-    const mBrick  = new THREE.MeshStandardMaterial({ color: '#9b4a35', roughness: 0.9 });
-    const mBlue   = new THREE.MeshStandardMaterial({ color: '#4a6fa5', roughness: 0.8 });
-    const mYellow = new THREE.MeshStandardMaterial({ color: '#c8a03a', roughness: 0.8 });
-    const mRoofDk = new THREE.MeshStandardMaterial({ color: '#3a3a2a', roughness: 0.9 });
-    const mRoofBr = new THREE.MeshStandardMaterial({ color: '#5c4a30', roughness: 0.9 });
-    const mWoodT  = new THREE.MeshStandardMaterial({ color: '#7a5c3a', roughness: 0.95 });
-    const mDoor   = new THREE.MeshStandardMaterial({ color: '#4a2c1a', roughness: 0.85 });
-    const mWin    = new THREE.MeshStandardMaterial({ color: '#9bc4e8', roughness: 0.1, metalness: 0.3, emissive: new THREE.Color('#3a72a8'), emissiveIntensity: 0.2 });
-    const mConc   = new THREE.MeshStandardMaterial({ color: '#a09080', roughness: 0.7 });
-    const mRoad   = new THREE.MeshStandardMaterial({ color: '#3a3a3a', roughness: 0.75 });
-    const mMkY    = new THREE.MeshStandardMaterial({ color: '#e8c040', roughness: 0.3, emissive: new THREE.Color('#b08020'), emissiveIntensity: 0.25 });
-    const mMkW    = new THREE.MeshStandardMaterial({ color: '#f0f0e0', roughness: 0.3, emissive: new THREE.Color('#c0c0b0'), emissiveIntensity: 0.12 });
-    const mPoleW  = new THREE.MeshStandardMaterial({ color: '#5c4828', roughness: 0.9 });
-    const mWireT  = new THREE.MeshStandardMaterial({ color: '#202020', roughness: 0.8 });
-    const mWhiteP = new THREE.MeshStandardMaterial({ color: '#f0ece0', roughness: 0.7 });
-    const mSignR  = new THREE.MeshStandardMaterial({ color: '#cc2020', roughness: 0.3, emissive: new THREE.Color('#880808'), emissiveIntensity: 0.35 });
-    const mSignW  = new THREE.MeshStandardMaterial({ color: '#fffff0', roughness: 0.3, emissive: new THREE.Color('#fffff0'), emissiveIntensity: 0.3 });
-    const mGrav   = new THREE.MeshStandardMaterial({ color: '#6a6058', roughness: 0.9 });
-    const mCarG   = new THREE.MeshStandardMaterial({ color: '#2d5a3a', roughness: 0.35, metalness: 0.5 });
-    const mCarB   = new THREE.MeshStandardMaterial({ color: '#253d6a', roughness: 0.35, metalness: 0.5 });
-    const mCarBe  = new THREE.MeshStandardMaterial({ color: '#c8a855', roughness: 0.4, metalness: 0.4 });
-    const mCarGl  = new THREE.MeshStandardMaterial({ color: '#88aacc', roughness: 0.1, metalness: 0.6, transparent: true, opacity: 0.65 });
-    const mCarTi  = new THREE.MeshStandardMaterial({ color: '#1a1a1a', roughness: 0.95 });
-    // Extra materials for building details
-    const mStone  = new THREE.MeshStandardMaterial({ color: '#888070', roughness: 0.85 }); // stone/mortar
-    const mAwnR   = new THREE.MeshStandardMaterial({ color: '#b82020', roughness: 0.7 });  // red awning
-    const mAwnW   = new THREE.MeshStandardMaterial({ color: '#f0ede0', roughness: 0.7 });  // white awning stripe
-    const mFlagR  = new THREE.MeshStandardMaterial({ color: '#cc1020', roughness: 0.5, emissive: new THREE.Color('#660810'), emissiveIntensity: 0.2 });
-    const mFlagW  = new THREE.MeshStandardMaterial({ color: '#f0f0e8', roughness: 0.5 });
-    const mFlagB  = new THREE.MeshStandardMaterial({ color: '#1a2a6a', roughness: 0.5 });
-    const mNeon   = new THREE.MeshStandardMaterial({ color: '#ffb020', roughness: 0.2, emissive: new THREE.Color('#cc8010'), emissiveIntensity: 0.8 }); // neon marquee
-    const mTheater = new THREE.MeshStandardMaterial({ color: '#2a1a0a', roughness: 0.8 }); // theater facade
-    const mFence  = new THREE.MeshStandardMaterial({ color: '#e8e4d8', roughness: 0.8 }); // white picket fence
-
-    // Box helper
-    const addB = (w: number, h: number, d: number, px: number, py: number, pz: number,
-                  mat: THREE.MeshStandardMaterial, parent: THREE.Object3D = scene, shad = true) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-      m.position.set(px, py, pz);
-      if (shad) { m.castShadow = true; m.receiveShadow = true; }
-      parent.add(m);
-      return m;
-    };
-
-    // ── ROADS ──
-    // Main Street (E-W, z=22) — full 160-unit width
-    addB(158, 0.12, 7,  0, 0.06, 22, mRoad, scene, false);
-    addB(158, 0.06, 1.5, 0, 0.03, 18.25, mConc, scene, false); // N shoulder
-    addB(158, 0.06, 1.5, 0, 0.03, 25.75, mConc, scene, false); // S shoulder
-    for (let rx = -77; rx < 77; rx += 5.5)
-      addB(3, 0.02, 0.2, rx, 0.14, 22, mMkY, scene, false);    // yellow center dashes
-    for (let rx = -77; rx < 77; rx += 4) {
-      addB(2.5, 0.02, 0.15, rx, 0.13, 18.6, mMkW, scene, false);
-      addB(2.5, 0.02, 0.15, rx, 0.13, 25.4, mMkW, scene, false);
-    }
-    // N-S connector (lab south gate → Main St.)
-    addB(5, 0.12, 7, 0, 0.06, 25.5, mRoad, scene, false);
-    // N-S side road (z: -78 → -25, connecting north areas)
-    addB(5, 0.12, 53, 0, 0.06, -51.5, mRoad, scene, false);
-    for (let rz = -77; rz < -25; rz += 5.5)
-      addB(0.2, 0.02, 3, 0, 0.14, rz, mMkY, scene, false);
-    // Maple Ave (E-W residential, z=55) — main residential street
-    addB(120, 0.12, 6, 0, 0.06, 55, mRoad, scene, false);
-    addB(120, 0.06, 1.4, 0, 0.03, 51.3, mConc, scene, false); // N shoulder
-    addB(120, 0.06, 1.4, 0, 0.03, 58.7, mConc, scene, false); // S shoulder
-    for (let rx = -59; rx < 59; rx += 5.5)
-      addB(3, 0.02, 0.2, rx, 0.14, 55, mMkY, scene, false);
-    // N-S west connector: x=-32, Main St (z=22) → Maple Ave (z=55)
-    addB(5, 0.12, 36, -32, 0.06, 38.5, mRoad, scene, false);
-    // N-S east connector: x=32
-    addB(5, 0.12, 36,  32, 0.06, 38.5, mRoad, scene, false);
-    // N-S west connector 남쪽 연장: Maple Ave (z=55) → 주거지 (z=78)
-    addB(5, 0.12, 23, -32, 0.06, 66.5, mRoad, scene, false);
-    // N-S east connector 남쪽 연장: Maple Ave (z=55) → 주거지 (z=78)
-    addB(5, 0.12, 23,  32, 0.06, 66.5, mRoad, scene, false);
-    // 북쪽 도로 → Main Street 연결: 연구소 서쪽 우회
-    // E-W 교차로 (z=-25): 북쪽 도로(x=0) → 우회도로(x=-20)
-    addB(22, 0.12, 5, -10, 0.06, -25, mRoad, scene, false);
-    // N-S 우회도로 (x=-20): z=-25 → Main Street (z=19)
-    addB(5, 0.12, 44, -20, 0.06, -3, mRoad, scene, false);
-
-    // ── UTILITY POLES helper ──
-    const buildPoles = (
-      positions: number[], axis: 'x' | 'z',
-      fixedA: number,
-      poleH = 10, armLen = 3.8
-    ) => {
-      positions.forEach((p, pi) => {
-        const px = axis === 'x' ? p : fixedA;
-        const pz = axis === 'z' ? p : fixedA;
-        addB(0.26, poleH, 0.26, px, poleH / 2, pz, mPoleW);
-        // crossarm
-        if (axis === 'x') addB(armLen, 0.18, 0.18, px, poleH - 0.8, pz, mPoleW);
-        else              addB(0.18, 0.18, armLen, px, poleH - 0.8, pz, mPoleW);
-        // insulators
-        [-armLen / 2.8, armLen / 2.8].forEach(off => {
-          const ix = axis === 'x' ? px + off : px;
-          const iz = axis === 'z' ? pz + off : pz;
-          addB(0.18, 0.28, 0.18, ix, poleH - 1.0, iz, mWhiteP);
-        });
-        // wire to next pole
-        if (pi < positions.length - 1) {
-          const np = positions[pi + 1];
-          const npx = axis === 'x' ? np : fixedA;
-          const npz = axis === 'z' ? np : fixedA;
-          const len = Math.abs(np - p);
-          const mx = (px + npx) / 2;
-          const mz = (pz + npz) / 2;
-          if (axis === 'x') addB(len, 0.04, 0.04, mx, poleH - 1.2, mz, mWireT, scene, false);
-          else              addB(0.04, 0.04, len, mx, poleH - 1.2, mz, mWireT, scene, false);
-          // second wire (lower)
-          if (axis === 'x') addB(len, 0.04, 0.04, mx, poleH - 1.8, mz, mWireT, scene, false);
-          else              addB(0.04, 0.04, len, mx, poleH - 1.8, mz, mWireT, scene, false);
-        }
-      });
-    };
-
-    // Main Street — south shoulder (z=26.5)
-    buildPoles([-72,-60,-48,-36,-24,-12,0,12,24,36,48,60,72], 'x', 26.5, 11, 4.5);
-    // Maple Ave — south shoulder (z=60)
-    buildPoles([-54,-42,-30,-18,-6,6,18,30,42,54], 'x', 60, 9, 3.5);
-    // N-S main road — east shoulder (x=3.5)
-    buildPoles([-72,-64,-56,-48,-40,-32], 'z', 3.5, 9, 3.2);
-    // N-S west connector — west shoulder (x=-37)
-    buildPoles([26,34,42,50], 'z', -37, 8, 3.0);
-    // N-S east connector — east shoulder (x=37)
-    buildPoles([26,34,42,50], 'z', 37, 8, 3.0);
-
-    // ── PARKED CARS ──
-    const buildCar = (px: number, pz: number, ry: number, bMat: THREE.MeshStandardMaterial) => {
-      const g = new THREE.Group();
-      g.position.set(px, 0, pz);
-      g.rotation.y = ry;
-      addB(4.5, 1.3, 2,  0, 0.85, 0, bMat, g);
-      addB(2.8, 0.85, 1.7, -0.2, 1.95, 0, bMat, g);
-      addB(0.12, 0.75, 1.5,  1.15, 1.88, 0, mCarGl, g, false);
-      addB(0.12, 0.65, 1.5, -1.55, 1.85, 0, mCarGl, g, false);
-      [[-1.5,-1.05],[-1.5,1.05],[1.2,-1.05],[1.2,1.05]].forEach(([wx,wz]) =>
-        addB(0.6, 0.6, 0.38, wx, 0.3, wz, mCarTi, g));
-      scene.add(g);
-    };
-    buildCar(-22, 18.3, 0,       mCarG);
-    buildCar( 14, 26,   Math.PI, mCarB);
-    buildCar( -8, 26,   Math.PI, mCarBe);
-    buildCar( 42, -18,  0,       mCarBe); // at gas station
-
-    // ── GABLED ROOF HELPER (ExtrudeGeometry triangle, rotated to sit on walls) ──
-    const makeGabledRoof = (bW: number, bD: number, wallTopY: number, roofH: number,
-                            mat: THREE.MeshStandardMaterial): THREE.Mesh => {
-      const dOver = bD / 2 + 0.55;
-      const L = bW + 1.1;
-      const profile = new THREE.Shape();
-      profile.moveTo(-dOver, 0);
-      profile.lineTo(0, roofH);
-      profile.lineTo(dOver, 0);
-      profile.closePath();
-      const geo = new THREE.ExtrudeGeometry(profile, { depth: L, bevelEnabled: false });
-      geo.rotateY(Math.PI / 2);
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.castShadow = true;
-      mesh.position.set(-L / 2, wallTopY, 0);
-      return mesh;
-    };
-
-    // ── 80s AMERICAN RANCH HOUSE BUILDER ──
-    const buildRanch = (px: number, pz: number, ry: number,
-                        wMat: THREE.MeshStandardMaterial, rMat: THREE.MeshStandardMaterial) => {
-      const g = new THREE.Group();
-      g.position.set(px, 0, pz);
-      g.rotation.y = ry;
-      const bW = 11, bH = 3.8, bD = 8, foundH = 0.45;
-      const wallTop = bH + foundH;
-      // Foundation slab
-      addB(bW + 0.6, foundH + 0.1, bD + 0.6, 0, (foundH + 0.1) / 2, 0, mConc, g);
-      // Main walls
-      addB(bW, bH, bD, 0, bH / 2 + foundH, 0, wMat, g);
-      // Gabled roof
-      g.add(makeGabledRoof(bW, bD, wallTop, 2.6, rMat));
-      // Chimney
-      addB(0.9, 3.2, 0.9, 3.6, wallTop + 1.2, 0.6, mBrick, g);
-      // Porch deck & step
-      addB(5.2, 0.2, 2.5,  0, foundH + 0.1,  bD / 2 + 1.25, mConc, g);
-      addB(5.5, 0.1, 0.15, 0, foundH + 0.2,  bD / 2 + 2.55, mConc, g);
-      // Porch columns
-      [-2.1, 2.1].forEach(ox =>
-        addB(0.22, 2.5, 0.22, ox, foundH + 1.25, bD / 2 + 2.45, mWoodT, g));
-      // Porch railings
-      addB(4.6, 0.12, 0.1, 0, foundH + 2.55, bD / 2 + 2.45, mWoodT, g);
-      addB(4.6, 0.10, 0.1, 0, foundH + 0.75, bD / 2 + 2.45, mWoodT, g);
-      // Porch roof overhang
-      addB(5.6, 0.18, 2.8, 0, wallTop - 0.5, bD / 2 + 1.4, rMat, g);
-      // Front door + wood frame
-      addB(1.15, 2.5,  0.2,  0, foundH + 1.25,  bD / 2 + 0.01, mDoor, g);
-      addB(1.55, 2.85, 0.14, 0, foundH + 1.425, bD / 2 + 0.04, mWoodT, g);
-      // Front windows with frames & shutters
-      [-3.3, 3.3].forEach(ox => {
-        addB(1.6,  1.3,  0.18, ox, foundH + 2.3,  bD / 2 + 0.01, mWin, g);
-        addB(2.05, 1.65, 0.12, ox, foundH + 2.3,  bD / 2 + 0.04, mWoodT, g);
-        [-1.12, 1.12].forEach(sx =>
-          addB(0.38, 1.3, 0.1, ox + sx, foundH + 2.3, bD / 2 + 0.09, mRoofDk, g));
-      });
-      // Side windows
-      addB(0.14, 1.2, 1.5,  bW / 2 + 0.01, foundH + 2.2, 0, mWin, g);
-      addB(0.14, 1.2, 1.5, -bW / 2 - 0.01, foundH + 2.2, 0, mWin, g);
-      // Concrete driveway
-      addB(3.5, 0.08, bD + 4, bW / 2 + 1.75, 0.04, -2.0, mConc, g);
-      // Mailbox post + box
-      addB(0.12, 1.2, 0.12, bW / 2 + 6.5, 0.6, bD / 2 + 2.0, mWoodT, g);
-      addB(0.6,  0.4,  0.9, bW / 2 + 6.5, 1.3, bD / 2 + 2.0, mSignR, g);
-      // White picket fence (front yard, flanking porch)
-      const fenceZ = bD / 2 + 3.4;
-      const fenceW = 8;
-      addB(fenceW, 0.12, 0.1, -bW / 2 - 1.2, 1.2, fenceZ, mFence, g); // left top rail
-      addB(fenceW, 0.12, 0.1, -bW / 2 - 1.2, 0.6, fenceZ, mFence, g); // left bot rail
-      for (let pi = 0; pi < 8; pi++)
-        addB(0.1, 1.1, 0.1, -bW / 2 - 1.2 - fenceW / 2 + pi * 1.15, 0.55, fenceZ, mFence, g);
-      addB(fenceW, 0.12, 0.1,  bW / 2 + 1.2, 1.2, fenceZ, mFence, g); // right top rail
-      addB(fenceW, 0.12, 0.1,  bW / 2 + 1.2, 0.6, fenceZ, mFence, g);
-      for (let pi = 0; pi < 8; pi++)
-        addB(0.1, 1.1, 0.1, bW / 2 + 1.2 - fenceW / 2 + pi * 1.15, 0.55, fenceZ, mFence, g);
-      scene.add(g);
-    };
-
-    // ── HAWKINS VILLAGE LAYOUT — buildings spread across the map ──
-    // Maple Ave south side row (z=66, facing north toward road at z=55)
-    buildRanch(-52, 66, Math.PI, mCream,  mRoofDk); // Wheeler house
-    buildRanch(-16, 66, Math.PI, mBrick,  mRoofBr); // Henderson house
-    buildRanch( 16, 66, Math.PI, mYellow, mRoofDk); // Sinclair house
-    buildRanch( 52, 66, Math.PI, mBlue,   mRoofDk); // Hargrove house
-    // Maple Ave north side (z=42, facing south toward road)
-    buildRanch(-52, 42, 0, mConc,  mRoofBr); // Byers house
-    buildRanch( 52, 42, 0, mCream, mRoofBr); // Kellerman house
-    // Rural outskirts (axis-aligned)
-    buildRanch( 65, -62, 0, mYellow, mRoofBr); // Abandoned farmhouse
-    buildRanch(-62, -44, 0, mCream,  mRoofDk); // Outer ranch
-
-    // ── MELVALD'S GENERAL STORE (x=20, z=36) ──
-    {
-      const g = new THREE.Group();
-      g.position.set(20, 0, 36);
-      addB(14, 5, 10,  0, 2.5, 0,      mBrick, g);
-      addB(15, 1, 11,  0, 5.5, 0,      mBrick, g);    // parapet
-      // Sign board
-      addB(12, 1.5, 0.4, 0, 5.0, 5.2,  mSignR, g);
-      addB(10, 0.8, 0.1,  0, 5.0, 5.42, mSignW, g);
-      // Striped awning (alternating red/white panels)
-      [-4.5,-1.5,1.5,4.5].forEach((ox, i) =>
-        addB(2.8, 0.25, 2.2, ox, 4.05, 6.1, i % 2 === 0 ? mAwnR : mAwnW, g));
-      addB(14, 0.22, 0.3, 0, 4.05, 7.25, mAwnR, g); // awning valance
-      // Front windows (3) with wood frames
-      [-4, 0, 4].forEach(ox => {
-        addB(2.5, 2, 0.2, ox, 2.0, 5.1, mWin, g);
-        addB(0.15, 2.1, 0.12, ox - 1.35, 2.0, 5.14, mWoodT, g); // left jamb
-        addB(0.15, 2.1, 0.12, ox + 1.35, 2.0, 5.14, mWoodT, g); // right jamb
-      });
-      addB(1.4, 2.8, 0.2, 0, 1.4, 5.1, mDoor, g);
-      // Sidewalk + step + barrel + crates
-      addB(18, 0.12, 3.5, 0, 0.06, 7.5, mConc, g);
-      addB(14, 0.1, 0.12, 0, 0.1, 9.3, mConc, g);   // curb
-      addB(0.9, 1.3, 0.9, 5.5, 0.65, 7.0, mWoodT, g); // barrel
-      addB(0.7, 0.12, 0.7, 5.5, 1.36, 7.0, mConc, g);  // barrel lid
-      addB(1.2, 0.8, 0.9, -5.2, 0.4, 7.2, mWoodT, g);  // crate A
-      addB(1.0, 0.8, 1.0, -5.3, 1.2, 7.2, mWoodT, g);  // crate B stacked
-      scene.add(g);
-    }
-
-    // ── HAWKINS GAS STATION (x=42, z=-15) ──
-    {
-      const g = new THREE.Group();
-      g.position.set(42, 0, -15);
-      addB(7, 4, 6,   0, 2, 0,   mWhiteP, g);
-      addB(8, 0.6, 7, 0, 4.3, 0, mRoofDk, g);
-      addB(18, 0.5, 10, 0, 4.5, 0, mConc, g);
-      [-7, 7].forEach(ox => addB(0.35, 4.5, 0.35, ox, 2.25, 0, mConc, g));
-      [-3, 3].forEach(ox => {
-        addB(0.9, 2.2, 0.55, ox, 1.1, 4.5, mSignR, g);
-        addB(0.6, 0.5, 0.1,  ox, 1.6, 4.84, mSignW, g);
-      });
-      addB(0.2, 9, 0.2,   -8, 4.5, 0,    mPoleW, g);
-      addB(3.5, 2.5, 0.4, -8, 9.5, 0,    mSignR, g);
-      addB(3, 1.8, 0.1,   -8, 9.5, 0.26, mSignW, g);
-      addB(1.2, 2.5, 0.2,  2, 1.25, 3.1, mDoor, g);
-      addB(1.5, 1.5, 0.2, -1.5, 2.0, 3.1, mWin, g);
-      addB(20, 0.1, 12, 0, 0.05, 0, mGrav, g, false);
-      scene.add(g);
-    }
-
-    // ── FIRST COMMUNITY CHURCH (x=-42, z=-18) ──
-    {
-      const g = new THREE.Group();
-      g.position.set(-42, 0, -18);
-      const naveW = 10, naveH = 5.5, naveD = 9;
-      addB(naveW, naveH, naveD, 0, naveH / 2, 0, mWhiteP, g);
-      g.add(makeGabledRoof(naveW, naveD, naveH, 2.8, mRoofDk));
-      addB(3.5, 8, 3.5, 0, 4,    -3.5, mWhiteP, g);
-      addB(2.5, 0.8, 2.5, 0, 8.4, -3.5, mRoofDk, g);
-      addB(1.5, 1.5, 1.5, 0, 9.55,-3.5, mRoofDk, g);
-      addB(0.5, 2, 0.5,   0, 11.3,-3.5, mRoofDk, g);
-      addB(0.2, 1.5, 0.2, 0, 13.1,-3.5, mSignW, g);
-      addB(1.2, 0.2, 0.2, 0, 13.2,-3.5, mSignW, g);
-      [-2.8, 2.8].forEach(ox => addB(1.2, 2, 0.2, ox, 3.0, naveD / 2 + 0.1, mWin, g));
-      addB(1.4, 3, 0.2, 0, 1.5, naveD / 2 + 0.1, mDoor, g);
-      addB(4, 0.35, 1.5, 0, 0.175, naveD / 2 + 1, mConc, g);
-      scene.add(g);
-    }
-
-    // ── HAWKINS MIDDLE SCHOOL (x=-35, z=-52) ──
-    {
-      const g = new THREE.Group();
-      g.position.set(-35, 0, -52);
-      // Main building + east wing
-      addB(22, 6, 12, 0, 3, 0, mBrick, g);
-      addB(23, 0.7, 13, 0, 6.35, 0, mRoofDk, g);
-      addB(10, 5, 8, 16, 2.5, -2, mBrick, g);   // east wing
-      addB(11, 0.6, 9, 16, 5.3, -2, mRoofDk, g);
-      // Windows (main facade)
-      [-8,-4,0,4,8].forEach(ox =>
-        [1.5, 4].forEach(oy => addB(1.6, 1.4, 0.18, ox, oy, 6.1, mWin, g)));
-      // East wing windows
-      [13,17,21].forEach(ox =>
-        [1.5, 3.5].forEach(oy => addB(1.4, 1.2, 0.18, ox, oy, 2.1, mWin, g)));
-      // Main entrance
-      [-0.7, 0.7].forEach(ox => addB(0.9, 2.6, 0.2, ox, 1.3, 6.1, mDoor, g));
-      addB(5, 0.4, 2,  0, 3.5, 7.2, mConc, g);
-      [-2, 2].forEach(ox => addB(0.3, 3.5, 0.3, ox, 1.75, 7.2, mConc, g));
-      // Sign
-      addB(10, 1.5, 0.4, 0, 5.5, 6.2, mSignR, g);
-      addB(9, 1.0, 0.1,  0, 5.5, 6.42, mSignW, g);
-      // Flag pole + flag
-      addB(0.15, 13, 0.15, -14, 6.5, 5, mPoleW, g);
-      addB(3.0, 0.6, 0.06, -12.5, 12.4, 5, mFlagR, g);
-      addB(3.0, 0.6, 0.06, -12.5, 11.8, 5, mFlagW, g);
-      addB(3.0, 0.6, 0.06, -12.5, 11.2, 5, mFlagR, g);
-      addB(1.2, 1.8, 0.07, -13.1, 11.8, 5, mFlagB, g);
-      // Basketball hoop (pole + backboard + rim)
-      addB(0.2, 5.5, 0.2, -18, 2.75, -8, mConc, g);   // pole
-      addB(1.8, 1.2, 0.1, -17.4, 5.8, -8, mWhiteP, g); // backboard
-      addB(1.2, 0.12, 1.2, -17.4, 5.1, -8, mSignR, g, false); // rim (square approx)
-      // Parking lot + chain-link fence posts
-      addB(22, 0.1, 10, 0, 0.05, -9.5, mGrav, g, false);
-      for (let fx = -11; fx <= 11; fx += 3.5)
-        addB(0.12, 2.0, 0.12, fx, 1.0, -15, mConc, g);
-      addB(23, 0.1, 0.1, 0, 2.1, -15, mWireT, g, false); // top wire
-      addB(23, 0.1, 0.1, 0, 1.35, -15, mWireT, g, false);
-      scene.add(g);
-    }
-
-    // ── HAWKINS POLICE DEPARTMENT (x=-15, z=36) ──
-    {
-      const g = new THREE.Group();
-      g.position.set(-15, 0, 36);
-      addB(12, 4.5, 9, 0, 2.25, 0, mBrick, g);
-      addB(13, 0.7, 10, 0, 4.85, 0, mRoofDk, g);
-      // Steps + entrance canopy
-      addB(6, 0.2, 2.0, 0, 0.1, 5.5, mConc, g);
-      addB(6, 0.15, 0.1, 0, 0.3, 6.55, mConc, g);   // step edge
-      addB(7, 0.18, 2.2, 0, 3.5, 5.6, mConc, g);    // entry canopy
-      [-2.8, 2.8].forEach(ox => addB(0.25, 3.5, 0.25, ox, 1.75, 5.6, mConc, g)); // canopy posts
-      // Sign
-      addB(10, 1.5, 0.4, 0, 4.2, 4.7, mSignR, g);
-      addB(9,  0.8, 0.1,  0, 4.2, 4.95, mSignW, g);
-      // Barred windows (windows + bars)
-      [-3.5, 3.5].forEach(ox => {
-        addB(1.5, 1.4, 0.2, ox, 2.2, 4.6, mWin, g);
-        [-0.45, 0, 0.45].forEach(bx => addB(0.08, 1.4, 0.12, ox + bx, 2.2, 4.65, mConc, g));
-      });
-      addB(1.2, 2.6, 0.2, 0, 1.3, 4.6, mDoor, g);
-      // American flag pole + flag panels
-      addB(0.15, 11, 0.15, 8, 5.5, 3.5, mPoleW, g);
-      addB(3.5, 0.7, 0.06, 9.75, 10.5, 3.5, mFlagR, g);
-      addB(3.5, 0.7, 0.06, 9.75, 9.8, 3.5, mFlagW, g);
-      addB(3.5, 0.7, 0.06, 9.75, 9.1, 3.5, mFlagR, g);
-      addB(1.4, 2.1, 0.07, 8.7, 9.8, 3.5, mFlagB, g);  // blue canton
-      // Parking lot
-      addB(14, 0.1, 9, 0, 0.05, -8, mGrav, g, false);
-      [-4.5, 0, 4.5].forEach(lx => addB(0.12, 0.05, 8, lx + 2.25, 0.12, -8, mMkW, g, false));
-      scene.add(g);
-    }
-
-    // ── HAWKINS PUBLIC LIBRARY — with CLOCK TOWER (x=55, z=-32) ──
-    // The visual heart of downtown Hawkins (inspired by Butts County Probate Court)
-    {
-      const g = new THREE.Group();
-      g.position.set(55, 0, -32);
-      // Main building body (neoclassical / brick civic)
-      addB(16, 5.5, 12, 0, 2.75, 0, mBrick, g);
-      addB(17, 0.8, 13, 0, 5.9, 0, mConc, g);     // cornice
-      // Front portico with columns
-      addB(12, 6.5, 3.5, 0, 3.25, 7.75, mStone, g);   // portico base
-      [-4, -1.3, 1.3, 4].forEach(cx =>
-        addB(0.55, 6.5, 0.55, cx, 3.25, 9, mStone, g)); // 4 columns
-      addB(12.5, 0.5, 4, 0, 6.75, 7.75, mStone, g);   // entablature
-      // Front door (double)
-      [-0.55, 0.55].forEach(dx => addB(0.7, 2.8, 0.2, dx, 1.4, 7.0, mDoor, g));
-      // Fanlight above door
-      addB(1.8, 0.6, 0.2, 0, 3.15, 7.0, mWin, g);
-      // Arched windows on facade
-      [-5.5, 0, 5.5].forEach(ox => {
-        addB(2.2, 2.5, 0.2, ox, 3.5, 6.1, mWin, g);
-        addB(2.5, 0.3, 0.14, ox, 4.9, 6.14, mConc, g); // arch cap
-      });
-      // Broad entrance steps
-      [0, 1, 2].forEach(step =>
-        addB(14 - step * 0.8, 0.22, 1.2, 0, step * 0.22, 7.65 + step * 1.2 + 0.6, mConc, g));
-      // ── CLOCK TOWER (Hawkins landmark) ──
-      addB(4.5, 10, 4.5, 0, 8, -0.5, mStone, g);      // tower shaft
-      addB(5.0, 0.5, 5.0, 0, 13.25, -0.5, mConc, g);  // clock band
-      // Clock faces (4 sides)
-      [[0, 0, 5.5 / 2 + 0.26], [0, 0, -(5.5 / 2 + 0.26)],
-       [5.5 / 2 + 0.26, 0, 0], [-(5.5 / 2 + 0.26), 0, 0]].forEach(([cx, cy, cz]) =>
-        addB(Math.abs(cz) > 0.5 ? 3.5 : 0.2, 3.5, Math.abs(cz) > 0.5 ? 0.2 : 3.5,
-             cx, 13.25, cz, mWin, g));
-      addB(5.2, 0.5, 5.2, 0, 15.25, -0.5, mConc, g); // belfry cornice
-      addB(3.2, 4.5, 3.2, 0, 17.75, -0.5, mRoofDk, g); // pyramid spire base
-      addB(0.5, 2.5, 0.5, 0, 20.75, -0.5, mRoofDk, g); // spire tip
-      addB(0.15, 1.5, 0.15, 0, 22.5, -0.5, mPoleW, g); // flagpole on tower
-      // Side wings
-      [-8, 8].forEach(wx => {
-        addB(4, 4, 10, wx, 2, 0, mBrick, g);           // wing
-        addB(4.5, 0.6, 10.5, wx, 4.3, 0, mConc, g);   // wing cornice
-        addB(2.5, 2, 0.2, wx, 2.2, 5.1, mWin, g);     // wing window
-      });
-      // Library sign on portico
-      addB(9, 1.0, 0.15, 0, 5.6, 9.55, mSignW, g);
-      // Sidewalk / plaza
-      addB(22, 0.1, 8, 0, 0.05, 12, mConc, g, false);
-      scene.add(g);
-    }
-
-    // ── HAWK THEATER (x=20, z=8) — between lab and Main St, iconic 80s cinema ──
-    {
-      const g = new THREE.Group();
-      g.position.set(20, 0, 8);
-      // Facade body
-      addB(14, 7, 8, 0, 3.5, 0, mTheater, g);
-      addB(15, 0.8, 9, 0, 7.4, 0, mTheater, g);     // parapet
-      // Vertical marquee tower center
-      addB(4, 11, 1.0, 0, 5.5, 4.6, mTheater, g);   // marquee structure
-      addB(3.6, 10, 0.2, 0, 5.5, 5.15, mNeon, g);   // neon front face
-      // MARQUEE box jutting out
-      addB(8, 3.5, 3, 0, 3.8, 6.0, mTheater, g);    // marquee box
-      addB(8.5, 0.2, 3.2, 0, 5.55, 6.0, mNeon, g);  // neon top
-      addB(8.5, 0.2, 3.2, 0, 2.05, 6.0, mNeon, g);  // neon bottom
-      [-3.8, 3.8].forEach(ox => addB(0.2, 3.5, 3.2, ox, 3.8, 6.0, mNeon, g)); // sides
-      // Ticket booth protrusion
-      addB(3, 3.5, 2.5, 0, 1.75, 5.75, mConc, g);
-      addB(1.0, 2.2, 0.2, 0, 1.1, 7.0, mWin, g);   // ticket window
-      // Windows (upper, flanking marquee)
-      [-5, 5].forEach(ox => addB(2.2, 2.2, 0.2, ox, 4.5, 4.1, mWin, g));
-      // Doors (double)
-      [-1.2, 1.2].forEach(dx => addB(0.9, 2.5, 0.2, dx, 1.25, 4.1, mDoor, g));
-      // Sidewalk
-      addB(18, 0.1, 4, 0, 0.05, 6.5, mConc, g, false);
-      scene.add(g);
-    }
+    // Village geometry removed — the map is now generated as a Backrooms maze directly in
+    // xonoticMap.ts and rendered generically by the wall loop above.
 
     // --- THE GATE / DIMENSIONAL PORTAL (Behind Spawn point on North Wall) ---
     const portalGroup = new THREE.Group();
-    portalGroup.position.set(-28, 15.5, -34.5); // perfect eye height directly on the roof platform (spawn at -28, 14.5, -28)
+    portalGroup.position.set(-28, 15.5, -34.5); // suspended near the top of the ceiling vent shaft
     portalGroup.scale.set(0.55, 1.7, 1.0); // Pre-scaled into a vertical human / demon eye shape!
 
     // Outer meaty-flesh border with named material
@@ -1599,12 +1121,12 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     const _finalGunPos = new THREE.Vector3();
     const _lookTarget = new THREE.Vector3();
     const _targetLook = new THREE.Vector3();
-    const _colorBg1 = new THREE.Color('#101222');
-    const _colorBg2 = new THREE.Color('#500305');
-    const _colorFog1 = new THREE.Color('#0f111e');
-    const _colorFog2 = new THREE.Color('#320204');
-    const _colorDir1 = new THREE.Color('#7482be');
-    const _colorDir2 = new THREE.Color('#f43f5e');
+    const _colorBg1 = new THREE.Color('#4a4a30');
+    const _colorBg2 = new THREE.Color('#fef9c3');
+    const _colorFog1 = new THREE.Color('#3f3f28');
+    const _colorFog2 = new THREE.Color('#f5edb0');
+    const _colorDir1 = new THREE.Color('#c9c98a');
+    const _colorDir2 = new THREE.Color('#fffbe0');
 
     let lastTime = performance.now();
     let botAnimTime = 0;
@@ -1619,23 +1141,17 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
 
       const isPeaceful = stateVal.dimension === 'peaceful';
 
-      // Dynamically override material characteristics based on dimension (Overworld vs Upside Down)
+      // Dynamically override material characteristics based on dimension:
+      // "peaceful" = dry Level 0 (classic yellow rooms, buzzing fluorescents) vs
+      // "upside_down" = a damp, moldy flooded sublevel (darker, decaying carpet, thick spores)
       if (isPeaceful) {
-        // Green lush ivy vines
-        vineMat.color.set('#22c55e');
-        vineMat.roughness = 0.8;
-        // Warm brown healthy wood trees
-        trunkMat.color.set('#78350f');
-        // No foliage in Hawkins (replaced by buildings)
-        foliageMat.visible = false;
-        // Dry Indiana grass ground
-        floorMat.color.set('#6b7c45');
-        // NO floating dust/spores in the peaceful world!
-        ashParticles.visible = false;
-        // Bright golden dandelion spores
-        particleMaterial.color.set('#fef08a');
-        particleMaterial.size = 0.22;
-        // Dimensional portal color must look EXACTLY the same as in the upside-down world (ominous red blood/orange eye shape)
+        // Dry mustard-yellow carpet
+        floorMat.color.set('#9c9166');
+        // Dust motes drifting through the fluorescent light beams
+        ashParticles.visible = true;
+        particleMaterial.color.set('#fef9c3');
+        particleMaterial.size = 0.14;
+        // Dimensional portal color must look EXACTLY the same in both sublevels (ominous red blood/orange eye shape)
         portalOuterMat.color.set('#160408');
         portalInnerMat.color.set('#45060d');
         portalCoreMat.color.set('#e11d48');
@@ -1644,20 +1160,12 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           portalPointLight.color.set('#f43f5e');
         }
       } else {
-        // Dark creepy organic violet-blue vines
-        vineMat.color.set('#101d42');
-        vineMat.roughness = 0.9;
-        // Burnt charcoal black wood trees
-        trunkMat.color.set('#16141a');
-        // Foliage is barren in the Upside Down
-        foliageMat.visible = false;
-        // Decayed dark violet-black earth ground
-        floorMat.color.set('#1a1926');
-        // Show ash/dust spores in the scary Upside Down
+        // Decayed, water-damaged olive-black carpet
+        floorMat.color.set('#3a3624');
+        // Thicker mold spores hanging in the damp air
         ashParticles.visible = true;
-        // Dull ash gray falling spores
-        particleMaterial.color.set('#cbd5e1');
-        particleMaterial.size = 0.16;
+        particleMaterial.color.set('#8a9b6e');
+        particleMaterial.size = 0.2;
         // Ominous blood red/orange gate rings
         portalOuterMat.color.set('#160408');
         portalInnerMat.color.set('#45060d');
@@ -2155,7 +1663,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           return true;
         });
 
-        // I. Drifting Ash/Spores in the Upside Down style weightless dust - optimized update loop with high-speed LUT lookups
+        // I. Drifting dust motes / mold spores - optimized update loop with high-speed LUT lookups
         if (ashParticles && ashParticles.visible) {
           const posAttr = ashParticles.geometry.attributes.position as THREE.BufferAttribute;
           const arr = posAttr.array as Float32Array;
@@ -2192,19 +1700,19 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           portalPointLight.intensity = 14.0 + Math.sin(now * 0.008) * 4.0;
         }
 
-        // K. Atmosphere rendering: Lightning in Upside Down, Serene Sunshine in Peaceful Overworld
+        // K. Atmosphere rendering: steady fluorescent hum in Level 0, failing/sparking fixtures in the moldy sublevel
         if (isPeaceful) {
-          // Beautiful Overworld sunshine day! No random scary lightning storms!
-          (scene.background as THREE.Color).set('#bae6fd'); // bright blue sky
+          // Level 0 — steady, dry, hazy mustard-yellow fluorescent light. No flicker.
+          (scene.background as THREE.Color).set('#8a7f4a');
           if (scene.fog) {
-            (scene.fog as THREE.FogExp2).color.set('#e0f2fe'); // lovely warm sky fog
+            (scene.fog as THREE.FogExp2).color.set('#7a6f42');
           }
-          dirLight.color.set('#fda4af'); // beautiful golden sunset sun illumination
-          dirLight.intensity = 11.5;     // bright warm sunlight
-          ambientLight.color.set('#fef08a'); // sun rays ambient
-          ambientLight.intensity = 9.8;
+          dirLight.color.set('#fdf6b2');
+          dirLight.intensity = 6.0;
+          ambientLight.color.set('#fef9c3');
+          ambientLight.intensity = 6.2;
 
-          // Make sure lightning is removed when transitioning to peaceful overworld
+          // Make sure sparking-fixture effects are cleared when transitioning back to Level 0
           if (activeLightnings.length > 0) {
             activeLightnings.forEach(bolt => {
               scene.remove(bolt);
@@ -2212,9 +1720,9 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
             activeLightnings.length = 0;
           }
         } else {
-          // Standard Upside Down mode with occasional red lightning storm strikes
-          ambientLight.color.set('#444a73'); // Restore default ambient light color for Upside Down!
-          
+          // Damp sublevel — dimmer greenish-olive haze with periodic failing-light sparks/flicker
+          ambientLight.color.set('#6b7048');
+
           const lightningPeriod = 7000;
           const lightningLen = 500; // Duration of flash is half a second
           const timeOffset = now % lightningPeriod;
@@ -2222,8 +1730,8 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           if (timeOffset < lightningLen) {
             const ratio = timeOffset / lightningLen;
             let strobeIntensity = 0;
-            
-            // Double rapid lightning fire pattern (Initial blast, minor dim, second massive roar)
+
+            // Double rapid strobe pattern (Initial blast, minor dim, second massive roar)
             if (ratio < 0.18) {
               strobeIntensity = ratio / 0.18;
             } else if (ratio < 0.35) {
@@ -2234,7 +1742,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
               strobeIntensity = 1.0 - (ratio - 0.60) / 0.40;
             }
 
-            // Spawn genuine 3D branching red lightning bolt meshes on strike commencement!
+            // Spawn a couple of sparking-wire arc meshes on strike commencement!
             if (activeLightnings.length === 0) {
               const px1 = (Math.random() - 0.5) * 56;
               const pz1 = (Math.random() - 0.5) * 56;
@@ -2249,21 +1757,21 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
               activeLightnings.push(bolt1, bolt2);
             }
 
-            // Rapidly flicker lightning visibility for visual impact
+            // Rapidly flicker visibility for a failing-fixture strobe effect
             activeLightnings.forEach(b => {
               b.visible = Math.random() > 0.16;
             });
 
-            // Transform scene background & fog into a horrific storm blood red - using pre-allocated Colors
+            // Dip background & fog toward a sickly dark olive-black — using pre-allocated Colors
             (scene.background as THREE.Color).lerpColors(_colorBg1, _colorBg2, strobeIntensity);
             if (scene.fog) {
               (scene.fog as THREE.FogExp2).color.lerpColors(_colorFog1, _colorFog2, strobeIntensity);
             }
             dirLight.color.lerpColors(_colorDir1, _colorDir2, strobeIntensity);
-            dirLight.intensity = 8.2 + strobeIntensity * 18.0; // Returned to baseline intensity (8.2 baseline)
-            ambientLight.intensity = 5.8 + strobeIntensity * 4.5; // Returned to baseline intensity (5.8 baseline)
+            dirLight.intensity = 4.5 + strobeIntensity * 10.0;
+            ambientLight.intensity = 3.5 + strobeIntensity * 3.0;
           } else {
-            // Clean up lightning meshes after standard lightning duration
+            // Clean up spark meshes after the strobe duration
             if (activeLightnings.length > 0) {
               activeLightnings.forEach(bolt => {
                 scene.remove(bolt);
@@ -2271,14 +1779,14 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
               activeLightnings.length = 0;
             }
 
-            // Standard slightly brightened dark violet atmosphere for high-visibility gameplay (Returned to baseline brightness as requested)
-            (scene.background as THREE.Color).set('#101222');
+            // Standard dim, damp sublevel atmosphere
+            (scene.background as THREE.Color).set('#4a4a30');
             if (scene.fog) {
-              (scene.fog as THREE.FogExp2).color.set('#0f111e');
+              (scene.fog as THREE.FogExp2).color.set('#3f3f28');
             }
-            dirLight.color.set('#7482be');
-            dirLight.intensity = 8.2; // Beautiful baseline visibility
-            ambientLight.intensity = 5.8; // Beautiful baseline visibility
+            dirLight.color.set('#c9c98a');
+            dirLight.intensity = 4.5;
+            ambientLight.intensity = 3.5;
           }
         }
 
@@ -2332,21 +1840,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
 
         particleGeometry.dispose();
         particleMaterial.dispose();
-
-        // Dispose of shared tree and vine geometries to prevent resource leakage on unmount
-        trunkGeo.dispose();
-        branchGeo1.dispose();
-        branchGeo2.dispose();
-        leafGeoTop.dispose();
-        leafGeoBranch.dispose();
-        trunkMat.dispose();
-        foliageMat.dispose();
-
-        vineGeoVertical.dispose();
-        vineGeoHorizX.dispose();
-        vineGeoHorizZ.dispose();
-        vineGeoClimb.dispose();
-        vineMat.dispose();
 
         renderer.dispose();
       } catch (err) {

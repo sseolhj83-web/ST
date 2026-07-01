@@ -250,7 +250,7 @@ export class XonoticEngine {
 
     this.pushFrag(
       'PORTAL',
-      `${newDim === 'peaceful' ? 'Peaceful Overworld' : 'The Upside Down'}`,
+      `${newDim === 'peaceful' ? 'Level 0' : 'Flooded Sublevel'}`,
       'laser'
     );
   }
