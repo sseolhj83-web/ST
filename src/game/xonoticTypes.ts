@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type WeaponType = 'laser' | 'vaporizer' | 'rocket' | 'electro' | 'grenade';
+export type WeaponType = 'laser' | 'vaporizer' | 'rocket' | 'electro' | 'grenade' | 'flamethrower';
 
 export interface Weapon {
   type: WeaponType;

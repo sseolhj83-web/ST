@@ -57,6 +57,7 @@ export class XonoticEngine {
           rocket: { type: 'rocket', name: '로켓 런처', ammo: 5, maxAmmo: 10, fireRate: 1100, lastFireTime: 0, damage: 70, color: '#f59e0b' },
           electro: { type: 'electro', name: '일렉트로 건', ammo: 40, maxAmmo: 100, fireRate: 120, lastFireTime: 0, damage: 8, color: '#8b5cf6' },
           grenade: { type: 'grenade', name: '수류탄', ammo: 5, maxAmmo: 12, fireRate: 1000, lastFireTime: 0, damage: 95, color: '#10b981' },
+          flamethrower: { type: 'flamethrower', name: '화염방사기', ammo: 150, maxAmmo: 150, fireRate: 60, lastFireTime: 0, damage: 12, color: '#f97316' },
         },
         currentWeapon: 'laser',
         onGround: false,
@@ -229,17 +230,29 @@ export class XonoticEngine {
   }
 
   public toggleDimension() {
+    this.triggerPortalShift();
+    this.onStateChange({ ...this.state });
+  }
+
+  // Roof-platform portal volume (shared by player, bots, and projectiles alike)
+  private isInsidePortal(pos: { x: number; y: number; z: number }): boolean {
+    const portalX = -28;
+    const portalZ = -34.5;
+    const distToPortal = Math.sqrt((pos.x - portalX) ** 2 + (pos.z - portalZ) ** 2);
+    return distToPortal < 3.2 && pos.y > 11.5 && pos.y < 20.0;
+  }
+
+  private triggerPortalShift() {
+    this.portalCooldown = 3.5; // Cooldown to prevent instant rapid shifting
     const oldDim = this.state.dimension || 'upside_down';
     const newDim = oldDim === 'upside_down' ? 'peaceful' : 'upside_down';
     this.state.dimension = newDim;
-    this.portalCooldown = 3.5;
-    
+
     this.pushFrag(
       'PORTAL',
       `${newDim === 'peaceful' ? 'Peaceful Overworld' : 'The Upside Down'}`,
       'laser'
     );
-    this.onStateChange({ ...this.state });
   }
 
   public stepSimulator(dt: number) {
@@ -248,23 +261,17 @@ export class XonoticEngine {
       this.portalCooldown -= dt;
     }
 
-    // Portal collision
-    const { player } = this.state;
-    const portalX = -28;
-    const portalZ = -34.5;
-    const distToPortal = Math.sqrt((player.pos.x - portalX) ** 2 + (player.pos.z - portalZ) ** 2);
-    // On the roof platform (Y around 14.5)
-    if (this.portalCooldown <= 0 && distToPortal < 3.2 && player.pos.y > 11.5 && player.pos.y < 20.0) {
-      this.portalCooldown = 3.5; // Cooldown to prevent instant rapid shifting
-      const oldDim = this.state.dimension || 'upside_down';
-      const newDim = oldDim === 'upside_down' ? 'peaceful' : 'upside_down';
-      this.state.dimension = newDim;
-      
-      this.pushFrag(
-        'PORTAL',
-        `${newDim === 'peaceful' ? 'Peaceful Overworld' : 'The Upside Down'}`,
-        'laser'
-      );
+    // Portal collision — anything that enters the gate (player, bots, even stray bullets) flips the world
+    if (this.portalCooldown <= 0) {
+      const { player, bots, projectiles } = this.state;
+      const anyEntityInPortal =
+        this.isInsidePortal(player.pos) ||
+        bots.some(bot => this.isInsidePortal(bot.pos)) ||
+        projectiles.some(p => this.isInsidePortal(p.pos));
+
+      if (anyEntityInPortal) {
+        this.triggerPortalShift();
+      }
     }
 
     this.updatePlayerPhysics(dt);
@@ -787,6 +794,27 @@ export class XonoticEngine {
         color: player.currentWeapon === 'laser' ? '#06b6d4' : '#8b5cf6',
         ownerId: 'player',
       });
+    } else if (player.currentWeapon === 'flamethrower') {
+      // Short, slow-moving fire puffs with a small random spread and a short lifespan —
+      // combined with the very high fire rate this reads as a continuous close-range flame stream.
+      const spread = 0.06;
+      const spreadYaw = player.yaw + (Math.random() - 0.5) * spread;
+      const spreadPitch = player.pitch + (Math.random() - 0.5) * spread;
+      const fLookX = Math.sin(spreadYaw) * Math.cos(spreadPitch);
+      const fLookY = Math.sin(spreadPitch);
+      const fLookZ = -Math.cos(spreadYaw) * Math.cos(spreadPitch);
+
+      this.state.projectiles.push({
+        id: Math.random().toString(36).substr(2, 9),
+        type: 'plasma',
+        pos: { x: playerEyeX, y: playerEyeY, z: playerEyeZ },
+        vel: { x: fLookX * 18, y: fLookY * 18, z: fLookZ * 18 },
+        radius: 0.55,
+        damage: w.damage,
+        color: '#f97316',
+        ownerId: 'player',
+        lifeTime: 0.35, // burns out after a short distance instead of flying across the map
+      });
     }
 
     if (owner === 'player' && this.supabaseChannel) {
@@ -846,6 +874,11 @@ export class XonoticEngine {
           this.triggerGrenadeExplosion(p.pos, p.ownerId);
           return false;
         }
+      } else if (p.lifeTime !== undefined) {
+        // Generic short-range expiry for non-grenade projectiles (e.g. flamethrower puffs) —
+        // grenades manage their own fuse above, everything else just fizzles out silently.
+        p.lifeTime -= dt;
+        if (p.lifeTime <= 0) return false;
       }
 
       // Wall crash

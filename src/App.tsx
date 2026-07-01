@@ -177,6 +177,7 @@ export default function App() {
       if (key === '3') engineRef.current?.changeWeapon('rocket');
       if (key === '4') engineRef.current?.changeWeapon('electro');
       if (key === '5') engineRef.current?.changeWeapon('grenade');
+      if (key === '6') engineRef.current?.changeWeapon('flamethrower');
 
       // Time Freeze Hotkey
       if (code === 'KeyF' || key === 'f' || key === 'ㄹ') {
