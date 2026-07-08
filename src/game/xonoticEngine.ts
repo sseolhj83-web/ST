@@ -4,7 +4,7 @@
  */
 
 import { XonoticGameState, Player3D, Bot, Projectile, WeaponType, JumpPad, PickupItem, MapWall, FragLog, PeacefulNpc } from './xonoticTypes';
-import { getXonoticMap } from './xonoticMap';
+import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS } from './xonoticMap';
 
 export class XonoticEngine {
   public state: XonoticGameState;
@@ -16,6 +16,7 @@ export class XonoticEngine {
   private walls: MapWall[] = [];
   private jumpPads: JumpPad[] = [];
   private pickups: PickupItem[] = [];
+  private loadedStreamChunks: Map<string, MapWall[]> = new Map();
   private lastUpdate: number = 0;
   private portalCooldown: number = 0;
   private botNames = ['Nexer', 'Crucible', 'Spectre', 'Overlord', 'Phantasm', 'Titan'];
@@ -255,7 +256,42 @@ export class XonoticEngine {
     );
   }
 
+  // Keeps the maze loaded around wherever the player currently is, streaming in fresh procedural
+  // chunks as they walk and dropping ones that fall well behind — the map has no edge.
+  private updateStreamedChunks() {
+    const { x, z } = this.state.player.pos;
+    const pcx = Math.floor(x / CHUNK_SIZE);
+    const pcz = Math.floor(z / CHUNK_SIZE);
+
+    for (let dx = -CHUNK_LOAD_RADIUS; dx <= CHUNK_LOAD_RADIUS; dx++) {
+      for (let dz = -CHUNK_LOAD_RADIUS; dz <= CHUNK_LOAD_RADIUS; dz++) {
+        const cx = pcx + dx;
+        const cz = pcz + dz;
+        if (isHubChunk(cx, cz)) continue;
+        const key = chunkKey(cx, cz);
+        if (this.loadedStreamChunks.has(key)) continue;
+
+        const chunkWalls = generateStreamedChunk(cx, cz);
+        this.loadedStreamChunks.set(key, chunkWalls);
+        this.walls.push(...chunkWalls);
+      }
+    }
+
+    const unloadDist = CHUNK_LOAD_RADIUS + 1;
+    for (const key of Array.from(this.loadedStreamChunks.keys())) {
+      const [cx, cz] = key.split('_').map(Number);
+      if (Math.abs(cx - pcx) > unloadDist || Math.abs(cz - pcz) > unloadDist) {
+        const chunkWalls = this.loadedStreamChunks.get(key)!;
+        const ids = new Set(chunkWalls.map(w => w.id));
+        this.walls = this.walls.filter(w => !ids.has(w.id));
+        this.loadedStreamChunks.delete(key);
+      }
+    }
+  }
+
   public stepSimulator(dt: number) {
+    this.updateStreamedChunks();
+
     this.state.matchTime += dt;
     if (this.portalCooldown > 0) {
       this.portalCooldown -= dt;
@@ -1267,15 +1303,9 @@ export class XonoticEngine {
   private checkWallAxisBound(pos: { x: number; y: number; z: number }, vel: { x: number; y: number; z: number }, axis: 'x' | 'y' | 'z', radius: number, skipCollisionOnly = false): boolean {
     let touchedFloor = false;
 
-    // Check boundary box
-    const playAreaSize = 78.5;
-    if (axis === 'x') {
-      if (pos.x < -playAreaSize + radius) { pos.x = -playAreaSize + radius; vel.x *= -0.2; }
-      if (pos.x > playAreaSize - radius) { pos.x = playAreaSize - radius; vel.x *= -0.2; }
-    } else if (axis === 'z') {
-      if (pos.z < -playAreaSize + radius) { pos.z = -playAreaSize + radius; vel.z *= -0.2; }
-      if (pos.z > playAreaSize - radius) { pos.z = playAreaSize - radius; vel.z *= -0.2; }
-    } else if (axis === 'y') {
+    // No horizontal boundary clamp — the maze streams outward forever (see updateStreamedChunks),
+    // so there is no edge of the map to bound the player against.
+    if (axis === 'y') {
       if (pos.y < 1.0) { pos.y = 1.0; vel.y = 0; touchedFloor = true; } // ground floor
       if (pos.y > 60) { pos.y = 60; vel.y = 0; }
     }

@@ -6,7 +6,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { XonoticGameState, Bot, Projectile, PickupItem, PeacefulNpc } from '../game/xonoticTypes';
-import { getXonoticMap } from '../game/xonoticMap';
+import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS } from '../game/xonoticMap';
 
 // Helper to build procedural low-poly peaceful village human NPCs
 function buildHumanModel(npc: PeacefulNpc): THREE.Group {
@@ -192,27 +192,27 @@ function buildDemogorgonModel(bot: Bot): THREE.Group {
     });
   };
 
-  // Demogorgon fleshy color variations (pale, muddy, slightly pinkish grey)
+  // Demogorgon skin — pure jet-black shadow-creature variations (subtle value shifts only, no hue)
   const fleshColors = [
-    '#91847c', // Wet slimy grey clay
-    '#a28d80', // Fleshy pale rose grey
-    '#7a6c62', // Dried soil mud flesh
-    '#b09f94', // Ghastly pale skin
+    '#0a0a0a', // Near-pure black
+    '#111111', // Charcoal black
+    '#060606', // Void black
+    '#161616', // Sooty black
   ];
   const demoSkinColor = fleshColors[index % fleshColors.length];
   
   // Glistening skin: lower roughness, higher metalness/specular look
   const skinMat = createMat(demoSkinColor, 0.45, 0.22); 
 
-  const rawBloodMat = createMat('#610204', 0.28, 0.05);  // Wet, rich inner tissue red
-  const petalInnerMat = createMat('#940b0f', 0.35, 0.05); // Bloody pinkish petal interior
-  const toxicSlimeMat = createMat('#15a34a', 0.2, 0.4);   // Glowing green spores
-  const boneMat = createMat('#f1f5f9', 0.8, 0.0);         // Skeletal ivory white
-  const clawMat = createMat('#0b0f19', 0.3, 0.7);         // Obsidian black claws
+  const rawBloodMat = createMat('#04000a', 0.28, 0.05);  // Wet inner tissue, black with a faint cold hint
+  const petalInnerMat = createMat('#0d0308', 0.35, 0.05); // Blackened petal interior
+  const toxicSlimeMat = createMat('#052b12', 0.2, 0.4);   // Near-black glowing spores
+  const boneMat = createMat('#e8e8e8', 0.8, 0.0);         // Bone-white teeth, kept for scary contrast against the black body
+  const clawMat = createMat('#000000', 0.3, 0.7);         // Obsidian black claws
   
   // Glistening dynamic saliva/slime material
   const salivaMat = new THREE.MeshStandardMaterial({
-    color: '#cdf0ce',
+    color: '#0d1a0d',
     roughness: 0.05,
     metalness: 0.1,
     transparent: true,
@@ -438,7 +438,7 @@ function buildDemogorgonModel(bot: Bot): THREE.Group {
 
     // d) Inner row yellow teeth
     const segInnerTeeth = isStrong ? 3 : 2;
-    const yellowBoneMat = createMat('#eab308', 0.65);
+    const yellowBoneMat = createMat('#3a3a3a', 0.65); // dark inner teeth — kept slightly off-black from the outer white fangs
     for (let t = 0; t < segInnerTeeth; t++) {
       const toothGeo = new THREE.ConeGeometry(0.013, 0.055, 4);
       toothGeo.rotateX(Math.PI / 2 + 0.22);
@@ -801,8 +801,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
   useEffect(() => {
     if (!mountRef.current) return;
 
-    const activeLightnings: THREE.Group[] = [];
-
     // Precalculated high-performance Trigonometric Lookup Tables (LUTs) 
     // to completely bypass expensive Math.sin / Math.cos calls inside the particle loop.
     const SIN_LUT_SIZE = 1024;
@@ -813,87 +811,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       SIN_LUT[i] = Math.sin(angle);
       COS_LUT[i] = Math.cos(angle);
     }
-
-    // Static, pre-allocated shared geometry and materials for all 3D red lightning bolts.
-    // Minimizes memory creation and garbage collection pressure to maintain a solid 60+ FPS.
-    const unitCylinderGeo = new THREE.CylinderGeometry(1.0, 1.0, 1.0, 4);
-    const boltMat = new THREE.MeshBasicMaterial({ color: '#fef9c3' }); // sparking fluorescent-white arc
-    const branchMat = new THREE.MeshBasicMaterial({ color: '#fde68a' });
-
-    // Helper to generate an authentic, jagged, branching 3D red lightning bolt that stays high in the sky
-    const createLightningBolt = (startX: number, startZ: number, endX: number, endZ: number): THREE.Group => {
-      const group = new THREE.Group();
-      const segments = 9;
-      const startY = 48; // Spawn very high up in the sky
-      const endY = 28;   // End high up, never hitting the ground
-      
-      const points: THREE.Vector3[] = [];
-      points.push(new THREE.Vector3(startX, startY, startZ));
-      
-      for (let i = 1; i < segments; i++) {
-        const t = i / segments;
-        const px = startX + (endX - startX) * t + (Math.random() - 0.5) * 8.0;
-        const pz = startZ + (endZ - startZ) * t + (Math.random() - 0.5) * 8.0;
-        const py = startY + (endY - startY) * t + (Math.random() - 0.5) * 2.0;
-        points.push(new THREE.Vector3(px, py, pz));
-      }
-      points.push(new THREE.Vector3(endX, endY, endZ));
-
-      // Connected thick tubes for glorious and stark 3D lightning meshes!
-      for (let i = 0; i < points.length - 1; i++) {
-        const pA = points[i];
-        const pB = points[i + 1];
-        
-        const distance = pA.distanceTo(pB);
-        const segment = new THREE.Mesh(unitCylinderGeo, boltMat);
-        segment.scale.set(0.24, distance, 0.24);
-        
-        const mid = new THREE.Vector3().addVectors(pA, pB).multiplyScalar(0.5);
-        segment.position.copy(mid);
-        
-        const direction = new THREE.Vector3().subVectors(pB, pA).normalize();
-        const up = new THREE.Vector3(0, 1, 0);
-        const quaternion = new THREE.Quaternion().setFromUnitVectors(up, direction);
-        segment.setRotationFromQuaternion(quaternion);
-        
-        group.add(segment);
-      }
-
-      // Add a couple of branching forks (also confined to high altitude)
-      for (let f = 2; f < points.length - 2; f += 2) {
-        if (Math.random() < 0.70) {
-          const branchStart = points[f];
-          const branchEnd = new THREE.Vector3(
-            branchStart.x + (Math.random() - 0.5) * 12,
-            Math.max(24, branchStart.y - 8), // Keep branches well above the ground level
-            branchStart.z + (Math.random() - 0.5) * 12
-          );
-
-          const branchPoints = [branchStart];
-          branchPoints.push(new THREE.Vector3(
-            branchStart.x + (branchEnd.x - branchStart.x) * 0.5 + (Math.random() - 0.5) * 4,
-            branchStart.y - (branchStart.y - branchEnd.y) * 0.5 + (Math.random() - 0.5) * 1.5,
-            branchStart.z + (branchEnd.z - branchStart.z) * 0.5 + (Math.random() - 0.5) * 4
-          ));
-          branchPoints.push(branchEnd);
-
-          for (let k = 0; k < branchPoints.length - 1; k++) {
-            const pA = branchPoints[k];
-            const pB = branchPoints[k + 1];
-            const dist = pA.distanceTo(pB);
-            const segment = new THREE.Mesh(unitCylinderGeo, branchMat);
-            segment.scale.set(0.12, dist, 0.12);
-            const mid = new THREE.Vector3().addVectors(pA, pB).multiplyScalar(0.5);
-            segment.position.copy(mid);
-            const dir = new THREE.Vector3().subVectors(pB, pA).normalize();
-            segment.setRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir));
-            group.add(segment);
-          }
-        }
-      }
-
-      return group;
-    };
 
     // 1. Create Scene & the sickly fluorescent-lit Backrooms haze
     const scene = new THREE.Scene();
@@ -975,6 +892,74 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       mesh.castShadow = !wall.emissive;
       scene.add(mesh);
     });
+
+    // 5b. Infinite streamed maze — beyond the hand-built hub above, chunks of the same yellow
+    // Backrooms maze are generated/torn down on the fly around the player so the map never ends.
+    // Materials are shared (not re-created per wall) since chunks load/unload constantly.
+    const streamedWallMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#c9b458'), roughness: 0.95, metalness: 0.0 });
+    const streamedCeilingMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#cfc48f'), roughness: 0.95, metalness: 0.0 });
+    const streamedLightMat = new THREE.MeshBasicMaterial({ color: new THREE.Color('#fef9c3') });
+    const streamedFloorMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#9c9166'), roughness: 0.92, metalness: 0.0 });
+    const streamedChunkMeshes = new Map<string, THREE.Mesh[]>();
+    let lastStreamCx = Number.NaN;
+    let lastStreamCz = Number.NaN;
+
+    const disposeStreamedChunk = (key: string) => {
+      const meshes = streamedChunkMeshes.get(key);
+      if (!meshes) return;
+      meshes.forEach(mesh => {
+        scene.remove(mesh);
+        mesh.geometry.dispose();
+      });
+      streamedChunkMeshes.delete(key);
+    };
+
+    const loadStreamedChunk = (cx: number, cz: number) => {
+      const key = chunkKey(cx, cz);
+      if (streamedChunkMeshes.has(key)) return;
+      const chunkWalls = generateStreamedChunk(cx, cz);
+      const meshes: THREE.Mesh[] = chunkWalls.map(wall => {
+        const geometry = new THREE.BoxGeometry(wall.size.x, wall.size.y, wall.size.z);
+        const material = wall.id.startsWith('floor_') ? streamedFloorMat
+          : wall.emissive ? streamedLightMat
+          : wall.id.endsWith('_ceiling') ? streamedCeilingMat
+          : streamedWallMat;
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(wall.pos.x, wall.pos.y, wall.pos.z);
+        mesh.receiveShadow = !wall.emissive;
+        mesh.castShadow = !wall.emissive;
+        scene.add(mesh);
+        return mesh;
+      });
+      streamedChunkMeshes.set(key, meshes);
+    };
+
+    // Loads/unloads chunks around the player's current position; cheap to call every frame since
+    // it only does real work when the player has actually crossed into a new chunk.
+    const updateStreamedChunks = (px: number, pz: number) => {
+      const pcx = Math.floor(px / CHUNK_SIZE);
+      const pcz = Math.floor(pz / CHUNK_SIZE);
+      if (pcx === lastStreamCx && pcz === lastStreamCz) return;
+      lastStreamCx = pcx;
+      lastStreamCz = pcz;
+
+      for (let dx = -CHUNK_LOAD_RADIUS; dx <= CHUNK_LOAD_RADIUS; dx++) {
+        for (let dz = -CHUNK_LOAD_RADIUS; dz <= CHUNK_LOAD_RADIUS; dz++) {
+          const cx = pcx + dx;
+          const cz = pcz + dz;
+          if (isHubChunk(cx, cz)) continue;
+          loadStreamedChunk(cx, cz);
+        }
+      }
+
+      const unloadDist = CHUNK_LOAD_RADIUS + 1;
+      Array.from(streamedChunkMeshes.keys()).forEach(key => {
+        const [cx, cz] = key.split('_').map(Number);
+        if (Math.abs(cx - pcx) > unloadDist || Math.abs(cz - pcz) > unloadDist) {
+          disposeStreamedChunk(key);
+        }
+      });
+    };
 
     // Faint carpet-tile seams
     const gridHelper = new THREE.GridHelper(160, 80, '#7a7048', '#7a7048');
@@ -1188,6 +1173,9 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         // A. Position camera head-level with the player pos
         const { player } = stateVal;
         camera.position.set(player.pos.x, player.pos.y + 0.55, player.pos.z);
+
+        // A2. Stream the infinite maze in/out around wherever the player currently is
+        updateStreamedChunks(player.pos.x, player.pos.z);
         
         // Smoothly animate Field of View (Zoom / ADS)
         const targetFOV = player.isAiming ? 32 : 85;
@@ -1711,14 +1699,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           dirLight.intensity = 6.0;
           ambientLight.color.set('#fef9c3');
           ambientLight.intensity = 6.2;
-
-          // Make sure sparking-fixture effects are cleared when transitioning back to Level 0
-          if (activeLightnings.length > 0) {
-            activeLightnings.forEach(bolt => {
-              scene.remove(bolt);
-            });
-            activeLightnings.length = 0;
-          }
         } else {
           // Damp sublevel — dimmer greenish-olive haze with periodic failing-light sparks/flicker
           ambientLight.color.set('#6b7048');
@@ -1742,27 +1722,9 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
               strobeIntensity = 1.0 - (ratio - 0.60) / 0.40;
             }
 
-            // Spawn a couple of sparking-wire arc meshes on strike commencement!
-            if (activeLightnings.length === 0) {
-              const px1 = (Math.random() - 0.5) * 56;
-              const pz1 = (Math.random() - 0.5) * 56;
-              const px2 = (Math.random() - 0.5) * 56;
-              const pz2 = (Math.random() - 0.5) * 56;
-
-              const bolt1 = createLightningBolt(px1 + (Math.random() - 0.5) * 14, pz1 + (Math.random() - 0.5) * 14, px1, pz1);
-              const bolt2 = createLightningBolt(px2 + (Math.random() - 0.5) * 14, pz2 + (Math.random() - 0.5) * 14, px2, pz2);
-
-              scene.add(bolt1);
-              scene.add(bolt2);
-              activeLightnings.push(bolt1, bolt2);
-            }
-
-            // Rapidly flicker visibility for a failing-fixture strobe effect
-            activeLightnings.forEach(b => {
-              b.visible = Math.random() > 0.16;
-            });
-
             // Dip background & fog toward a sickly dark olive-black — using pre-allocated Colors
+            // (the failing-fixture strobe is conveyed purely through light/fog values now — no
+            // exposed geometry above the ceiling, this space is fully enclosed indoors)
             (scene.background as THREE.Color).lerpColors(_colorBg1, _colorBg2, strobeIntensity);
             if (scene.fog) {
               (scene.fog as THREE.FogExp2).color.lerpColors(_colorFog1, _colorFog2, strobeIntensity);
@@ -1771,14 +1733,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
             dirLight.intensity = 4.5 + strobeIntensity * 10.0;
             ambientLight.intensity = 3.5 + strobeIntensity * 3.0;
           } else {
-            // Clean up spark meshes after the strobe duration
-            if (activeLightnings.length > 0) {
-              activeLightnings.forEach(bolt => {
-                scene.remove(bolt);
-              });
-              activeLightnings.length = 0;
-            }
-
             // Standard dim, damp sublevel atmosphere
             (scene.background as THREE.Color).set('#4a4a30');
             if (scene.fog) {
@@ -1817,15 +1771,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
             mountRef.current.removeChild(renderer.domElement);
           }
         }
-        activeLightnings.forEach(bolt => {
-          scene.remove(bolt);
-        });
-        activeLightnings.length = 0;
-
-        // Dispose of the pre-allocated shared lightning static assets
-        unitCylinderGeo.dispose();
-        boltMat.dispose();
-        branchMat.dispose();
         botMeshes.forEach(mesh => {
           disposeHierarchy(mesh);
           scene.remove(mesh);
@@ -1837,6 +1782,12 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           scene.remove(mesh);
         });
         npcMeshes.clear();
+
+        Array.from(streamedChunkMeshes.keys()).forEach(key => disposeStreamedChunk(key));
+        streamedWallMat.dispose();
+        streamedCeilingMat.dispose();
+        streamedLightMat.dispose();
+        streamedFloorMat.dispose();
 
         particleGeometry.dispose();
         particleMaterial.dispose();
