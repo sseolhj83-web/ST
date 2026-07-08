@@ -46,10 +46,13 @@ export interface Bot {
   lastShootTime: number;
   lastMeleeTime: number;
   targetPos: { x: number; y: number; z: number } | null;
-  state: 'wandering' | 'hunting' | 'jumping';
+  state: 'wandering' | 'hunting' | 'jumping'; // for the monster: 'wandering' = lurking/hidden, 'hunting' = ambushing the player
   stateTimer: number;
   isTeammate?: boolean;
   isRemotePlayer?: boolean; // true = real online player (not AI)
+  isMonster?: boolean;      // the single, unkillable Backrooms entity
+  invulnerable?: boolean;   // damage is ignored entirely
+  isHidden?: boolean;       // true while lurking — not rendered, doesn't announce itself
 }
 
 export interface Projectile {
@@ -89,17 +92,8 @@ export interface MapWall {
   color: string;
   emissive?: boolean;
   collisionOnly?: boolean;
-}
-
-export interface PeacefulNpc {
-  id: string;
-  name: string;
-  pos: { x: number; y: number; z: number };
-  vel: { x: number; y: number; z: number };
-  angle: number;
-  gender: 'man' | 'woman' | 'child' | 'elder';
-  clothesColor: string;
-  wanderTimer: number;
+  flicker?: boolean; // the one severely-flickering escape wall — visual hint only
+  puddle?: boolean;  // decorative murky floor puddle — visual only, no collision
 }
 
 export interface FragLog {
@@ -113,11 +107,12 @@ export interface FragLog {
 export interface XonoticGameState {
   player: Player3D;
   bots: Bot[];
-  npcs?: PeacefulNpc[];
   projectiles: Projectile[];
   pickups: PickupItem[];
   fragFeed: FragLog[];
   matchTime: number;
   isFrozen?: boolean;
-  dimension?: 'upside_down' | 'peaceful';
+  monsterWarning?: boolean; // the monster is within 7m of the player right now
+  inRedRoom?: boolean;      // permanent once true — found the Red Room, there is no way back out
+  escaped?: boolean;        // found and dove through the flickering wall — the run is won
 }

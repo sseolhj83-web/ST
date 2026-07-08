@@ -4,29 +4,25 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Player3D, FragLog, Bot, Weapon } from '../game/xonoticTypes';
-import { Shield, Heart, Zap } from 'lucide-react';
+import { Player3D, FragLog, Weapon } from '../game/xonoticTypes';
+import { Shield, Heart } from 'lucide-react';
 
 interface XonoticHUDProps {
   player: Player3D;
-  bots: Bot[];
   fragFeed: FragLog[];
   matchTime: number;
   activeKeys?: { w: boolean; a: boolean; s: boolean; d: boolean; space: boolean };
   isFrozen?: boolean;
-  dimension?: 'upside_down' | 'peaceful';
-  onToggleDimension?: () => void;
+  monsterWarning?: boolean;
 }
 
 export const XonoticHUD: React.FC<XonoticHUDProps> = ({
   player,
-  bots,
   fragFeed,
   matchTime,
   activeKeys,
   isFrozen,
-  dimension,
-  onToggleDimension,
+  monsterWarning,
 }) => {
   const [showFrozenBanner, setShowFrozenBanner] = useState(false);
 
@@ -53,60 +49,30 @@ export const XonoticHUD: React.FC<XonoticHUDProps> = ({
   // Speedometer maths (length of x & z velocity vector, scaled for high numbers!)
   const speed = Math.round(Math.sqrt(player.vel.x * player.vel.x + player.vel.z * player.vel.z) * 35);
 
-  // Group scoreboard rankings
-  const scores = [
-    { name: 'You', score: player.score, deaths: player.deaths, isPlayer: true },
-    ...bots.map(b => ({
-      name: b.name,
-      score: Math.max(0, Math.floor(b.health < 20 ? 1 : 2) - (b.health <= 0 ? 1 : 0)), // simulation scores
-      deaths: Math.floor(Math.random() * 2),
-      isPlayer: false,
-    })),
-  ].sort((a, b) => b.score - a.score);
-
   return (
     <div className="absolute inset-0 pointer-events-none z-40 flex flex-col justify-between p-6 select-none font-sans">
-      
-      {/* 1. TOP STATS (TIME, SCOREBOARD, AND KILLFEED) */}
+
+      {/* The monster is close — this is the only warning the player gets */}
+      {!!monsterWarning && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50">
+          <span className="text-4xl font-black text-red-600 tracking-[0.3em] uppercase animate-pulse drop-shadow-[0_0_18px_rgba(220,38,38,0.9)]">
+            경고
+          </span>
+        </div>
+      )}
+
+      {/* 1. TOP STATS (TIME AND KILLFEED) */}
       <div className="w-full flex items-start justify-between">
         
         {/* Left Side: Score Rankings (Removed as requested) */}
         <div className="w-60" />
 
-        {/* Center: Match clock and Dimension Indicator */}
+        {/* Center: Match clock */}
         <div className="text-center font-mono pointer-events-auto flex flex-col gap-2">
           <div className="bg-slate-900/80 backdrop-blur-md px-6 py-2.5 rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center">
-            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">남은 경기 시간</span>
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">남은 시간</span>
             <span className="text-2xl font-black text-rose-500 glow-rose">{formatTime(matchTime)}</span>
           </div>
-
-          {dimension === 'peaceful' ? (
-            <button
-              onClick={onToggleDimension}
-              className="bg-emerald-950/90 hover:bg-emerald-900 border border-emerald-500/50 rounded-xl px-4 py-2 flex flex-col items-center shadow-[0_0_15px_rgba(16,185,129,0.3)] text-center transition-all hover:scale-105 active:scale-95 cursor-pointer pointer-events-auto group"
-              title="클릭하거나 [P] 키를 눌러 침수된 서브레벨로 이동"
-            >
-              <span className="text-[10px] font-black text-emerald-400 font-sans tracking-tight flex items-center gap-1">
-                🟨 레벨 0 (Level 0)
-              </span>
-              <span className="text-[8px] text-emerald-300 font-sans leading-none mt-1 group-hover:text-amber-300 font-bold">
-                클릭 또는 P 키로 침수된 서브레벨 이동
-              </span>
-            </button>
-          ) : (
-            <button
-              onClick={onToggleDimension}
-              className="bg-red-950/90 hover:bg-red-900 border border-red-500/60 rounded-xl px-4 py-2 flex flex-col items-center shadow-[0_0_15px_rgba(239,68,68,0.35)] text-center transition-all hover:scale-105 active:scale-95 cursor-pointer pointer-events-auto group"
-              title="클릭하거나 [P] 키를 눌러 레벨 0으로 이동"
-            >
-              <span className="text-[10px] font-black text-red-500 font-sans tracking-tight flex items-center gap-1 animate-pulse">
-                💀 침수된 서브레벨 (Flooded)
-              </span>
-              <span className="text-[8px] text-red-400 font-sans leading-none mt-1 group-hover:text-emerald-300 font-bold">
-                클릭 또는 P 키로 레벨 0 이동
-              </span>
-            </button>
-          )}
         </div>
 
         {/* Right Side: Kill Frag Feed Actions logs */}

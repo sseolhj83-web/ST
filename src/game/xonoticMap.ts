@@ -5,26 +5,57 @@
 
 import { MapWall, JumpPad, PickupItem } from './xonoticTypes';
 
-// The Backrooms — Level 0 style liminal maze.
-// Layout: an open outer hallway ring (keeps existing bot spawn points / outer pickups clear of walls)
-// surrounding a dense inner maze core built from a procedural grid of yellow partition rooms.
-// One fixed cell in the core is left open as a vertical "vent shaft" rising past the ceiling —
-// this is the same rocket-jump-accessible portal volume the engine already checks for (xonoticEngine.ts
-// isInsidePortal, fixed at x=-28, z=-34.5), so no gameplay coordinates elsewhere need to change.
+// The Backrooms — an endless, windowless maze of identical rooms. No storyline, no dimension
+// gate, nothing outdoors: just damp yellow wallpaper, buzzing fluorescent tubes, and a moist
+// carpet stretching further than anyone has mapped.
 //
-// Beyond this hand-built 160x160 "hub", the maze keeps going forever: generateStreamedChunk()
-// below extends the exact same yellow-partition grid out to infinity, streamed in/out around the
-// player by xonoticEngine.ts / XonoticCanvas.tsx so the map is never bounded. Every surface — hub
-// and streamed alike — sits under a solid ceiling; there is no sky anywhere, this is Backrooms, it's
-// all indoors.
+// This file builds a hand-authored 160x160 "hub" (getXonoticMap) — the guaranteed-reachable core
+// that always holds the same pickups, the one Red Room, and the one flickering escape wall.
+// Beyond the hub, generateStreamedChunk() extends the exact same yellow-partition grid outward
+// forever, streamed in/out around the player by xonoticEngine.ts / XonoticCanvas.tsx, so the maze
+// itself never ends. Every surface — hub and streamed alike — sits under a solid, unbroken
+// ceiling; there is no sky and no hole anywhere.
 
 export const WALL_COLOR = '#c9b458';    // damp yellow wallpaper
 export const CEILING_COLOR = '#cfc48f'; // stained popcorn ceiling tile
 export const LIGHT_COLOR = '#fef9c3';   // buzzing fluorescent tube
 export const CARPET_COLOR = '#9c9166';  // moist mustard carpet
+export const PUDDLE_COLOR = '#4a4326';  // stagnant, contaminated floor water
 
-export const WALL_H = 6.5;    // backrooms ceiling height (raised from the original 3.2 — still low/oppressive, but headroom to move)
-export const CELL = 20;       // maze partition grid spacing, shared by the hub and every streamed chunk
+export const WALL_H = 6.5; // backrooms ceiling height
+export const CELL = 20;    // maze partition grid spacing, shared by the hub and every streamed chunk
+
+// The single flickering wall that lets you escape — deliberately just one stub wall inside one
+// ordinary-looking room, easy to miss. It never blocks movement (see xonoticEngine.ts
+// checkWallAxisBound); walking into it ends the run in victory (see stepSimulator).
+export const ESCAPE_WALL_ID = 'escape_wall';
+export const ESCAPE_WALL_POS = { x: 30, y: WALL_H / 2, z: 32 };
+
+// The Red Room — one fixed, unmarked spot in the hub. Stray inside it and your peripheral vision
+// turns red for the rest of the run: there is no way back out (see stepSimulator's curse damage).
+export const RED_ROOM_CENTER = { x: -52, z: 52 };
+export const RED_ROOM_RADIUS = 9;
+
+// A safe, always-open spawn point out in the hallway ring, clear of every partition wall.
+export const SPAWN_POINT = { x: 0, y: 1.5, z: 70 };
+
+function mulberry32(seed: number) {
+  let s = seed >>> 0;
+  return function () {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function hashSeed(a: number, b: number, c: number): number {
+  let h = 0x811c9dc5;
+  h ^= a; h = Math.imul(h, 0x01000193);
+  h ^= b; h = Math.imul(h, 0x01000193);
+  h ^= c; h = Math.imul(h, 0x01000193);
+  return h >>> 0;
+}
 
 // --- Infinite streaming grid -------------------------------------------------------------
 // The world beyond the hub is an endless deterministic maze: partition walls sit on every grid
@@ -44,24 +75,6 @@ export function chunkKey(cx: number, cz: number): string {
 export function isHubChunk(cx: number, cz: number): boolean {
   const half = HUB_HALF / CHUNK_SIZE;
   return cx >= -half && cx < half && cz >= -half && cz < half;
-}
-
-function mulberry32(seed: number) {
-  let s = seed >>> 0;
-  return function () {
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function hashSeed(a: number, b: number, c: number): number {
-  let h = 0x811c9dc5;
-  h ^= a; h = Math.imul(h, 0x01000193);
-  h ^= b; h = Math.imul(h, 0x01000193);
-  h ^= c; h = Math.imul(h, 0x01000193);
-  return h >>> 0;
 }
 
 // Generates the portion of the infinite maze owned by chunk (cx, cz). Every grid line ix is
@@ -154,11 +167,9 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   const pickups: PickupItem[] = [];
 
   // Hub Width & Length — the hand-authored core; the maze continues forever beyond it (see
-  // generateStreamedChunk above), so this size is just where the fixed portal/pickup layout ends.
+  // generateStreamedChunk above), so this size is just where the fixed layout ends.
   const sizeX = 160;
   const sizeZ = 160;
-  const halfX = sizeX / 2;
-  const halfZ = sizeZ / 2;
 
   const wallColor = WALL_COLOR;
   const ceilingColor = CEILING_COLOR;
@@ -176,8 +187,9 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   // No perimeter walls — the hub opens directly into the infinite streamed maze on every side.
 
   // 2. INTERIOR MAZE — dense core in the middle 120x120, leaving a 20-unit-wide open hallway ring
-  // around the perimeter (this keeps every existing enemy spawn point and the outer armor pickups,
-  // which all sit at |x| or |z| >= 45, safely out in open floor instead of embedded in a wall).
+  // around the perimeter. Doorway gaps are seeded by each wall's own grid coordinates (not
+  // Math.random()) so the engine's collision copy and the canvas's render copy — two independent
+  // calls to this function — always produce the exact same layout.
   const innerHalf = 60;    // maze core spans [-60, 60]
   const cell = CELL;       // grid cell size
   const wallH = WALL_H;    // backrooms ceiling height
@@ -185,15 +197,13 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   const doorW = 4;         // doorway gap width
   const gridLines = [-40, -20, 0, 20, 40]; // interior partition lines within the core
 
-  // Portal vent-shaft occupies the single cell spanning x:[-40,-20], z:[-40,-20]
-  const shaftMinX = -40, shaftMaxX = -20, shaftMinZ = -40, shaftMaxZ = -20;
-
   let mazeIdCounter = 0;
 
-  // Vertical-running partitions (fixed x, spanning z) — split per cell with a randomized doorway gap
+  // Vertical-running partitions (fixed x, spanning z) — split per cell with a deterministic doorway gap
   gridLines.forEach(gx => {
     for (let gz = -innerHalf; gz < innerHalf; gz += cell) {
-      const doorCenter = gz + cell / 2 + (Math.random() - 0.5) * (cell - doorW - 2);
+      const rand = mulberry32(hashSeed(gx, gz, 100));
+      const doorCenter = gz + cell / 2 + (rand() - 0.5) * (cell - doorW - 2);
       const gapStart = doorCenter - doorW / 2;
       const gapEnd = doorCenter + doorW / 2;
 
@@ -211,7 +221,8 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   // Horizontal-running partitions (fixed z, spanning x)
   gridLines.forEach(gz => {
     for (let gx = -innerHalf; gx < innerHalf; gx += cell) {
-      const doorCenter = gx + cell / 2 + (Math.random() - 0.5) * (cell - doorW - 2);
+      const rand = mulberry32(hashSeed(gx, gz, 101));
+      const doorCenter = gx + cell / 2 + (rand() - 0.5) * (cell - doorW - 2);
       const gapStart = doorCenter - doorW / 2;
       const gapEnd = doorCenter + doorW / 2;
 
@@ -226,26 +237,15 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
     }
   });
 
-  // 3. CEILING — a single unbroken slab over the *entire* hub footprint (inner maze AND the outer
-  // hallway ring alike), framed with a hole only above the portal shaft cell. Backrooms is indoor:
-  // there must be no gap anywhere that leaves open air over the player's head.
-  const ceilingY = wallH + 0.15;
-  const leftW = shaftMinX - (-halfX);
-  const rightW = halfX - shaftMaxX;
-  const midW = shaftMaxX - shaftMinX;
-  const topD = shaftMinZ - (-halfZ);
-  const bottomD = halfZ - shaftMaxZ;
-  walls.push({ id: 'ceiling_left', pos: { x: (-halfX + shaftMinX) / 2, y: ceilingY, z: 0 }, size: { x: leftW, y: 0.3, z: sizeZ }, color: ceilingColor });
-  walls.push({ id: 'ceiling_right', pos: { x: (shaftMaxX + halfX) / 2, y: ceilingY, z: 0 }, size: { x: rightW, y: 0.3, z: sizeZ }, color: ceilingColor });
-  walls.push({ id: 'ceiling_top', pos: { x: (shaftMinX + shaftMaxX) / 2, y: ceilingY, z: (-halfZ + shaftMinZ) / 2 }, size: { x: midW, y: 0.3, z: topD }, color: ceilingColor });
-  walls.push({ id: 'ceiling_bottom', pos: { x: (shaftMinX + shaftMaxX) / 2, y: ceilingY, z: (shaftMaxZ + halfZ) / 2 }, size: { x: midW, y: 0.3, z: bottomD }, color: ceilingColor });
+  // 3. CEILING — a single unbroken slab over the entire hub footprint. No holes, no shafts, no
+  // sky anywhere — this is the Backrooms, it is entirely indoors.
+  walls.push({ id: 'ceiling_main', pos: { x: 0, y: wallH + 0.15, z: 0 }, size: { x: sizeX, y: 0.3, z: sizeZ }, color: ceilingColor });
 
   // 4. BUZZING FLUORESCENT FIXTURES — checkerboard placement at cell centers under the ceiling
   const cellCenters = [-50, -30, -10, 10, 30, 50];
   cellCenters.forEach((cx, ci) => {
     cellCenters.forEach((cz, zi) => {
-      const isShaftCell = cx > shaftMinX && cx < shaftMaxX && cz > shaftMinZ && cz < shaftMaxZ;
-      if (isShaftCell || (ci + zi) % 2 !== 0) return;
+      if ((ci + zi) % 2 !== 0) return;
       walls.push({
         id: `light_${ci}_${zi}`,
         pos: { x: cx, y: wallH - 0.05, z: cz },
@@ -256,24 +256,20 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
     });
   });
 
-  // 5. PORTAL VENT SHAFT — tall solid chimney continuing straight up from the ceiling to the
-  // rooftop portal volume; ground-level access into this cell uses the same doorways as any other
-  // maze room (generated above), the shaft only seals off the space *above* ceiling height.
-  const shaftCx = (shaftMinX + shaftMaxX) / 2;
-  const shaftCz = (shaftMinZ + shaftMaxZ) / 2;
-  const shaftHalf = (shaftMaxX - shaftMinX) / 2;
-  const shaftBottom = wallH;
-  const shaftTop = 20;
-  const shaftH = shaftTop - shaftBottom;
-  const shaftW = shaftMaxX - shaftMinX;
-  walls.push({ id: 'shaft_n', pos: { x: shaftCx, y: shaftBottom + shaftH / 2, z: shaftCz - shaftHalf }, size: { x: shaftW, y: shaftH, z: wallT }, color: wallColor });
-  walls.push({ id: 'shaft_s', pos: { x: shaftCx, y: shaftBottom + shaftH / 2, z: shaftCz + shaftHalf }, size: { x: shaftW, y: shaftH, z: wallT }, color: wallColor });
-  walls.push({ id: 'shaft_w', pos: { x: shaftCx - shaftHalf, y: shaftBottom + shaftH / 2, z: shaftCz }, size: { x: wallT, y: shaftH, z: shaftW }, color: wallColor });
-  walls.push({ id: 'shaft_e', pos: { x: shaftCx + shaftHalf, y: shaftBottom + shaftH / 2, z: shaftCz }, size: { x: wallT, y: shaftH, z: shaftW }, color: wallColor });
+  // 5. THE ESCAPE WALL — one unremarkable-looking stub wall tucked inside an ordinary room, deep
+  // enough in the maze that stumbling onto it takes real exploring. It never blocks movement (see
+  // xonoticEngine.ts checkWallAxisBound) — walking through it is how the run is won. Rendered with
+  // a severe flicker (see XonoticCanvas.tsx) as the only hint it isn't just another wall.
+  walls.push({
+    id: ESCAPE_WALL_ID,
+    pos: { x: ESCAPE_WALL_POS.x, y: ESCAPE_WALL_POS.y, z: ESCAPE_WALL_POS.z },
+    size: { x: 8, y: wallH, z: wallT },
+    color: wallColor,
+    flicker: true,
+  });
 
   // 6. PICKUPS
-  // Mega HP now sits at the top of the vent shaft next to the portal — the rocket-jump reward.
-  pickups.push({ id: 'mega_hp', type: 'health_mega', pos: { x: -28, y: 18.5, z: -34.5 }, radius: 2, respawnTimer: 0, value: 100 });
+  pickups.push({ id: 'mega_hp', type: 'health_mega', pos: { x: -28, y: 1.5, z: -34.5 }, radius: 2, respawnTimer: 0, value: 100 });
 
   pickups.push({ id: 'mega_arm_1', type: 'armor_mega', pos: { x: -14, y: 1.5, z: -12 }, radius: 1.8, respawnTimer: 0, value: 100 });
   pickups.push({ id: 'mega_arm_2', type: 'armor_mega', pos: { x: 14, y: 1.5, z: -12 }, radius: 1.8, respawnTimer: 0, value: 100 });
@@ -294,4 +290,19 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   pickups.push({ id: 'ammo_8', type: 'ammo', pos: { x: 45, y: 1, z: 45 }, radius: 1, respawnTimer: 0, value: 20 });
 
   return { walls, jumpPads, pickups };
+}
+
+// Decorative, non-collidable puddles of contaminated standing water — visual only, rendered
+// directly from this fixed list by XonoticCanvas.tsx (never added to the engine's collision walls).
+export function getPuddles(): { x: number; z: number; radius: number }[] {
+  return [
+    { x: -10, z: 5, radius: 2.4 },
+    { x: 25, z: -35, radius: 1.8 },
+    { x: -35, z: -8, radius: 2.1 },
+    { x: 12, z: 45, radius: 1.6 },
+    { x: -48, z: 30, radius: 2.6 },
+    { x: 5, z: -55, radius: 1.9 },
+    { x: 42, z: 10, radius: 2.2 },
+    { x: -22, z: -48, radius: 1.7 },
+  ];
 }

@@ -5,178 +5,10 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { XonoticGameState, Bot, Projectile, PickupItem, PeacefulNpc } from '../game/xonoticTypes';
-import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS } from '../game/xonoticMap';
+import { XonoticGameState, Bot, Projectile, PickupItem } from '../game/xonoticTypes';
+import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS, ESCAPE_WALL_ID, getPuddles, PUDDLE_COLOR } from '../game/xonoticMap';
 
-// Helper to build procedural low-poly peaceful village human NPCs
-function buildHumanModel(npc: PeacefulNpc): THREE.Group {
-  const group = new THREE.Group();
-  
-  // Base materials helper
-  const createNpcMat = (colorStr: string, roughness = 0.5, metalness = 0.0) => {
-    return new THREE.MeshStandardMaterial({
-      color: new THREE.Color(colorStr),
-      roughness: roughness,
-      metalness: metalness
-    });
-  };
-
-  const skinColors = ['#ffdbac', '#f1c27d', '#e0ac69', '#c68642', '#8d5524'];
-  const skinColorsIndex = npc.id.charCodeAt(npc.id.length - 1) || 0;
-  const skinColor = skinColors[skinColorsIndex % skinColors.length];
-
-  const skinMat = createNpcMat(skinColor);
-  const clothMat = createNpcMat(npc.clothesColor);
-  const pantsMat = createNpcMat('#1e293b'); // dark pants
-  const bootMat = createNpcMat('#451a03'); // brown boots
-
-  // 1. Torso
-  const torsoGeo = new THREE.BoxGeometry(0.5, 0.7, 0.25);
-  const torso = new THREE.Mesh(torsoGeo, clothMat);
-  torso.position.y = 1.05;
-  torso.castShadow = true;
-  torso.receiveShadow = true;
-  group.add(torso);
-
-  // 2. Head
-  const headGeo = new THREE.BoxGeometry(0.32, 0.32, 0.32);
-  const head = new THREE.Mesh(headGeo, skinMat);
-  head.position.y = 1.62;
-  head.castShadow = true;
-  group.add(head);
-
-  // Hair / accessories based on gender/role
-  const hairColor = npc.gender === 'elder' ? '#cbd5e1' : '#1e1b4b'; // grey hair for elders, dark for others
-  const hairMat = createNpcMat(hairColor);
-  
-  // Hair cap
-  const hairGeo = new THREE.BoxGeometry(0.34, 0.12, 0.34);
-  const hair = new THREE.Mesh(hairGeo, hairMat);
-  hair.position.set(0, 0.12, -0.01);
-  head.add(hair);
-
-  if (npc.gender === 'woman') {
-    // Ponytail / long hair backing
-    const ponytailGeo = new THREE.BoxGeometry(0.1, 0.3, 0.1);
-    const ponytail = new THREE.Mesh(ponytailGeo, hairMat);
-    ponytail.position.set(0, -0.08, -0.17);
-    head.add(ponytail);
-  } else if (npc.name.includes('여행자') || npc.gender === 'child') {
-    // Cute cap
-    const capGeo = new THREE.BoxGeometry(0.34, 0.08, 0.34);
-    const cap = new THREE.Mesh(capGeo, createNpcMat('#10b981')); // emerald cap
-    cap.position.set(0, 0.15, 0.02);
-    head.add(cap);
-    
-    // Visor
-    const visorGeo = new THREE.BoxGeometry(0.34, 0.02, 0.12);
-    const visor = new THREE.Mesh(visorGeo, createNpcMat('#10b981'));
-    visor.position.set(0, 0.12, 0.2);
-    head.add(visor);
-  }
-
-  // Head face features (Eyes)
-  const eyeMat = createNpcMat('#1e293b');
-  const leftEye = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.04), eyeMat);
-  leftEye.position.set(-0.08, 0.04, 0.161);
-  head.add(leftEye);
-
-  const rightEye = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.04), eyeMat);
-  rightEye.position.set(0.08, 0.04, 0.161);
-  head.add(rightEye);
-
-  // 3. Legs
-  const legLGroup = new THREE.Group();
-  legLGroup.name = 'legL';
-  legLGroup.position.set(-0.16, 0.72, 0);
-  const legLGeo = new THREE.BoxGeometry(0.16, 0.55, 0.16);
-  legLGeo.translate(0, -0.275, 0); // origin at top hip pivot
-  const legL = new THREE.Mesh(legLGeo, pantsMat);
-  legL.castShadow = true;
-  legLGroup.add(legL);
-
-  // left boot
-  const bootL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.1, 0.24), bootMat);
-  bootL.position.set(0, -0.55, 0.03);
-  bootL.castShadow = true;
-  legLGroup.add(bootL);
-  group.add(legLGroup);
-
-  const legRGroup = new THREE.Group();
-  legRGroup.name = 'legR';
-  legRGroup.position.set(0.16, 0.72, 0);
-  const legRGeo = new THREE.BoxGeometry(0.16, 0.55, 0.16);
-  legRGeo.translate(0, -0.275, 0);
-  const legR = new THREE.Mesh(legRGeo, pantsMat);
-  legR.castShadow = true;
-  legRGroup.add(legR);
-
-  // right boot
-  const bootR = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.1, 0.24), bootMat);
-  bootR.position.set(0, -0.55, 0.03);
-  bootR.castShadow = true;
-  legRGroup.add(bootR);
-  group.add(legRGroup);
-
-  // 4. Arms
-  const armLGroup = new THREE.Group();
-  armLGroup.name = 'armL';
-  armLGroup.position.set(-0.35, 1.35, 0);
-  const armLGeo = new THREE.BoxGeometry(0.14, 0.6, 0.14);
-  armLGeo.translate(0, -0.3, 0); // origin at shoulder pivot
-  const armL = new THREE.Mesh(armLGeo, clothMat);
-  armL.castShadow = true;
-  armLGroup.add(armL);
-
-  const handL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.12), skinMat);
-  handL.position.set(0, -0.62, 0);
-  handL.castShadow = true;
-  armLGroup.add(handL);
-  group.add(armLGroup);
-
-  const armRGroup = new THREE.Group();
-  armRGroup.name = 'armR';
-  armRGroup.position.set(0.35, 1.35, 0);
-  const armRGeo = new THREE.BoxGeometry(0.14, 0.6, 0.14);
-  armRGeo.translate(0, -0.3, 0);
-  const armR = new THREE.Mesh(armRGeo, clothMat);
-  armR.castShadow = true;
-  armRGroup.add(armR);
-
-  const handR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.12), skinMat);
-  handR.position.set(0, -0.62, 0);
-  handR.castShadow = true;
-  armRGroup.add(handR);
-  group.add(armRGroup);
-
-  // ── Name label sprite (always faces camera) ──
-  const nc = document.createElement('canvas');
-  nc.width = 256; nc.height = 60;
-  const ctx = nc.getContext('2d')!;
-  ctx.clearRect(0, 0, 256, 60);
-  ctx.fillStyle = 'rgba(0,0,0,0.72)';
-  ctx.beginPath();
-  if ((ctx as any).roundRect) (ctx as any).roundRect(4, 4, 248, 52, 10);
-  else ctx.rect(4, 4, 248, 52);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.fillStyle = '#fffbe6';
-  ctx.font = 'bold 24px Arial, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(npc.name, 128, 32);
-  const labelTex = new THREE.CanvasTexture(nc);
-  const labelSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTex, depthTest: false, transparent: true }));
-  labelSprite.scale.set(1.9, 0.45, 1);
-  labelSprite.position.set(0, 2.18, 0);
-  group.add(labelSprite);
-
-  return group;
-}
-
-// Helper to build procedural low-poly Demogorgon models from Stranger Things
+// Helper to build procedural low-poly Demogorgon models — the single Backrooms monster
 function buildDemogorgonModel(bot: Bot): THREE.Group {
   const group = new THREE.Group();
   const indexStr = bot.id.replace('enemy_', '');
@@ -867,6 +699,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
 
     // 5. Build static map geometry — the Backrooms: damp yellow wallpaper, popcorn ceilings, buzzing tubes
     const map = getXonoticMap();
+    let escapeWallMesh: THREE.Mesh | null = null;
     map.walls.forEach(wall => {
       if (wall.collisionOnly) return; // Invisible collision-only walls
       const geometry = new THREE.BoxGeometry(wall.size.x, wall.size.y, wall.size.z);
@@ -877,6 +710,15 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       } else if (wall.emissive) {
         // Buzzing fluorescent light fixtures
         material = new THREE.MeshBasicMaterial({ color: new THREE.Color(wall.color) });
+      } else if (wall.flicker) {
+        // The one escape wall — a bright, abnormal material so a severe flicker actually reads
+        // against the matte wallpaper around it.
+        material = new THREE.MeshStandardMaterial({
+          color: '#fff8dc',
+          emissive: new THREE.Color('#fff3b0'),
+          emissiveIntensity: 1.4,
+          roughness: 0.3,
+        });
       } else {
         // Damp, worn yellow wallpaper / popcorn ceiling — matte, no gloss
         material = new THREE.MeshStandardMaterial({
@@ -891,6 +733,22 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       mesh.receiveShadow = !wall.emissive;
       mesh.castShadow = !wall.emissive;
       scene.add(mesh);
+      if (wall.id === ESCAPE_WALL_ID) escapeWallMesh = mesh;
+    });
+
+    // 5c. Decorative, non-collidable puddles of contaminated standing water on the carpet
+    const puddleMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(PUDDLE_COLOR),
+      roughness: 0.15,
+      metalness: 0.1,
+      transparent: true,
+      opacity: 0.85,
+    });
+    getPuddles().forEach(p => {
+      const puddle = new THREE.Mesh(new THREE.CircleGeometry(p.radius, 16), puddleMat);
+      puddle.rotation.x = -Math.PI / 2;
+      puddle.position.set(p.x, 0.02, p.z);
+      scene.add(puddle);
     });
 
     // 5b. Infinite streamed maze — beyond the hand-built hub above, chunks of the same yellow
@@ -991,65 +849,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     const ashParticles = new THREE.Points(particleGeometry, particleMaterial);
     scene.add(ashParticles);
 
-    // Village geometry removed — the map is now generated as a Backrooms maze directly in
-    // xonoticMap.ts and rendered generically by the wall loop above.
-
-    // --- THE GATE / DIMENSIONAL PORTAL (Behind Spawn point on North Wall) ---
-    const portalGroup = new THREE.Group();
-    portalGroup.position.set(-28, 15.5, -34.5); // suspended near the top of the ceiling vent shaft
-    portalGroup.scale.set(0.55, 1.7, 1.0); // Pre-scaled into a vertical human / demon eye shape!
-
-    // Outer meaty-flesh border with named material
-    const portalOuterMat = new THREE.MeshStandardMaterial({ color: '#160408', roughness: 0.95 });
-    const portalOuterRing = new THREE.Mesh(
-      new THREE.TorusGeometry(2.3, 0.42, 8, 32),
-      portalOuterMat
-    );
-    portalGroup.add(portalOuterRing);
-
-    // Inner glowing red/orange ring with named material
-    const portalInnerMat = new THREE.MeshStandardMaterial({ color: '#45060d', roughness: 0.95 });
-    const portalInnerRing = new THREE.Mesh(
-      new THREE.TorusGeometry(1.8, 0.28, 8, 32),
-      portalInnerMat
-    );
-    portalGroup.add(portalInnerRing);
-
-    // Center tear core mesh flat facing South direction with named material
-    const portalCoreGeo = new THREE.CylinderGeometry(1.4, 1.4, 0.15, 32);
-    portalCoreGeo.rotateX(Math.PI / 2);
-    const portalCoreMat = new THREE.MeshBasicMaterial({ color: '#e11d48' }); // intense rose-red glowing slit
-    const portalCoreMesh = new THREE.Mesh(
-      portalCoreGeo,
-      portalCoreMat
-    );
-    portalGroup.add(portalCoreMesh);
-
-    // Dynamic central core center slit with named material
-    const portalCoreSlitGeo = new THREE.CylinderGeometry(0.8, 0.8, 0.17, 32);
-    portalCoreSlitGeo.rotateX(Math.PI / 2);
-    const portalCoreSlitMat = new THREE.MeshBasicMaterial({ color: '#ea580c' }); // hot pulsing orange gate center
-    const portalCoreSlitMesh = new THREE.Mesh(
-      portalCoreSlitGeo,
-      portalCoreSlitMat
-    );
-    portalGroup.add(portalCoreSlitMesh);
-
-    // Human/feline creepiness: central vertical dark slit pupil centered perfectly in the eye rifts!
-    const pupilMat = new THREE.MeshBasicMaterial({ color: '#000000' });
-    const pupilGeo = new THREE.BoxGeometry(0.42, 2.0, 0.22);
-    const pupilMesh = new THREE.Mesh(pupilGeo, pupilMat);
-    pupilMesh.position.set(0, 0, 0.15); // right over center glows
-    portalGroup.add(pupilMesh);
-
-    // Direct warm Gate PointLight reflecting glowing red atmosphere onto player spawn platform
-    const portalPointLight = new THREE.PointLight('#f43f5e', 14.0, 24);
-    portalPointLight.position.set(0, 0, 1.2);
-    portalGroup.add(portalPointLight);
-
-    scene.add(portalGroup);
-
-
     // 6. First-Person Viewmodel Gun Setup
     const gunGroup = new THREE.Group();
     
@@ -1086,9 +885,8 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     scene.add(gunGroup);
 
     // 7. Dynamic Meshes local cache Maps
-    const botMeshes = new Map<string, THREE.Group>();       // enemy Demogorgons
+    const botMeshes = new Map<string, THREE.Group>();       // the Demogorgon
     const remoteMeshes = new Map<string, THREE.Group>();    // online human players
-    const npcMeshes = new Map<string, THREE.Group>();
     const projectileMeshes = new Map<string, THREE.Mesh>();
     const pickupMeshes = new Map<string, THREE.Group>();
     
@@ -1123,43 +921,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
 
       const stateVal = (gameStateRef && gameStateRef.current) || stateRef.current;
       if (!stateVal) return;
-
-      const isPeaceful = stateVal.dimension === 'peaceful';
-
-      // Dynamically override material characteristics based on dimension:
-      // "peaceful" = dry Level 0 (classic yellow rooms, buzzing fluorescents) vs
-      // "upside_down" = a damp, moldy flooded sublevel (darker, decaying carpet, thick spores)
-      if (isPeaceful) {
-        // Dry mustard-yellow carpet
-        floorMat.color.set('#9c9166');
-        // Dust motes drifting through the fluorescent light beams
-        ashParticles.visible = true;
-        particleMaterial.color.set('#fef9c3');
-        particleMaterial.size = 0.14;
-        // Dimensional portal color must look EXACTLY the same in both sublevels (ominous red blood/orange eye shape)
-        portalOuterMat.color.set('#160408');
-        portalInnerMat.color.set('#45060d');
-        portalCoreMat.color.set('#e11d48');
-        portalCoreSlitMat.color.set('#ea580c');
-        if (portalPointLight) {
-          portalPointLight.color.set('#f43f5e');
-        }
-      } else {
-        // Decayed, water-damaged olive-black carpet
-        floorMat.color.set('#3a3624');
-        // Thicker mold spores hanging in the damp air
-        ashParticles.visible = true;
-        particleMaterial.color.set('#8a9b6e');
-        particleMaterial.size = 0.2;
-        // Ominous blood red/orange gate rings
-        portalOuterMat.color.set('#160408');
-        portalInnerMat.color.set('#45060d');
-        portalCoreMat.color.set('#e11d48');
-        portalCoreSlitMat.color.set('#ea580c');
-        if (portalPointLight) {
-          portalPointLight.color.set('#f43f5e');
-        }
-      }
 
       const now = performance.now();
       const frameDelta = (now - lastTime) / 1000;
@@ -1276,8 +1037,8 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
             botMeshes.set(bot.id, botGroup);
           }
 
-          // Toggle Demogorgon visibility based on active dimension (hidden in Peaceful world)
-          botGroup.visible = !isPeaceful;
+          // The monster is only rendered while it's actively hunting — otherwise it's lurking, unseen
+          botGroup.visible = !bot.isHidden;
 
           // Rotate bot group to face direction of movement
           const vx = bot.vel.x;
@@ -1395,62 +1156,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           botGroup.position.x = bot.pos.x;
           botGroup.position.z = bot.pos.z;
         });
-
-        // C2. Render Peaceful NPCs (Civilian villagers who do NOT follow the player)
-        const activeNpcIds = new Set((stateVal.npcs || []).map(n => n.id));
-
-        npcMeshes.forEach((mesh, id) => {
-          if (!activeNpcIds.has(id)) {
-            disposeHierarchy(mesh);
-            scene.remove(mesh);
-            npcMeshes.delete(id);
-          }
-        });
-
-        if (stateVal.npcs) {
-          stateVal.npcs.forEach(npc => {
-            let npcGroup = npcMeshes.get(npc.id);
-            if (!npcGroup) {
-              npcGroup = buildHumanModel(npc);
-              scene.add(npcGroup);
-              npcMeshes.set(npc.id, npcGroup);
-            }
-
-            // Visible only in the peaceful world!
-            npcGroup.visible = isPeaceful;
-
-            // Face direction of movement
-            const vx = npc.vel.x;
-            const vz = npc.vel.z;
-            const speedSq = vx * vx + vz * vz;
-            if (speedSq > 0.02) {
-              const angle = Math.atan2(vx, vz);
-              npcGroup.rotation.y = angle;
-            }
-
-            // Walk animation
-            const isMoving = speedSq > 0.05 && !stateVal.isFrozen;
-            const time = botAnimTime * 8; // gentle speed factor
-
-            // Bob slightly
-            npcGroup.position.x = npc.pos.x;
-            npcGroup.position.z = npc.pos.z;
-            npcGroup.position.y = npc.pos.y - 1.0 + (isMoving ? Math.abs(Math.sin(time * 1.5)) * 0.03 : Math.sin(time * 0.15) * 0.005);
-
-            // Arm / Leg swing animations
-            npcGroup.children.forEach(child => {
-              if (child.name === 'legL') {
-                child.rotation.x = isMoving ? Math.sin(time) * 0.45 : 0;
-              } else if (child.name === 'legR') {
-                child.rotation.x = isMoving ? -Math.sin(time) * 0.45 : 0;
-              } else if (child.name === 'armL') {
-                child.rotation.x = isMoving ? -Math.sin(time) * 0.4 : 0.08 * Math.sin(time * 0.2);
-              } else if (child.name === 'armR') {
-                child.rotation.x = isMoving ? Math.sin(time) * 0.4 : -0.08 * Math.sin(time * 0.2);
-              }
-            });
-          });
-        }
 
         // D. Render Projectiles
         const activeProjIds = new Set(stateVal.projectiles.map(p => p.id));
@@ -1680,68 +1385,53 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           posAttr.needsUpdate = true;
         }
 
-        // J. Dimensional Portal Breathing & Pulsating Aura Animation
-        if (portalGroup && portalPointLight) {
-          const portalCycle = now * 0.0032;
-          const pulseFactor = 1.0 + Math.sin(portalCycle) * 0.05;
-          portalGroup.scale.set(0.55 * pulseFactor, 1.7 * pulseFactor, 1.0); // Retains beautiful vertical eye aspect ratio
-          portalPointLight.intensity = 14.0 + Math.sin(now * 0.008) * 4.0;
+        // J. The one escape wall — a severe, chaotic strobe so it reads as "wrong" the moment
+        // someone's flashlight lands on it, but otherwise blends into the maze.
+        if (escapeWallMesh) {
+          (escapeWallMesh as THREE.Mesh).visible = Math.random() > 0.35;
         }
 
-        // K. Atmosphere rendering: steady fluorescent hum in Level 0, failing/sparking fixtures in the moldy sublevel
-        if (isPeaceful) {
-          // Level 0 — steady, dry, hazy mustard-yellow fluorescent light. No flicker.
-          (scene.background as THREE.Color).set('#8a7f4a');
-          if (scene.fog) {
-            (scene.fog as THREE.FogExp2).color.set('#7a6f42');
-          }
-          dirLight.color.set('#fdf6b2');
-          dirLight.intensity = 6.0;
-          ambientLight.color.set('#fef9c3');
-          ambientLight.intensity = 6.2;
-        } else {
-          // Damp sublevel — dimmer greenish-olive haze with periodic failing-light sparks/flicker
-          ambientLight.color.set('#6b7048');
+        // K. Atmosphere rendering — a damp, buzzing sublevel with periodic failing-light sparks/flicker
+        ambientLight.color.set('#6b7048');
 
-          const lightningPeriod = 7000;
-          const lightningLen = 500; // Duration of flash is half a second
-          const timeOffset = now % lightningPeriod;
+        const lightningPeriod = 7000;
+        const lightningLen = 500; // Duration of flash is half a second
+        const timeOffset = now % lightningPeriod;
 
-          if (timeOffset < lightningLen) {
-            const ratio = timeOffset / lightningLen;
-            let strobeIntensity = 0;
+        if (timeOffset < lightningLen) {
+          const ratio = timeOffset / lightningLen;
+          let strobeIntensity = 0;
 
-            // Double rapid strobe pattern (Initial blast, minor dim, second massive roar)
-            if (ratio < 0.18) {
-              strobeIntensity = ratio / 0.18;
-            } else if (ratio < 0.35) {
-              strobeIntensity = 1.0 - (ratio - 0.18) / 0.17 * 0.5;
-            } else if (ratio < 0.60) {
-              strobeIntensity = ((ratio - 0.35) / 0.25) * 0.8 + 0.5;
-            } else {
-              strobeIntensity = 1.0 - (ratio - 0.60) / 0.40;
-            }
-
-            // Dip background & fog toward a sickly dark olive-black — using pre-allocated Colors
-            // (the failing-fixture strobe is conveyed purely through light/fog values now — no
-            // exposed geometry above the ceiling, this space is fully enclosed indoors)
-            (scene.background as THREE.Color).lerpColors(_colorBg1, _colorBg2, strobeIntensity);
-            if (scene.fog) {
-              (scene.fog as THREE.FogExp2).color.lerpColors(_colorFog1, _colorFog2, strobeIntensity);
-            }
-            dirLight.color.lerpColors(_colorDir1, _colorDir2, strobeIntensity);
-            dirLight.intensity = 4.5 + strobeIntensity * 10.0;
-            ambientLight.intensity = 3.5 + strobeIntensity * 3.0;
+          // Double rapid strobe pattern (Initial blast, minor dim, second massive roar)
+          if (ratio < 0.18) {
+            strobeIntensity = ratio / 0.18;
+          } else if (ratio < 0.35) {
+            strobeIntensity = 1.0 - (ratio - 0.18) / 0.17 * 0.5;
+          } else if (ratio < 0.60) {
+            strobeIntensity = ((ratio - 0.35) / 0.25) * 0.8 + 0.5;
           } else {
-            // Standard dim, damp sublevel atmosphere
-            (scene.background as THREE.Color).set('#4a4a30');
-            if (scene.fog) {
-              (scene.fog as THREE.FogExp2).color.set('#3f3f28');
-            }
-            dirLight.color.set('#c9c98a');
-            dirLight.intensity = 4.5;
-            ambientLight.intensity = 3.5;
+            strobeIntensity = 1.0 - (ratio - 0.60) / 0.40;
           }
+
+          // Dip background & fog toward a sickly dark olive-black — using pre-allocated Colors
+          // (the failing-fixture strobe is conveyed purely through light/fog values now — no
+          // exposed geometry above the ceiling, this space is fully enclosed indoors)
+          (scene.background as THREE.Color).lerpColors(_colorBg1, _colorBg2, strobeIntensity);
+          if (scene.fog) {
+            (scene.fog as THREE.FogExp2).color.lerpColors(_colorFog1, _colorFog2, strobeIntensity);
+          }
+          dirLight.color.lerpColors(_colorDir1, _colorDir2, strobeIntensity);
+          dirLight.intensity = 4.5 + strobeIntensity * 10.0;
+          ambientLight.intensity = 3.5 + strobeIntensity * 3.0;
+        } else {
+          // Standard dim, damp sublevel atmosphere
+          (scene.background as THREE.Color).set('#4a4a30');
+          if (scene.fog) {
+            (scene.fog as THREE.FogExp2).color.set('#3f3f28');
+          }
+          dirLight.color.set('#c9c98a');
+          dirLight.intensity = 4.5;
+          ambientLight.intensity = 3.5;
         }
 
         // H. Call Render
@@ -1777,17 +1467,12 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         });
         botMeshes.clear();
 
-        npcMeshes.forEach(mesh => {
-          disposeHierarchy(mesh);
-          scene.remove(mesh);
-        });
-        npcMeshes.clear();
-
         Array.from(streamedChunkMeshes.keys()).forEach(key => disposeStreamedChunk(key));
         streamedWallMat.dispose();
         streamedCeilingMat.dispose();
         streamedLightMat.dispose();
         streamedFloorMat.dispose();
+        puddleMat.dispose();
 
         particleGeometry.dispose();
         particleMaterial.dispose();
@@ -1915,6 +1600,11 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       {/* Three.js Canvas mount */}
       <div ref={mountRef} className="w-full h-full" />
 
+      {/* The Red Room curse: permanent red peripheral vignette — once this is on, it never turns off */}
+      {!!state.inRedRoom && (
+        <div className="absolute inset-0 pointer-events-none z-30 bg-[radial-gradient(circle_at_center,transparent_35%,rgba(153,0,0,0.55)_100%)] animate-pulse" />
+      )}
+
       {/* Scope Zoom Background Mask Layer */}
       {isActive && !!state.player.isAiming && (
         <div className="absolute inset-0 pointer-events-none z-40 flex items-center justify-center animate-fade-in">
@@ -2020,10 +1710,10 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
   );
 }, (prevProps, nextProps) => {
   // Prevent React re-renders on the WebGL canvas on standard position/velocity ticks,
-  // but allow updates when pointerlock hooks re-bind, when the world dimension shifts,
-  // or when the player aims in/out (to render the zoom screen layer).
+  // but allow updates when pointerlock hooks re-bind, when the player aims in/out (to render the
+  // zoom screen layer), or when the permanent Red Room curse takes hold (red vignette overlay).
   return prevProps.onPointerLockChange === nextProps.onPointerLockChange &&
          prevProps.onMouseMove === nextProps.onMouseMove &&
          prevProps.state.player.isAiming === nextProps.state.player.isAiming &&
-         prevProps.state.dimension === nextProps.state.dimension;
+         prevProps.state.inRedRoom === nextProps.state.inRedRoom;
 });

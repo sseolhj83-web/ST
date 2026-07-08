@@ -183,11 +183,6 @@ export default function App() {
       if (code === 'KeyF' || key === 'f' || key === 'ㄹ') {
         engineRef.current?.toggleFreeze();
       }
-
-      // Dimension Shift Hotkey (P / T)
-      if (code === 'KeyP' || key === 'p' || key === 'ㅔ' || code === 'KeyT' || key === 't' || key === 'ㅅ') {
-        engineRef.current?.toggleDimension();
-      }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -286,9 +281,8 @@ export default function App() {
 
       // Game-over detection runs synchronously every frame — no React batching delay
       if (gameOverFired || appStateRef.current !== 'PLAYING') return;
-      const enemies = updatedState.bots.filter((b: any) => !b.isTeammate);
       const isDefeat  = updatedState.player.health <= 0;
-      const isVictory = enemies.length === 0 || updatedState.matchTime >= 420;
+      const isVictory = updatedState.escaped === true;
       if (!isDefeat && !isVictory) return;
 
       gameOverFired = true;
@@ -454,12 +448,10 @@ export default function App() {
               {/* Futuristic Sci-fi HUD element layout overlay with keys telemetry diagnostic */}
               <XonoticHUD
                 player={gameState.player}
-                bots={gameState.bots}
                 fragFeed={gameState.fragFeed}
                 matchTime={gameState.matchTime}
                 isFrozen={gameState.isFrozen}
-                dimension={gameState.dimension}
-                onToggleDimension={() => engineRef.current?.toggleDimension()}
+                monsterWarning={gameState.monsterWarning}
                 activeKeys={{
                   w: keysRef.current.w,
                   a: keysRef.current.a,

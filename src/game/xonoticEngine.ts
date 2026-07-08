@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { XonoticGameState, Player3D, Bot, Projectile, WeaponType, JumpPad, PickupItem, MapWall, FragLog, PeacefulNpc } from './xonoticTypes';
-import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS } from './xonoticMap';
+import { XonoticGameState, Player3D, Bot, Projectile, WeaponType, JumpPad, PickupItem, MapWall, FragLog } from './xonoticTypes';
+import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS, ESCAPE_WALL_ID, ESCAPE_WALL_POS, RED_ROOM_CENTER, RED_ROOM_RADIUS, SPAWN_POINT } from './xonoticMap';
 
 export class XonoticEngine {
   public state: XonoticGameState;
@@ -18,8 +18,8 @@ export class XonoticEngine {
   private pickups: PickupItem[] = [];
   private loadedStreamChunks: Map<string, MapWall[]> = new Map();
   private lastUpdate: number = 0;
-  private portalCooldown: number = 0;
-  private botNames = ['Nexer', 'Crucible', 'Spectre', 'Overlord', 'Phantasm', 'Titan'];
+  private lastStreamCx: number = Number.NaN;
+  private lastStreamCz: number = Number.NaN;
   private onStateChange: (state: XonoticGameState) => void;
 
   // Arena Physics parameters (highly responsive like standard Quake/Xonotic engines)
@@ -44,7 +44,7 @@ export class XonoticEngine {
   private getInitialState(): XonoticGameState {
     return {
       player: {
-        pos: { x: -28, y: 14.5, z: -28 },
+        pos: { ...SPAWN_POINT },
         vel: { x: 0, y: 0, z: 0 },
         yaw: 0,
         pitch: 0,
@@ -65,69 +65,40 @@ export class XonoticEngine {
         score: 0,
         deaths: 0,
       },
-      bots: this.createBots(),
-      npcs: this.createNpcs(),
+      bots: this.createMonster(),
       projectiles: [],
       pickups: JSON.parse(JSON.stringify(this.pickups)), // deep clone initial states
       fragFeed: [],
       matchTime: 0,
       isFrozen: false,
-      dimension: 'upside_down',
+      monsterWarning: false,
+      inRedRoom: false,
+      escaped: false,
     };
   }
 
-  private createBots(): Bot[] {
-    const spawned: Bot[] = [];
-
-    // 1. Teammates are completely empty as requested ("팀원은 없어")
-
-    // 2. 10 Red Enemies (적군 빨강이 10명)
-    const enemyNames = [
-      '하급 데모고르곤 👹',
-      '굶주린 데모고르곤 👿',
-      '우두머리 데모고르곤 👑',
-      '기어다니는 데모독 🐕',
-      '돌연변이 데모고르곤 💀',
-      '심연의 데모고르곤 👁️',
-      '비명지르는 데모고르곤 🗣️',
-      '뒤틀린 데모독 🐕',
-      '그림자 데모고르곤 👤',
-      '광폭 데모고르곤 ⚡',
-    ];
-    const enemyPositions = [
-      { x: -15, y: 2, z: -15 },   // near lab NW
-      { x:  15, y: 2, z: -15 },   // near lab NE
-      { x: -48, y: 2, z: -48 },   // outer NW
-      { x:  48, y: 2, z: -48 },   // outer NE
-      { x: -48, y: 2, z:  48 },   // outer SW
-      { x:  48, y: 2, z:  48 },   // outer SE
-      { x:   0, y: 2, z: -62 },   // far north
-      { x: -62, y: 2, z:   0 },   // far west
-      { x:  62, y: 2, z:   0 },   // far east
-      { x:   0, y: 2, z:  62 },   // far south
-    ];
-    for (let i = 0; i < 10; i++) {
-      const isStrongGuy = enemyNames[i].includes('강한 놈');
-      spawned.push({
-        id: `enemy_${i}`,
-        name: enemyNames[i],
-        pos: { ...enemyPositions[i] },
-        vel: { x: 0, y: 0, z: 0 },
-        health: isStrongGuy ? 200 : 100,
-        maxHealth: isStrongGuy ? 200 : 100,
-        color: isStrongGuy ? '#ea580c' : '#ff3355', // 주황빛이 도는 강력한 빨강색 vs 일반 빨강색
-        radius: isStrongGuy ? 1.1 : 0.8, // Slightly larger size
-        currentWeapon: isStrongGuy ? 'rocket' : (i % 4 === 0 ? 'laser' : i % 4 === 1 ? 'rocket' : i % 4 === 2 ? 'electro' : 'vaporizer'),
-        lastShootTime: 0,
-        lastMeleeTime: 0,
-        targetPos: null,
-        state: 'wandering',
-        stateTimer: 0,
-        isTeammate: false,
-      });
-    }
-
-    return spawned;
+  // The single, unkillable Backrooms entity. Starts far off and hidden — it only becomes visible
+  // once updateMonsterAI decides to ambush the player.
+  private createMonster(): Bot[] {
+    return [{
+      id: 'the_monster',
+      name: '데모고르곤',
+      pos: { x: 0, y: 2, z: -70 }, // opposite side of the open outer ring from spawn — clear of every maze wall
+      vel: { x: 0, y: 0, z: 0 },
+      health: 999999,
+      maxHealth: 999999,
+      color: '#050505',
+      radius: 1.0,
+      currentWeapon: 'laser',
+      lastShootTime: 0,
+      lastMeleeTime: 0,
+      targetPos: null,
+      state: 'wandering', // lurking
+      stateTimer: 4 + Math.random() * 6,
+      isMonster: true,
+      invulnerable: true,
+      isHidden: true,
+    }];
   }
 
   public updateInputs(
@@ -230,38 +201,17 @@ export class XonoticEngine {
     this.onStateChange({ ...this.state });
   }
 
-  public toggleDimension() {
-    this.triggerPortalShift();
-    this.onStateChange({ ...this.state });
-  }
-
-  // Roof-platform portal volume (shared by player, bots, and projectiles alike)
-  private isInsidePortal(pos: { x: number; y: number; z: number }): boolean {
-    const portalX = -28;
-    const portalZ = -34.5;
-    const distToPortal = Math.sqrt((pos.x - portalX) ** 2 + (pos.z - portalZ) ** 2);
-    return distToPortal < 3.2 && pos.y > 11.5 && pos.y < 20.0;
-  }
-
-  private triggerPortalShift() {
-    this.portalCooldown = 3.5; // Cooldown to prevent instant rapid shifting
-    const oldDim = this.state.dimension || 'upside_down';
-    const newDim = oldDim === 'upside_down' ? 'peaceful' : 'upside_down';
-    this.state.dimension = newDim;
-
-    this.pushFrag(
-      'PORTAL',
-      `${newDim === 'peaceful' ? 'Level 0' : 'Flooded Sublevel'}`,
-      'laser'
-    );
-  }
-
   // Keeps the maze loaded around wherever the player currently is, streaming in fresh procedural
-  // chunks as they walk and dropping ones that fall well behind — the map has no edge.
+  // chunks as they walk and dropping ones that fall well behind — the map has no edge. Short-circuits
+  // unless the player has actually crossed into a new chunk, so standing still (e.g. pressed up
+  // against a wall on a chunk boundary) never re-scans or reallocates anything.
   private updateStreamedChunks() {
     const { x, z } = this.state.player.pos;
     const pcx = Math.floor(x / CHUNK_SIZE);
     const pcz = Math.floor(z / CHUNK_SIZE);
+    if (pcx === this.lastStreamCx && pcz === this.lastStreamCz) return;
+    this.lastStreamCx = pcx;
+    this.lastStreamCz = pcz;
 
     for (let dx = -CHUNK_LOAD_RADIUS; dx <= CHUNK_LOAD_RADIUS; dx++) {
       for (let dz = -CHUNK_LOAD_RADIUS; dz <= CHUNK_LOAD_RADIUS; dz++) {
@@ -293,28 +243,14 @@ export class XonoticEngine {
     this.updateStreamedChunks();
 
     this.state.matchTime += dt;
-    if (this.portalCooldown > 0) {
-      this.portalCooldown -= dt;
-    }
-
-    // Portal collision — anything that enters the gate (player, bots, even stray bullets) flips the world
-    if (this.portalCooldown <= 0) {
-      const { player, bots, projectiles } = this.state;
-      const anyEntityInPortal =
-        this.isInsidePortal(player.pos) ||
-        bots.some(bot => this.isInsidePortal(bot.pos)) ||
-        projectiles.some(p => this.isInsidePortal(p.pos));
-
-      if (anyEntityInPortal) {
-        this.triggerPortalShift();
-      }
-    }
 
     this.updatePlayerPhysics(dt);
-    this.updateBotAI(dt);
-    this.updateNpcs(dt);
+    this.updateMonsterAI(dt);
     this.updateProjectiles(dt);
     this.updatePickups(dt);
+    this.checkEscapeWall();
+    this.checkRedRoom(dt);
+    this.checkTimeoutDeath();
     this.checkCollisions();
 
     // Broadcast player state to other players at ~30Hz
@@ -323,6 +259,46 @@ export class XonoticEngine {
     }
 
     this.onStateChange({ ...this.state });
+  }
+
+  // Walking through the one flickering wall wins the run outright.
+  private checkEscapeWall() {
+    if (this.state.escaped) return;
+    const { player } = this.state;
+    const dx = player.pos.x - ESCAPE_WALL_POS.x;
+    const dz = player.pos.z - ESCAPE_WALL_POS.z;
+    if (Math.sqrt(dx * dx + dz * dz) < 2.2) {
+      this.state.escaped = true;
+    }
+  }
+
+  // The Red Room: step inside once and the curse is permanent for the rest of the run — a slow,
+  // unstoppable health drain that no pickup can undo.
+  private checkRedRoom(dt: number) {
+    const { player } = this.state;
+    if (!this.state.inRedRoom) {
+      const dx = player.pos.x - RED_ROOM_CENTER.x;
+      const dz = player.pos.z - RED_ROOM_CENTER.z;
+      if (Math.sqrt(dx * dx + dz * dz) < RED_ROOM_RADIUS) {
+        this.state.inRedRoom = true;
+      }
+    }
+    if (this.state.inRedRoom && player.health > 0) {
+      this.damagePlayer(dt * 15, 'red_room');
+    }
+  }
+
+  // 7 minutes with no escape: the monster manifests right on top of the player and the run is over.
+  private checkTimeoutDeath() {
+    const { player } = this.state;
+    if (this.state.escaped || player.health <= 0 || this.state.matchTime < 420) return;
+    const monster = this.state.bots.find(b => b.isMonster);
+    if (monster) {
+      monster.isHidden = false;
+      monster.state = 'hunting';
+      monster.pos = { x: player.pos.x, y: player.pos.y, z: player.pos.z - 1.5 };
+    }
+    this.damagePlayer(9999, 'the_monster');
   }
 
   public connectRealtime(roomId: string, userId: string, supabaseClient: any, username: string) {
@@ -513,27 +489,17 @@ export class XonoticEngine {
 
   }
 
-  private updateBotAI(dt: number) {
-    if (this.state.dimension === 'peaceful') {
-      // Free and hide bots, no movement
-      this.state.bots.forEach(b => {
-        b.vel.x = 0;
-        b.vel.y = 0;
-        b.vel.z = 0;
-      });
-      return;
-    }
+  // The monster: lurks unseen somewhere loosely near the player, occasionally rolls the dice to
+  // ambush (becomes visible and beelines for a kill), and gives up and vanishes again if it can't
+  // catch them. Also still drives any real online players riding along in `bots` — those just get
+  // dead-reckoning physics, no AI.
+  private updateMonsterAI(dt: number) {
     if (this.isFrozen) {
-      // Keep velocities zeroed out so they don't slide or walk
-      this.state.bots.forEach(b => {
-        b.vel.x = 0;
-        b.vel.y = 0;
-        b.vel.z = 0;
-      });
+      this.state.bots.forEach(b => { b.vel.x = 0; b.vel.y = 0; b.vel.z = 0; });
       return;
     }
     const { bots, player } = this.state;
-    const now = performance.now();
+    let nearestMonsterDist = Infinity;
 
     bots.forEach(bot => {
       // Remote online players: apply dead-reckoning physics only, no AI
@@ -545,116 +511,62 @@ export class XonoticEngine {
         if (bot.pos.y < 1.0) { bot.pos.y = 1.0; bot.vel.y = 0; }
         return;
       }
+      if (!bot.isMonster) return;
+
+      const pdx = player.pos.x - bot.pos.x;
+      const pdz = player.pos.z - bot.pos.z;
+      const distToPlayer = Math.sqrt(pdx * pdx + pdz * pdz);
+      nearestMonsterDist = Math.min(nearestMonsterDist, distToPlayer);
 
       bot.stateTimer -= dt;
-      
-      // Target Selection Logic based on teams (Friendly Teammate Blue vs Red Enemies)
-      let targetEntity: { pos: { x: number; y: number; z: number }; id: string; name: string } | null = null;
-      let distToTarget = Infinity;
 
-      if (bot.isTeammate) {
-        // 🔵 Friendly Teammate Blue hunts red enemies (non-teammates)
-        bots.forEach(otherBot => {
-          if (!otherBot.isTeammate && otherBot.health > 0) {
-            const d = Math.sqrt(
-              (otherBot.pos.x - bot.pos.x) ** 2 +
-              (otherBot.pos.y - bot.pos.y) ** 2 +
-              (otherBot.pos.z - bot.pos.z) ** 2
-            );
-            if (d < distToTarget) {
-              distToTarget = d;
-              targetEntity = { pos: otherBot.pos, id: otherBot.id, name: otherBot.name };
-            }
-          }
-        });
-      } else {
-        // 🔴 Red Enemies hunt Player OR Blue Teammate
-        // 1. Check distance to Player
-        const distPlayer = Math.sqrt(
-          (player.pos.x - bot.pos.x) ** 2 +
-          (player.pos.y - bot.pos.y) ** 2 +
-          (player.pos.z - bot.pos.z) ** 2
-        );
-        distToTarget = distPlayer;
-        targetEntity = { pos: player.pos, id: 'player', name: 'You' };
-
-        // 2. Check distance to Friendly Teammate Blue
-        bots.forEach(otherBot => {
-          if (otherBot.isTeammate && otherBot.health > 0) {
-            const d = Math.sqrt(
-              (otherBot.pos.x - bot.pos.x) ** 2 +
-              (otherBot.pos.y - bot.pos.y) ** 2 +
-              (otherBot.pos.z - bot.pos.z) ** 2
-            );
-            if (d < distToTarget) {
-              distToTarget = d;
-              targetEntity = { pos: otherBot.pos, id: otherBot.id, name: otherBot.name };
-            }
-          }
-        });
-      }
-
-      // Basic state machine: Wander or Hunt
-      if (bot.stateTimer <= 0) {
-        bot.state = Math.random() > 0.4 ? 'hunting' : 'wandering';
-        bot.stateTimer = 2 + Math.random() * 3;
-        
-        if (bot.state === 'wandering') {
-          // Select randomized sector to patrol
+      if (bot.state !== 'hunting') {
+        // Lurking: drift to a spot loosely near the player, out of sight, and periodically roll
+        // for an ambush.
+        if (bot.stateTimer <= 0) {
+          bot.stateTimer = 2 + Math.random() * 3;
           const angle = Math.random() * Math.PI * 2;
-          const dist = 10 + Math.random() * 20;
-          bot.targetPos = { x: Math.cos(angle) * dist, y: 1.5, z: Math.sin(angle) * dist };
+          const dist = 22 + Math.random() * 20;
+          bot.targetPos = { x: player.pos.x + Math.cos(angle) * dist, y: 1.5, z: player.pos.z + Math.sin(angle) * dist };
+
+          if (Math.random() < 0.22) {
+            bot.state = 'hunting';
+            bot.isHidden = false;
+            bot.stateTimer = 22; // gives up after this long if it can't catch the player
+          }
+        }
+      } else {
+        // Hunting: relentlessly close in on the player's current position.
+        bot.targetPos = { ...player.pos };
+        if (bot.stateTimer <= 0 || distToPlayer > 60) {
+          bot.state = 'wandering'; // back to lurking
+          bot.isHidden = true;
+          bot.stateTimer = 8 + Math.random() * 12;
         }
       }
 
-      // Nav lock point
-      let targetCoords = bot.state === 'hunting' && targetEntity ? { ...targetEntity.pos } : bot.targetPos;
-      if (!targetCoords) {
-        targetCoords = { x: 0, y: 1.5, z: 0 };
-      }
-
-      // Calculate path direction
+      const targetCoords = bot.targetPos || { x: player.pos.x, y: 1.5, z: player.pos.z };
       const dx = targetCoords.x - bot.pos.x;
       const dz = targetCoords.z - bot.pos.z;
       const distToGoal = Math.sqrt(dx * dx + dz * dz);
 
-      let BotSpeed = bot.isTeammate ? 9.5 : 8.0; // Give blue teammate slightly faster movement to assist better
-      if (distToGoal > 1.5) {
-        bot.vel.x = (dx / distToGoal) * BotSpeed;
-        bot.vel.z = (dz / distToGoal) * BotSpeed;
+      // Slightly slower than the player's top sprint speed — outrunning it is possible, but risky.
+      const monsterSpeed = bot.state === 'hunting' ? this.maxGroundSpeed * 0.82 : 5.5;
+      if (distToGoal > 1.0) {
+        bot.vel.x = (dx / distToGoal) * monsterSpeed;
+        bot.vel.z = (dz / distToGoal) * monsterSpeed;
       } else {
         bot.vel.x = 0;
         bot.vel.z = 0;
-        if (bot.state === 'wandering') bot.stateTimer = 0; // force renew state
       }
 
-      // Incorporate Jump triggers if bots hit central steps
-      if (Math.random() < 0.05 && distToGoal > 8 && distToGoal < 22 && bot.pos.y < 2) {
-        bot.vel.y = 12; // jump randomly to platforms
-      }
-
-      // Separation: push bots apart when too close (prevents visual clumping)
-      bots.forEach(other => {
-        if (other.id === bot.id || other.health <= 0) return;
-        const sdx = bot.pos.x - other.pos.x;
-        const sdz = bot.pos.z - other.pos.z;
-        const sDist = Math.sqrt(sdx * sdx + sdz * sdz);
-        const minSep = 2.8;
-        if (sDist < minSep && sDist > 0.01) {
-          const force = ((minSep - sDist) / minSep) * 7;
-          bot.vel.x += (sdx / sDist) * force;
-          bot.vel.z += (sdz / sDist) * force;
-        }
-      });
-
-      // Apply Bot physics
+      // Apply physics
       bot.vel.y += this.gravity * dt;
       bot.pos.x += bot.vel.x * dt;
       this.checkWallAxisBound(bot.pos, bot.vel, 'x', 1.2);
       bot.pos.y += bot.vel.y * dt;
       let botOnGround = this.checkWallAxisBound(bot.pos, bot.vel, 'y', 1.8);
 
-      // Absolute fail-safe: Prevent bots from falling below the floor (Y >= 1.0) under any circumstance
       if (bot.pos.y < 1.0) {
         bot.pos.y = 1.0;
         bot.vel.y = 0;
@@ -668,51 +580,13 @@ export class XonoticEngine {
         bot.vel.y = 0;
       }
 
-      // Melee attack: strike when close enough
-      if (!bot.isTeammate && bot.state === 'hunting' && targetEntity && distToTarget < 2.5) {
-        const meleeCooldown = bot.name.includes('우두머리') ? 1000 : 1200; // boss attacks faster
-        if (now - bot.lastMeleeTime > meleeCooldown) {
-          bot.lastMeleeTime = now;
-          const meleeDamage = bot.name.includes('우두머리') ? 40 : 25;
-          if (targetEntity.id === 'player') {
-            this.damagePlayer(meleeDamage, bot.id);
-          } else {
-            // Hit a bot target (teammate)
-            const targetBot = this.state.bots.find(b => b.id === targetEntity!.id);
-            if (targetBot && targetBot.health > 0) {
-              targetBot.health = Math.max(0, targetBot.health - meleeDamage);
-            }
-          }
-        }
+      // Kill on contact while hunting
+      if (bot.state === 'hunting' && distToPlayer < 2.2) {
+        this.damagePlayer(9999, bot.id);
       }
     });
-  }
 
-  private triggerBotFire(bot: Bot, target: { pos: { x: number; y: number; z: number }; id: string }) {
-    const dx = target.pos.x - bot.pos.x;
-    const dy = (target.pos.y + 0.3) - bot.pos.y;
-    const dz = target.pos.z - bot.pos.z;
-    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-    if (dist === 0) return;
-
-    const velX = (dx / dist) * 35;
-    const velY = (dy / dist) * 35;
-    const velZ = (dz / dist) * 35;
-
-    // Teammate shoots cyan plasma, enemies shoot red plasma
-    const plasmaColor = bot.isTeammate ? '#3b82f6' : '#f43f5e';
-
-    this.state.projectiles.push({
-      id: Math.random().toString(36).substr(2, 9),
-      type: 'plasma',
-      pos: { ...bot.pos },
-      vel: { x: velX, y: velY, z: velZ },
-      radius: 0.5,
-      damage: 12,
-      color: plasmaColor,
-      ownerId: bot.id,
-    });
+    this.state.monsterWarning = nearestMonsterDist < 7;
   }
 
   private triggerWeaponFire(owner: 'player' | string) {
@@ -742,27 +616,26 @@ export class XonoticEngine {
       let hitTarget: Bot | null = null;
       let minHitDist = 120; // range limit
 
-      if (this.state.dimension !== 'peaceful') {
-        this.state.bots.forEach(bot => {
-          // Axis line distance maths from player eye to bot center (Y + 0.5)
-          const toBotX = bot.pos.x - playerEyeX;
-          const toBotY = (bot.pos.y + 0.5) - playerEyeY;
-          const toBotZ = bot.pos.z - playerEyeZ;
+      this.state.bots.forEach(bot => {
+        if (bot.invulnerable) return; // the monster can't be hit by anything
+        // Axis line distance maths from player eye to bot center (Y + 0.5)
+        const toBotX = bot.pos.x - playerEyeX;
+        const toBotY = (bot.pos.y + 0.5) - playerEyeY;
+        const toBotZ = bot.pos.z - playerEyeZ;
 
-          const proj = toBotX * lookX + toBotY * lookY + toBotZ * lookZ;
-          if (proj > 0) {
-            const perpX = toBotX - proj * lookX;
-            const perpY = toBotY - proj * lookY;
-            const perpZ = toBotZ - proj * lookZ;
-            const distPerp = Math.sqrt(perpX * perpX + perpY * perpY + perpZ * perpZ);
+        const proj = toBotX * lookX + toBotY * lookY + toBotZ * lookZ;
+        if (proj > 0) {
+          const perpX = toBotX - proj * lookX;
+          const perpY = toBotY - proj * lookY;
+          const perpZ = toBotZ - proj * lookZ;
+          const distPerp = Math.sqrt(perpX * perpX + perpY * perpY + perpZ * perpZ);
 
-            if (distPerp < 2.0 && proj < minHitDist) {
-              minHitDist = proj;
-              hitTarget = bot;
-            }
+          if (distPerp < 2.0 && proj < minHitDist) {
+            minHitDist = proj;
+            hitTarget = bot;
           }
-        });
-      }
+        }
+      });
 
       // Apply mass damage to hit bot target
       if (hitTarget) {
@@ -868,13 +741,6 @@ export class XonoticEngine {
     }
   }
 
-  private respawnBotInstant(bot: Bot) {
-    bot.health = 100;
-    const angle = Math.random() * Math.PI * 2;
-    bot.pos = { x: Math.cos(angle) * 30, y: 2, z: Math.sin(angle) * 30 };
-    bot.vel = { x: 0, y: 0, z: 0 };
-  }
-
   private updateProjectiles(dt: number) {
     const { projectiles, bots, player } = this.state;
 
@@ -949,37 +815,35 @@ export class XonoticEngine {
 
       if (isBlueProjectile) {
         // Player or Teampartner fired: Can only hit Red Enemies (bots with isTeammate = false)
-        if (this.state.dimension !== 'peaceful') {
-          for (let i = 0; i < bots.length; i++) {
-            const b = bots[i];
-            if (b.isTeammate) continue; // Skip teammates
+        for (let i = 0; i < bots.length; i++) {
+          const b = bots[i];
+          if (b.isTeammate || b.invulnerable) continue; // Skip teammates and the unkillable monster
 
-            const dist = Math.sqrt(
-              (p.pos.x - b.pos.x) ** 2 +
-              (p.pos.y - b.pos.y) ** 2 +
-              (p.pos.z - b.pos.z) ** 2
-            );
+          const dist = Math.sqrt(
+            (p.pos.x - b.pos.x) ** 2 +
+            (p.pos.y - b.pos.y) ** 2 +
+            (p.pos.z - b.pos.z) ** 2
+          );
 
-            if (dist < b.radius + p.radius + 1.2) {
-              if (p.type === 'rocket') {
-                this.triggerRocketExplosion(p.pos, p.ownerId);
-              } else if (p.type === 'grenade') {
-                this.triggerGrenadeExplosion(p.pos, p.ownerId);
-              } else {
-                // 1-hit kill sniper effect if the player fired!
-                const appliedDamage = p.ownerId === 'player' ? 9999 : p.damage;
-                b.health -= appliedDamage;
-                if (b.health <= 0) {
-                  b.health = 0;
-                  const shooterName = p.ownerId === 'player' ? 'You' : (this.state.bots.find(x => x.id === p.ownerId)?.name || '아군');
-                  this.pushFrag(shooterName, b.name, p.ownerId === 'player' ? player.currentWeapon : 'laser');
-                  if (p.ownerId === 'player') player.score++;
-                  // Remove defeated bot
-                  this.state.bots = this.state.bots.filter(x => x.id !== b.id);
-                }
+          if (dist < b.radius + p.radius + 1.2) {
+            if (p.type === 'rocket') {
+              this.triggerRocketExplosion(p.pos, p.ownerId);
+            } else if (p.type === 'grenade') {
+              this.triggerGrenadeExplosion(p.pos, p.ownerId);
+            } else {
+              // 1-hit kill sniper effect if the player fired!
+              const appliedDamage = p.ownerId === 'player' ? 9999 : p.damage;
+              b.health -= appliedDamage;
+              if (b.health <= 0) {
+                b.health = 0;
+                const shooterName = p.ownerId === 'player' ? 'You' : (this.state.bots.find(x => x.id === p.ownerId)?.name || '아군');
+                this.pushFrag(shooterName, b.name, p.ownerId === 'player' ? player.currentWeapon : 'laser');
+                if (p.ownerId === 'player') player.score++;
+                // Remove defeated bot
+                this.state.bots = this.state.bots.filter(x => x.id !== b.id);
               }
-              return false;
             }
+            return false;
           }
         }
       } else {
@@ -1092,11 +956,7 @@ export class XonoticEngine {
           return;
         }
 
-        // 1-hit kill sniper effect if the player fired the rocket!
-        const appliedDmg = this.state.dimension === 'peaceful' ? 0 : (ownerId === 'player' ? 9999 : 65 * effectFactor);
-        bot.health -= appliedDmg;
-        
-        // Push bot away
+        // Push always applies, even to the invulnerable monster — it staggers, it just never dies.
         const pX = bot.pos.x - pos.x;
         const pY = bot.pos.y - pos.y;
         const pZ = bot.pos.z - pos.z;
@@ -1105,6 +965,12 @@ export class XonoticEngine {
         bot.vel.x += (pX / pDist) * 35 * effectFactor;
         bot.vel.y += (pY / pDist) * 35 * effectFactor;
         bot.vel.z += (pZ / pDist) * 35 * effectFactor;
+
+        if (bot.invulnerable) return;
+
+        // 1-hit kill sniper effect if the player fired the rocket!
+        const appliedDmg = ownerId === 'player' ? 9999 : 65 * effectFactor;
+        bot.health -= appliedDmg;
 
         if (bot.health <= 0) {
           bot.health = 0;
@@ -1176,11 +1042,7 @@ export class XonoticEngine {
           return;
         }
 
-        // Standard 1-hit kill factor if the player threw it!
-        const appliedDmg = this.state.dimension === 'peaceful' ? 0 : (ownerId === 'player' ? 9999 : 80 * effectFactor);
-        bot.health -= appliedDmg;
-        
-        // Push bot away
+        // Push always applies, even to the invulnerable monster — it staggers, it just never dies.
         const pX = bot.pos.x - pos.x;
         const pY = bot.pos.y - pos.y;
         const pZ = bot.pos.z - pos.z;
@@ -1189,6 +1051,12 @@ export class XonoticEngine {
         bot.vel.x += (pX / pDist) * 45 * effectFactor;
         bot.vel.y += (pY / pDist) * 45 * effectFactor;
         bot.vel.z += (pZ / pDist) * 45 * effectFactor;
+
+        if (bot.invulnerable) return;
+
+        // Standard 1-hit kill factor if the player threw it!
+        const appliedDmg = ownerId === 'player' ? 9999 : 80 * effectFactor;
+        bot.health -= appliedDmg;
 
         if (bot.health <= 0) {
           bot.health = 0;
@@ -1204,9 +1072,6 @@ export class XonoticEngine {
   }
 
   private damagePlayer(amount: number, sourceId: string) {
-    if (this.state.dimension === 'peaceful') {
-      return; // Absolute peace! No damage taken.
-    }
     const { player } = this.state;
     // Shield / Armor system splits damage 70% to shield, 30% to health
     if (player.armor > 0) {
@@ -1287,6 +1152,7 @@ export class XonoticEngine {
   // Pure wall geometries bound checks
   private checkWallCollision(pos: { x: number; y: number; z: number }, radius: number): boolean {
     for (const wall of this.walls) {
+      if (wall.id === ESCAPE_WALL_ID) continue; // not a real wall — projectiles pass through it too
       const halfSize = { x: wall.size.x / 2, y: wall.size.y / 2, z: wall.size.z / 2 };
       
       const inX = pos.x + radius > wall.pos.x - halfSize.x && pos.x - radius < wall.pos.x + halfSize.x;
@@ -1312,6 +1178,8 @@ export class XonoticEngine {
 
     // Check dynamic wall objects
     for (const wall of this.walls) {
+      // The escape wall is a trigger, not a wall — walk straight through it (see checkEscapeWall)
+      if (wall.id === ESCAPE_WALL_ID) continue;
       // NPCs skip collisionOnly building walls (they can enter buildings; lab walls are not collisionOnly)
       if (skipCollisionOnly && wall.collisionOnly) continue;
 
@@ -1361,109 +1229,4 @@ export class XonoticEngine {
     // Entities interactions if any
   }
 
-  private createNpcs(): PeacefulNpc[] {
-    const spawned: PeacefulNpc[] = [];
-    const npcNames = [
-      'Mike Wheeler',
-      'Joyce Byers',
-      'Jim Hopper',
-      'Will Byers',
-      'Max Mayfield',
-      'Nancy Wheeler',
-      'Bob Newby'
-    ];
-    const npcPositions = [
-      { x:  -8, y: 1.0, z: -12 },  // Mike — near lab
-      { x:  20, y: 1.0, z:  38 },  // Joyce — near store
-      { x: -52, y: 1.0, z:  77 },  // Hopper — near Byers house
-      { x:  22, y: 1.0, z:  24 },  // Will — Main St.
-      { x:  42, y: 1.0, z: -15 },  // Max — gas station
-      { x: -42, y: 1.0, z: -18 },  // Nancy — church
-      { x: -33, y: 1.0, z: -52 },  // Bob — school
-    ];
-    const genders: ('man' | 'woman' | 'child' | 'elder')[] = ['child', 'woman', 'man', 'child', 'child', 'woman', 'man'];
-    const clothesColors = [
-      '#4a3f8a', // Mike - purple-blue 80s jacket
-      '#8b4a2a', // Joyce - earthy flannel
-      '#2d4a2a', // Hopper - olive sheriff uniform
-      '#3a6a4a', // Will - green army jacket
-      '#c44040', // Max - red skater jacket
-      '#d4a060', // Nancy - tan 80s blouse
-      '#2a4a7a', // Bob - blue dress shirt
-    ];
-
-    for (let i = 0; i < npcNames.length; i++) {
-      spawned.push({
-        id: `npc_${i}`,
-        name: npcNames[i],
-        pos: { ...npcPositions[i] },
-        vel: { x: 0, y: 0, z: 0 },
-        angle: Math.random() * Math.PI * 2,
-        gender: genders[i],
-        clothesColor: clothesColors[i],
-        wanderTimer: Math.random() * 3 + 1
-      });
-    }
-    return spawned;
-  }
-
-  private updateNpcs(dt: number) {
-    if (!this.state.npcs) {
-      this.state.npcs = this.createNpcs();
-    }
-
-    // NPCs only operate / wander around in the peaceful world!
-    if (this.state.dimension !== 'peaceful' || this.isFrozen) {
-      this.state.npcs.forEach(npc => {
-        npc.vel.x = 0;
-        npc.vel.y = 0;
-        npc.vel.z = 0;
-      });
-      return;
-    }
-
-    this.state.npcs.forEach(npc => {
-      npc.wanderTimer -= dt;
-      if (npc.wanderTimer <= 0) {
-        npc.wanderTimer = Math.random() * 4 + 2; // wander for 2 to 6 seconds
-        if (Math.random() < 0.35) {
-          // Stay standing in place peacefully
-          npc.vel.x = 0;
-          npc.vel.z = 0;
-        } else {
-          // Walk peacefully in a random direction (and absolutely NEVER follow the player!)
-          npc.angle = Math.random() * Math.PI * 2;
-          const walkSpeed = Math.random() * 1.5 + 1.2; // slow and gentle stroll
-          npc.vel.x = Math.sin(npc.angle) * walkSpeed;
-          npc.vel.z = Math.cos(npc.angle) * walkSpeed;
-        }
-      }
-
-      // Add standard gravity to ground them properly
-      npc.vel.y += this.gravity * dt;
-
-      // Update position coordinates with collision checks against walls
-      npc.pos.x += npc.vel.x * dt;
-      this.checkWallAxisBound(npc.pos, npc.vel, 'x', 0.8, true); // skipCollisionOnly: NPCs can enter buildings
-
-      npc.pos.y += npc.vel.y * dt;
-      const onFloor = this.checkWallAxisBound(npc.pos, npc.vel, 'y', 1.6, true);
-      if (onFloor) {
-        npc.vel.y = 0;
-      }
-
-      npc.pos.z += npc.vel.z * dt;
-      this.checkWallAxisBound(npc.pos, npc.vel, 'z', 0.8, true);
-
-      // Level Boundaries boundary protection
-      if (npc.pos.x < -77.5) { npc.pos.x = -77.5; npc.vel.x *= -1; }
-      if (npc.pos.x > 77.5)  { npc.pos.x =  77.5; npc.vel.x *= -1; }
-      if (npc.pos.z < -77.5) { npc.pos.z = -77.5; npc.vel.z *= -1; }
-      if (npc.pos.z > 77.5)  { npc.pos.z =  77.5; npc.vel.z *= -1; }
-      if (npc.pos.y < 1.0) {
-        npc.pos.y = 1.0;
-        npc.vel.y = 0;
-      }
-    });
-  }
 }
