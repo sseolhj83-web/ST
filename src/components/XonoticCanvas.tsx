@@ -633,17 +633,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
   useEffect(() => {
     if (!mountRef.current) return;
 
-    // Precalculated high-performance Trigonometric Lookup Tables (LUTs) 
-    // to completely bypass expensive Math.sin / Math.cos calls inside the particle loop.
-    const SIN_LUT_SIZE = 1024;
-    const SIN_LUT = new Float32Array(SIN_LUT_SIZE);
-    const COS_LUT = new Float32Array(SIN_LUT_SIZE);
-    for (let i = 0; i < SIN_LUT_SIZE; i++) {
-      const angle = (i / SIN_LUT_SIZE) * Math.PI * 2;
-      SIN_LUT[i] = Math.sin(angle);
-      COS_LUT[i] = Math.cos(angle);
-    }
-
     // 1. Create Scene & the sickly fluorescent-lit Backrooms haze
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#8a7f4a'); // hazy mustard-yellow backrooms air
@@ -697,6 +686,48 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       metalness: 0.0,
     });
 
+    // Procedural damp-wallpaper texture — a flat single color read as dull/lifeless across long
+    // corridors, so this breaks it up with fine grain + blotchy stains. One shared texture reused
+    // by every wall material (hub and infinite streamed maze alike), so it costs nothing extra per wall.
+    const wallpaperTexture = (() => {
+      const size = 128;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#cbb35c';
+      ctx.fillRect(0, 0, size, size);
+
+      const imgData = ctx.getImageData(0, 0, size, size);
+      for (let i = 0; i < imgData.data.length; i += 4) {
+        const n = (Math.random() - 0.5) * 24;
+        imgData.data[i] = Math.max(0, Math.min(255, imgData.data[i] + n));
+        imgData.data[i + 1] = Math.max(0, Math.min(255, imgData.data[i + 1] + n * 0.9));
+        imgData.data[i + 2] = Math.max(0, Math.min(255, imgData.data[i + 2] + n * 0.55));
+      }
+      ctx.putImageData(imgData, 0, 0);
+
+      for (let i = 0; i < 16; i++) {
+        const sx = Math.random() * size;
+        const sy = Math.random() * size;
+        const r = 8 + Math.random() * 24;
+        const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+        grad.addColorStop(0, 'rgba(84,74,36,0.24)');
+        grad.addColorStop(1, 'rgba(84,74,36,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(3, 2);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    })();
+
     // 5. Build static map geometry — the Backrooms: damp yellow wallpaper, popcorn ceilings, buzzing tubes
     const map = getXonoticMap();
     let escapeWallMesh: THREE.Mesh | null = null;
@@ -711,19 +742,22 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         // Buzzing fluorescent light fixtures
         material = new THREE.MeshBasicMaterial({ color: new THREE.Color(wall.color) });
       } else if (wall.flicker) {
-        // The one escape wall — a bright, abnormal material so a severe flicker actually reads
-        // against the matte wallpaper around it.
+        // The one escape wall — only subtly off from ordinary wallpaper up close (slightly cooler
+        // tone, faint emissive) so a searching player can tell something's wrong on inspection, but
+        // it doesn't glow like a beacon that gives its location away from across the map.
         material = new THREE.MeshStandardMaterial({
-          color: '#fff8dc',
+          color: '#e4d9a0',
           emissive: new THREE.Color('#fff3b0'),
-          emissiveIntensity: 1.4,
-          roughness: 0.3,
+          emissiveIntensity: 0.35,
+          roughness: 0.6,
         });
       } else {
-        // Damp, worn yellow wallpaper / popcorn ceiling — matte, no gloss
+        // Damp, worn yellow wallpaper / popcorn ceiling — subtle grain/stain texture instead of a
+        // flat dead color, with a touch of sheen so the fluorescent lighting reads across it
         material = new THREE.MeshStandardMaterial({
           color: new THREE.Color(wall.color),
-          roughness: 0.95,
+          map: wallpaperTexture,
+          roughness: 0.85,
           metalness: 0.0,
         });
       }
@@ -754,7 +788,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // 5b. Infinite streamed maze — beyond the hand-built hub above, chunks of the same yellow
     // Backrooms maze are generated/torn down on the fly around the player so the map never ends.
     // Materials are shared (not re-created per wall) since chunks load/unload constantly.
-    const streamedWallMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#c9b458'), roughness: 0.95, metalness: 0.0 });
+    const streamedWallMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#c9b458'), map: wallpaperTexture, roughness: 0.85, metalness: 0.0 });
     const streamedCeilingMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#cfc48f'), roughness: 0.95, metalness: 0.0 });
     const streamedLightMat = new THREE.MeshBasicMaterial({ color: new THREE.Color('#fef9c3') });
     const streamedFloorMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#9c9166'), roughness: 0.92, metalness: 0.0 });
@@ -823,31 +857,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     const gridHelper = new THREE.GridHelper(160, 80, '#7a7048', '#7a7048');
     gridHelper.position.y = 0.05;
     scene.add(gridHelper);
-
-    // --- FLOATING DUST MOTES / MOLD SPORES drifting in the fluorescent light beams ---
-    const particleCount = 750; // Raised dust density for drift richness
-    const particleGeometry = new THREE.BufferGeometry();
-    const particlePositions = new Float32Array(particleCount * 3);
-
-    for (let i = 0; i < particleCount; i++) {
-      particlePositions[i * 3] = (Math.random() - 0.5) * 160;
-      particlePositions[i * 3 + 1] = Math.random() * 25;
-      particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 160;
-    }
-
-    particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
-
-    const particleMaterial = new THREE.PointsMaterial({
-      color: '#fef9c3', // dust motes floating in the fluorescent light
-      size: 0.14,
-      transparent: true,
-      opacity: 0.75,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false
-    });
-
-    const ashParticles = new THREE.Points(particleGeometry, particleMaterial);
-    scene.add(ashParticles);
 
     // 6. First-Person Viewmodel Gun Setup
     const gunGroup = new THREE.Group();
@@ -1356,35 +1365,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           return true;
         });
 
-        // I. Drifting dust motes / mold spores - optimized update loop with high-speed LUT lookups
-        if (ashParticles && ashParticles.visible) {
-          const posAttr = ashParticles.geometry.attributes.position as THREE.BufferAttribute;
-          const arr = posAttr.array as Float32Array;
-          const count = posAttr.count;
-          const timeTick = now * 0.00025;
-          for (let i = 0; i < count; i++) {
-            const idx = i * 3;
-            // High-speed index mappings using bitwise fast truncation & power-of-two modulo (& 1023)
-            const angleIdx1 = ((timeTick * 250 + i) | 0) & 1023;
-            const angleIdx2 = ((timeTick * 100 + i * 50) | 0) & 1023;
-            const angleIdx3 = ((timeTick * 82 + i * 50) | 0) & 1023;
-
-            // Access directly using fast look-up table without heavy math calls
-            arr[idx + 1] += SIN_LUT[angleIdx1] * 0.016 - 0.009;
-            arr[idx] += SIN_LUT[angleIdx2] * 0.016;
-            arr[idx + 2] += COS_LUT[angleIdx3] * 0.016;
-
-            if (arr[idx + 1] < 0) {
-              arr[idx + 1] = 25;
-              arr[idx] = (Math.random() - 0.5) * 80;
-              arr[idx + 2] = (Math.random() - 0.5) * 80;
-            } else if (arr[idx + 1] > 25) {
-              arr[idx + 1] = 0;
-            }
-          }
-          posAttr.needsUpdate = true;
-        }
-
         // J. The one escape wall — a severe, chaotic strobe so it reads as "wrong" the moment
         // someone's flashlight lands on it, but otherwise blends into the maze.
         if (escapeWallMesh) {
@@ -1473,9 +1453,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         streamedLightMat.dispose();
         streamedFloorMat.dispose();
         puddleMat.dispose();
-
-        particleGeometry.dispose();
-        particleMaterial.dispose();
+        wallpaperTexture.dispose();
 
         renderer.dispose();
       } catch (err) {

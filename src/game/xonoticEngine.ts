@@ -4,7 +4,7 @@
  */
 
 import { XonoticGameState, Player3D, Bot, Projectile, WeaponType, JumpPad, PickupItem, MapWall, FragLog } from './xonoticTypes';
-import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS, ESCAPE_WALL_ID, ESCAPE_WALL_POS, RED_ROOM_CENTER, RED_ROOM_RADIUS, SPAWN_POINT } from './xonoticMap';
+import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS, ESCAPE_WALL_ID, ESCAPE_WALL_POS, RED_ROOM_CENTER, RED_ROOM_RADIUS, SPAWN_POINT, WALL_H } from './xonoticMap';
 
 export class XonoticEngine {
   public state: XonoticGameState;
@@ -30,6 +30,8 @@ export class XonoticEngine {
   private readonly airAccel = 35;
   private readonly groundFriction = 7.5;
   private readonly jumpForce = 15;
+  private readonly maxBhopSpeed = 40; // hard cap on horizontal speed so chained bunny-hops can't build up
+                                       // enough velocity to tunnel through a wall/ceiling in a single frame
 
   constructor(onStateChange: (state: XonoticGameState) => void) {
     this.onStateChange = onStateChange;
@@ -171,6 +173,14 @@ export class XonoticEngine {
         if (mag > 0) {
           player.vel.x += wishDir.x * 2;
           player.vel.z += wishDir.z * 2;
+        }
+
+        // Cap the stacked speed so chained hops can't grow it without bound (see maxBhopSpeed)
+        const bhopSpeed = Math.sqrt(player.vel.x * player.vel.x + player.vel.z * player.vel.z);
+        if (bhopSpeed > this.maxBhopSpeed) {
+          const scale = this.maxBhopSpeed / bhopSpeed;
+          player.vel.x *= scale;
+          player.vel.z *= scale;
         }
       }
     }
@@ -1173,7 +1183,12 @@ export class XonoticEngine {
     // so there is no edge of the map to bound the player against.
     if (axis === 'y') {
       if (pos.y < 1.0) { pos.y = 1.0; vel.y = 0; touchedFloor = true; } // ground floor
-      if (pos.y > 60) { pos.y = 60; vel.y = 0; }
+      // Absolute fail-safe ceiling clamp — mirrors the floor clamp above. Without this, a big
+      // enough single-frame vertical jump (rocket/grenade splash, chained bunny-hops) can move the
+      // player past the thin ceiling slab before the wall-overlap check below ever sees it, letting
+      // them fly around in the void above the map. The room is never taller than WALL_H anywhere.
+      const ceilingY = WALL_H - 0.3;
+      if (pos.y > ceilingY) { pos.y = ceilingY; vel.y = Math.min(vel.y, 0); }
     }
 
     // Check dynamic wall objects
@@ -1203,17 +1218,24 @@ export class XonoticEngine {
       const inZ = pos.z + radius >= wall.pos.z - hZ && pos.z - radius <= wall.pos.z + hZ;
 
       if (inX && inY && inZ) {
+        // Push out by a hair more than exact contact (skin margin) so the position doesn't rest
+        // exactly on the boundary — sitting exactly on it made the overlap test flip in/out from
+        // floating-point rounding alone, re-triggering this branch every frame and reading as the
+        // player being stuck/juddering inside the wall.
+        const skin = 0.02;
         if (axis === 'x') {
           const pushDir = pos.x > wall.pos.x ? 1 : -1;
-          pos.x = wall.pos.x + pushDir * (hX + radius);
-          vel.x *= -0.1;
+          pos.x = wall.pos.x + pushDir * (hX + radius + skin);
+          // Kill the incoming velocity instead of bouncing it back — a bounce plus held movement
+          // input re-drove the player into the wall next frame, then bounced again, forever.
+          vel.x = 0;
         } else if (axis === 'z') {
           const pushDir = pos.z > wall.pos.z ? 1 : -1;
-          pos.z = wall.pos.z + pushDir * (hZ + radius);
-          vel.z *= -0.1;
+          pos.z = wall.pos.z + pushDir * (hZ + radius + skin);
+          vel.z = 0;
         } else if (axis === 'y') {
           const pushDir = pos.y > wall.pos.y ? 1 : -1;
-          pos.y = wall.pos.y + pushDir * (hY + radius);
+          pos.y = wall.pos.y + pushDir * (hY + radius + skin);
           vel.y = 0;
           if (pushDir > 0) {
             touchedFloor = true;

@@ -26,10 +26,12 @@ export const WALL_H = 6.5; // backrooms ceiling height
 export const CELL = 20;    // maze partition grid spacing, shared by the hub and every streamed chunk
 
 // The single flickering wall that lets you escape — deliberately just one stub wall inside one
-// ordinary-looking room, easy to miss. It never blocks movement (see xonoticEngine.ts
-// checkWallAxisBound); walking into it ends the run in victory (see stepSimulator).
+// ordinary-looking room, easy to miss, and tucked in the far corner of the maze core diagonally
+// opposite SPAWN_POINT so it's never in sight (or even in the same quadrant) when the run starts.
+// It never blocks movement (see xonoticEngine.ts checkWallAxisBound); walking into it ends the run
+// in victory (see stepSimulator).
 export const ESCAPE_WALL_ID = 'escape_wall';
-export const ESCAPE_WALL_POS = { x: 30, y: WALL_H / 2, z: 32 };
+export const ESCAPE_WALL_POS = { x: -33, y: WALL_H / 2, z: -47 };
 
 // The Red Room — one fixed, unmarked spot in the hub. Stray inside it and your peripheral vision
 // turns red for the rest of the run: there is no way back out (see stepSimulator's curse damage).
@@ -277,17 +279,6 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   // Outer hallway ring armor drops
   pickups.push({ id: 'armor_o_1', type: 'armor_mega', pos: { x: -55, y: 1.5, z: 0 }, radius: 1.8, respawnTimer: 0, value: 100 });
   pickups.push({ id: 'armor_o_2', type: 'armor_mega', pos: { x: 55, y: 1.5, z: 0 }, radius: 1.8, respawnTimer: 0, value: 100 });
-
-  // Ammo drops — inner quadrants
-  pickups.push({ id: 'ammo_1', type: 'ammo', pos: { x: -15, y: 1, z: -15 }, radius: 1, respawnTimer: 0, value: 20 });
-  pickups.push({ id: 'ammo_2', type: 'ammo', pos: { x: 15, y: 1, z: -15 }, radius: 1, respawnTimer: 0, value: 20 });
-  pickups.push({ id: 'ammo_3', type: 'ammo', pos: { x: -15, y: 1, z: 15 }, radius: 1, respawnTimer: 0, value: 20 });
-  pickups.push({ id: 'ammo_4', type: 'ammo', pos: { x: 15, y: 1, z: 15 }, radius: 1, respawnTimer: 0, value: 20 });
-  // Ammo drops — outer hallway ring
-  pickups.push({ id: 'ammo_5', type: 'ammo', pos: { x: -45, y: 1, z: -45 }, radius: 1, respawnTimer: 0, value: 20 });
-  pickups.push({ id: 'ammo_6', type: 'ammo', pos: { x: 45, y: 1, z: -45 }, radius: 1, respawnTimer: 0, value: 20 });
-  pickups.push({ id: 'ammo_7', type: 'ammo', pos: { x: -45, y: 1, z: 45 }, radius: 1, respawnTimer: 0, value: 20 });
-  pickups.push({ id: 'ammo_8', type: 'ammo', pos: { x: 45, y: 1, z: 45 }, radius: 1, respawnTimer: 0, value: 20 });
 
   return { walls, jumpPads, pickups };
 }
