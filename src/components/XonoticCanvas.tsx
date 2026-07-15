@@ -695,25 +695,26 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       canvas.width = size;
       canvas.height = size;
       const ctx = canvas.getContext('2d')!;
-      ctx.fillStyle = '#cbb35c';
+      ctx.fillStyle = '#f2c94c'; // bright yellow wallpaper base
       ctx.fillRect(0, 0, size, size);
 
       const imgData = ctx.getImageData(0, 0, size, size);
       for (let i = 0; i < imgData.data.length; i += 4) {
-        const n = (Math.random() - 0.5) * 24;
+        const n = (Math.random() - 0.5) * 16;
         imgData.data[i] = Math.max(0, Math.min(255, imgData.data[i] + n));
         imgData.data[i + 1] = Math.max(0, Math.min(255, imgData.data[i + 1] + n * 0.9));
         imgData.data[i + 2] = Math.max(0, Math.min(255, imgData.data[i + 2] + n * 0.55));
       }
       ctx.putImageData(imgData, 0, 0);
 
-      for (let i = 0; i < 16; i++) {
+      // Faint stains only — kept subtle so the wallpaper still reads as bright yellow overall
+      for (let i = 0; i < 8; i++) {
         const sx = Math.random() * size;
         const sy = Math.random() * size;
-        const r = 8 + Math.random() * 24;
+        const r = 8 + Math.random() * 20;
         const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
-        grad.addColorStop(0, 'rgba(84,74,36,0.24)');
-        grad.addColorStop(1, 'rgba(84,74,36,0)');
+        grad.addColorStop(0, 'rgba(120,105,50,0.10)');
+        grad.addColorStop(1, 'rgba(120,105,50,0)');
         ctx.fillStyle = grad;
         ctx.beginPath();
         ctx.arc(sx, sy, r, 0, Math.PI * 2);
@@ -738,6 +739,13 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       let material: THREE.Material;
       if (wall.id === 'floor_main') {
         material = floorMat;
+      } else if (wall.id === 'ceiling_main') {
+        // Stained popcorn ceiling — its own flat tone, not the bright wall wallpaper
+        material = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(wall.color),
+          roughness: 0.95,
+          metalness: 0.0,
+        });
       } else if (wall.emissive) {
         // Buzzing fluorescent light fixtures
         material = new THREE.MeshBasicMaterial({ color: new THREE.Color(wall.color) });
@@ -752,10 +760,11 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           roughness: 0.6,
         });
       } else {
-        // Damp, worn yellow wallpaper / popcorn ceiling — subtle grain/stain texture instead of a
-        // flat dead color, with a touch of sheen so the fluorescent lighting reads across it
+        // Bright yellow wallpaper with subtle grain/stain texture instead of a flat dead color —
+        // material color left white so the texture's own bright color isn't tinted/darkened by
+        // multiplying against a second muted color.
         material = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(wall.color),
+          color: 0xffffff,
           map: wallpaperTexture,
           roughness: 0.85,
           metalness: 0.0,
@@ -788,7 +797,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // 5b. Infinite streamed maze — beyond the hand-built hub above, chunks of the same yellow
     // Backrooms maze are generated/torn down on the fly around the player so the map never ends.
     // Materials are shared (not re-created per wall) since chunks load/unload constantly.
-    const streamedWallMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#c9b458'), map: wallpaperTexture, roughness: 0.85, metalness: 0.0 });
+    const streamedWallMat = new THREE.MeshStandardMaterial({ color: 0xffffff, map: wallpaperTexture, roughness: 0.85, metalness: 0.0 });
     const streamedCeilingMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#cfc48f'), roughness: 0.95, metalness: 0.0 });
     const streamedLightMat = new THREE.MeshBasicMaterial({ color: new THREE.Color('#fef9c3') });
     const streamedFloorMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#9c9166'), roughness: 0.92, metalness: 0.0 });
@@ -913,12 +922,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     const _finalGunPos = new THREE.Vector3();
     const _lookTarget = new THREE.Vector3();
     const _targetLook = new THREE.Vector3();
-    const _colorBg1 = new THREE.Color('#4a4a30');
-    const _colorBg2 = new THREE.Color('#fef9c3');
-    const _colorFog1 = new THREE.Color('#3f3f28');
-    const _colorFog2 = new THREE.Color('#f5edb0');
-    const _colorDir1 = new THREE.Color('#c9c98a');
-    const _colorDir2 = new THREE.Color('#fffbe0');
 
     let lastTime = performance.now();
     let botAnimTime = 0;
@@ -1369,49 +1372,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         // someone's flashlight lands on it, but otherwise blends into the maze.
         if (escapeWallMesh) {
           (escapeWallMesh as THREE.Mesh).visible = Math.random() > 0.35;
-        }
-
-        // K. Atmosphere rendering — a damp, buzzing sublevel with periodic failing-light sparks/flicker
-        ambientLight.color.set('#6b7048');
-
-        const lightningPeriod = 7000;
-        const lightningLen = 500; // Duration of flash is half a second
-        const timeOffset = now % lightningPeriod;
-
-        if (timeOffset < lightningLen) {
-          const ratio = timeOffset / lightningLen;
-          let strobeIntensity = 0;
-
-          // Double rapid strobe pattern (Initial blast, minor dim, second massive roar)
-          if (ratio < 0.18) {
-            strobeIntensity = ratio / 0.18;
-          } else if (ratio < 0.35) {
-            strobeIntensity = 1.0 - (ratio - 0.18) / 0.17 * 0.5;
-          } else if (ratio < 0.60) {
-            strobeIntensity = ((ratio - 0.35) / 0.25) * 0.8 + 0.5;
-          } else {
-            strobeIntensity = 1.0 - (ratio - 0.60) / 0.40;
-          }
-
-          // Dip background & fog toward a sickly dark olive-black — using pre-allocated Colors
-          // (the failing-fixture strobe is conveyed purely through light/fog values now — no
-          // exposed geometry above the ceiling, this space is fully enclosed indoors)
-          (scene.background as THREE.Color).lerpColors(_colorBg1, _colorBg2, strobeIntensity);
-          if (scene.fog) {
-            (scene.fog as THREE.FogExp2).color.lerpColors(_colorFog1, _colorFog2, strobeIntensity);
-          }
-          dirLight.color.lerpColors(_colorDir1, _colorDir2, strobeIntensity);
-          dirLight.intensity = 4.5 + strobeIntensity * 10.0;
-          ambientLight.intensity = 3.5 + strobeIntensity * 3.0;
-        } else {
-          // Standard dim, damp sublevel atmosphere
-          (scene.background as THREE.Color).set('#4a4a30');
-          if (scene.fog) {
-            (scene.fog as THREE.FogExp2).color.set('#3f3f28');
-          }
-          dirLight.color.set('#c9c98a');
-          dirLight.intensity = 4.5;
-          ambientLight.intensity = 3.5;
         }
 
         // H. Call Render

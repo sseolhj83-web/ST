@@ -143,13 +143,13 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
     }
   }
 
-  // Sparse buzzing fluorescent fixtures — deterministic per cell, roughly 2 out of every 5 cells lit.
+  // Buzzing fluorescent fixtures — deterministic per cell, roughly 9 out of every 10 cells lit.
   for (let li = 0; li < 2; li++) {
     const ix = ixBase + li;
     for (let ci = 0; ci < 2; ci++) {
       const iz = izBase + ci;
       const rand = mulberry32(hashSeed(ix, iz, 3));
-      if (rand() > 0.4) continue;
+      if (rand() > 0.9) continue;
       walls.push({
         id: `${prefix}_light_${ix}_${iz}`,
         pos: { x: ix * CELL + CELL / 2, y: WALL_H - 0.05, z: iz * CELL + CELL / 2 },
@@ -243,11 +243,10 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   // sky anywhere — this is the Backrooms, it is entirely indoors.
   walls.push({ id: 'ceiling_main', pos: { x: 0, y: wallH + 0.15, z: 0 }, size: { x: sizeX, y: 0.3, z: sizeZ }, color: ceilingColor });
 
-  // 4. BUZZING FLUORESCENT FIXTURES — checkerboard placement at cell centers under the ceiling
+  // 4. BUZZING FLUORESCENT FIXTURES — dense grid at every cell center under the ceiling
   const cellCenters = [-50, -30, -10, 10, 30, 50];
   cellCenters.forEach((cx, ci) => {
     cellCenters.forEach((cz, zi) => {
-      if ((ci + zi) % 2 !== 0) return;
       walls.push({
         id: `light_${ci}_${zi}`,
         pos: { x: cx, y: wallH - 0.05, z: cz },
