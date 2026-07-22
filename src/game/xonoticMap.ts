@@ -22,7 +22,7 @@ export const LIGHT_COLOR = '#fef9c3';   // buzzing fluorescent tube
 export const CARPET_COLOR = '#D2B48C';  // tan carpet
 export const PUDDLE_COLOR = '#4a4326';  // stagnant, contaminated floor water
 
-export const WALL_H = 6.5; // backrooms ceiling height
+export const WALL_H = 7.0; // backrooms ceiling height
 export const CELL = 20;    // maze partition grid spacing, shared by the hub and every streamed chunk
 
 // The single flickering wall that lets you escape — deliberately just one stub wall inside one
