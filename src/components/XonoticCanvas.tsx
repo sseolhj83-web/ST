@@ -6,7 +6,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { XonoticGameState, Bot, Projectile, PickupItem } from '../game/xonoticTypes';
-import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS, ESCAPE_WALL_ID, getPuddles, PUDDLE_COLOR } from '../game/xonoticMap';
+import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS, ESCAPE_WALL_ID, getPuddles, PUDDLE_COLOR, WALL_H } from '../game/xonoticMap';
 
 // Helper to build procedural low-poly Demogorgon models — the single Backrooms monster
 function buildDemogorgonModel(bot: Bot): THREE.Group {
@@ -655,21 +655,27 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // 4. Lighting Rig (flat, oppressive buzzing-fluorescent illumination — no directional "sun" feel)
-    const ambientLight = new THREE.AmbientLight('#fef9c3', 2.6); // warm fluorescent wash
+    // 4. Lighting Rig (flat, oppressive buzzing-fluorescent illumination — no directional "sun" feel).
+    // Kept dim on purpose: real brightness comes from the roaming fixture-light pool below, which
+    // pools light under nearby fluorescent tubes and lets everywhere else actually read as dark.
+    const ambientLight = new THREE.AmbientLight('#fef9c3', 0.55); // dim base wash so unlit areas are still navigable
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight('#fdf6b2', 1.4); // soft overhead fill, low-ceiling rooms don't need harsh directional sun
+    const dirLight = new THREE.DirectionalLight('#fdf6b2', 0.4); // faint overhead fill, no harsh directional sun
     dirLight.position.set(30, 80, 30);
     dirLight.castShadow = false; // no sun-like directional shadow — flat fluorescent look only
     scene.add(dirLight);
 
-    const accentColors = ['#fde68a', '#facc15', '#eab308']; // warm fluorescent flicker accents, no more red/purple horror lighting
-    for (let i = 0; i < 3; i++) {
-      const pointLight = new THREE.PointLight(accentColors[i], 5, 55);
-      pointLight.position.set((i - 1) * 20, 10, (i - 1) * -15);
-      scene.add(pointLight);
-    }
+    // A fixed-size pool of point lights that snap to the nearest fluorescent fixtures around the
+    // player every frame (see updateFixtureLights below). Bounded cost regardless of map size —
+    // real per-fixture lights would mean hundreds active across the infinite streamed maze.
+    const FIXTURE_LIGHT_POOL_SIZE = 10;
+    const fixtureLights: THREE.PointLight[] = Array.from({ length: FIXTURE_LIGHT_POOL_SIZE }, () => {
+      const light = new THREE.PointLight('#fef9c3', 9, 16, 2);
+      light.visible = false;
+      scene.add(light);
+      return light;
+    });
 
     const floorMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color('#D2B48C'),
@@ -770,6 +776,13 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       if (wall.id === ESCAPE_WALL_ID) escapeWallMesh = mesh;
     });
 
+    // Fixture positions feeding the roaming light pool — the static hub set, plus per-chunk sets
+    // kept in sync as the infinite maze streams in/out below.
+    const hubFixturePositions: { x: number; z: number }[] = map.walls
+      .filter(w => w.emissive)
+      .map(w => ({ x: w.pos.x, z: w.pos.z }));
+    const chunkFixturePositions = new Map<string, { x: number; z: number }[]>();
+
     // 5c. Decorative, non-collidable puddles of contaminated standing water on the carpet
     const puddleMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color(PUDDLE_COLOR),
@@ -804,6 +817,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         mesh.geometry.dispose();
       });
       streamedChunkMeshes.delete(key);
+      chunkFixturePositions.delete(key);
     };
 
     const loadStreamedChunk = (cx: number, cz: number) => {
@@ -824,6 +838,27 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         return mesh;
       });
       streamedChunkMeshes.set(key, meshes);
+      chunkFixturePositions.set(key, chunkWalls.filter(w => w.emissive).map(w => ({ x: w.pos.x, z: w.pos.z })));
+    };
+
+    // Repositions the fixed-size fixture-light pool onto the N fluorescent fixtures nearest the
+    // player each frame, so brightness pools under nearby tubes and drops off to the dim ambient
+    // everywhere else — instead of one real light per fixture, which wouldn't scale to the
+    // infinite streamed maze.
+    const updateFixtureLights = (px: number, pz: number) => {
+      const candidates = hubFixturePositions.concat(...chunkFixturePositions.values());
+      candidates.sort((a, b) => {
+        const da = (a.x - px) ** 2 + (a.z - pz) ** 2;
+        const db = (b.x - px) ** 2 + (b.z - pz) ** 2;
+        return da - db;
+      });
+      for (let i = 0; i < fixtureLights.length; i++) {
+        const fixture = candidates[i];
+        const light = fixtureLights[i];
+        if (!fixture) { light.visible = false; continue; }
+        light.visible = true;
+        light.position.set(fixture.x, WALL_H - 1.2, fixture.z);
+      }
     };
 
     // Loads/unloads chunks around the player's current position; cheap to call every frame since
@@ -935,6 +970,9 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
 
         // A2. Stream the infinite maze in/out around wherever the player currently is
         updateStreamedChunks(player.pos.x, player.pos.z);
+
+        // A3. Pool light under the fluorescent fixtures nearest the player, dark elsewhere
+        updateFixtureLights(player.pos.x, player.pos.z);
         
         // Smoothly animate Field of View (Zoom / ADS)
         const targetFOV = player.isAiming ? 32 : 85;
