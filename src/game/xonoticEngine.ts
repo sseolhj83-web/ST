@@ -590,13 +590,63 @@ export class XonoticEngine {
         bot.vel.y = 0;
       }
 
-      // Kill on contact while hunting
-      if (bot.state === 'hunting' && distToPlayer < 2.2) {
+      // Kill on contact while hunting — distToPlayer alone is a straight-line XZ distance that
+      // ignores geometry, so without the line-of-sight check the monster could "touch" the player
+      // through a thin wall separating two adjacent corridors, dealing damage the player never saw
+      // coming from anything.
+      if (bot.state === 'hunting' && distToPlayer < 2.2 && this.hasClearLineOfSight(bot.pos, player.pos)) {
         this.damagePlayer(9999, bot.id);
       }
     });
 
     this.state.monsterWarning = nearestMonsterDist < 7;
+  }
+
+  // 2D (XZ) segment-vs-wall visibility check via the slab method — used to stop the monster from
+  // "touching" the player through a wall it's actually standing on the other side of. Floors,
+  // ceilings, light fixtures and the escape wall don't block a horizontal sightline.
+  private hasClearLineOfSight(from: { x: number; y: number; z: number }, to: { x: number; y: number; z: number }): boolean {
+    const dx = to.x - from.x;
+    const dz = to.z - from.z;
+    for (const wall of this.walls) {
+      if (wall.id === ESCAPE_WALL_ID || wall.emissive) continue;
+      const isPlatform =
+        wall.id.startsWith('floor') ||
+        wall.id.startsWith('bridge') ||
+        wall.id.endsWith('roof') ||
+        wall.id.endsWith('ceiling') ||
+        wall.id === 'ceiling_main';
+      if (isPlatform) continue;
+
+      const hX = wall.size.x / 2;
+      const hZ = wall.size.z / 2;
+      const minX = wall.pos.x - hX, maxX = wall.pos.x + hX;
+      const minZ = wall.pos.z - hZ, maxZ = wall.pos.z + hZ;
+
+      let tmin = 0, tmax = 1;
+      if (Math.abs(dx) < 1e-6) {
+        if (from.x < minX || from.x > maxX) continue;
+      } else {
+        let t1 = (minX - from.x) / dx;
+        let t2 = (maxX - from.x) / dx;
+        if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+        tmin = Math.max(tmin, t1);
+        tmax = Math.min(tmax, t2);
+        if (tmin > tmax) continue;
+      }
+      if (Math.abs(dz) < 1e-6) {
+        if (from.z < minZ || from.z > maxZ) continue;
+      } else {
+        let t1 = (minZ - from.z) / dz;
+        let t2 = (maxZ - from.z) / dz;
+        if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+        tmin = Math.max(tmin, t1);
+        tmax = Math.min(tmax, t2);
+        if (tmin > tmax) continue;
+      }
+      if (tmin <= tmax) return false;
+    }
+    return true;
   }
 
   private triggerWeaponFire(owner: 'player' | string) {
