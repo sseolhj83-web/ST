@@ -656,10 +656,10 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     rendererRef.current = renderer;
 
     // 4. Lighting Rig (flat, oppressive buzzing-fluorescent illumination — no directional "sun" feel)
-    const ambientLight = new THREE.AmbientLight('#fef9c3', 6.2); // warm fluorescent wash
+    const ambientLight = new THREE.AmbientLight('#fef9c3', 1.6); // warm fluorescent wash
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight('#fdf6b2', 6.0); // soft overhead fill, low-ceiling rooms don't need harsh directional sun
+    const dirLight = new THREE.DirectionalLight('#fdf6b2', 1.4); // soft overhead fill, low-ceiling rooms don't need harsh directional sun
     dirLight.position.set(30, 80, 30);
     dirLight.castShadow = true;
     dirLight.shadow.mapSize.width = 1024; // Balanced quality/performance shadow resolution
@@ -675,7 +675,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
 
     const accentColors = ['#fde68a', '#facc15', '#eab308']; // warm fluorescent flicker accents, no more red/purple horror lighting
     for (let i = 0; i < 3; i++) {
-      const pointLight = new THREE.PointLight(accentColors[i], 12, 55);
+      const pointLight = new THREE.PointLight(accentColors[i], 5, 55);
       pointLight.position.set((i - 1) * 20, 10, (i - 1) * -15);
       scene.add(pointLight);
     }
