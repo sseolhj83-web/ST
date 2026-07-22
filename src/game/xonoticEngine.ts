@@ -90,7 +90,7 @@ export class XonoticEngine {
       health: 999999,
       maxHealth: 999999,
       color: '#050505',
-      radius: 1.0,
+      radius: 1.4, // bigger than the player's own 0.8 collision radius
       currentWeapon: 'laser',
       lastShootTime: 0,
       lastMeleeTime: 0,
@@ -585,9 +585,9 @@ export class XonoticEngine {
       // Apply physics
       bot.vel.y += this.gravity * dt;
       bot.pos.x += bot.vel.x * dt;
-      this.checkWallAxisBound(bot.pos, bot.vel, 'x', 1.2);
+      this.checkWallAxisBound(bot.pos, bot.vel, 'x', 1.5);
       bot.pos.y += bot.vel.y * dt;
-      let botOnGround = this.checkWallAxisBound(bot.pos, bot.vel, 'y', 1.8);
+      let botOnGround = this.checkWallAxisBound(bot.pos, bot.vel, 'y', 2.3);
 
       if (bot.pos.y < 1.0) {
         bot.pos.y = 1.0;
@@ -596,7 +596,7 @@ export class XonoticEngine {
       }
 
       bot.pos.z += bot.vel.z * dt;
-      this.checkWallAxisBound(bot.pos, bot.vel, 'z', 1.2);
+      this.checkWallAxisBound(bot.pos, bot.vel, 'z', 1.5);
 
       if (botOnGround) {
         bot.vel.y = 0;

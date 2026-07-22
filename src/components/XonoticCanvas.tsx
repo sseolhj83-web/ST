@@ -497,9 +497,10 @@ function buildDemogorgonModel(bot: Bot): THREE.Group {
     isBoss: isStrong
   };
 
-  // All demogorgons same height ~2.1 units (human 1.78 + 1 head ~0.32)
-  // Boss model has larger proportions (legH/bodyH bigger), so needs smaller scale to match same height
-  group.scale.setScalar(isStrong ? 0.60 : 0.75);
+  // Demogorgons stand well over human height (~2.8 units vs. ~1.8 for the reference player model
+  // in buildRemotePlayerModel) so it visibly looms over the player, not just "a head taller".
+  // Boss model has larger proportions (legH/bodyH bigger), so needs smaller scale to match same height.
+  group.scale.setScalar(isStrong ? 0.80 : 1.0);
 
   return group;
 }
