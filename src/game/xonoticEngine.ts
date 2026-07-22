@@ -605,9 +605,16 @@ export class XonoticEngine {
       // Kill on contact while hunting — distToPlayer alone is a straight-line XZ distance that
       // ignores geometry, so without the line-of-sight check the monster could "touch" the player
       // through a thin wall separating two adjacent corridors, dealing damage the player never saw
-      // coming from anything.
+      // coming from anything. Also requires the monster to be somewhere in front of the player (not
+      // a blind-spot attack from directly behind) — it still has to close in on a side the player
+      // could see coming.
       if (bot.state === 'hunting' && distToPlayer < 2.2 && this.hasClearLineOfSight(bot.pos, player.pos)) {
-        this.damagePlayer(9999, bot.id);
+        const forwardX = Math.sin(player.yaw);
+        const forwardZ = -Math.cos(player.yaw);
+        const facingDot = distToPlayer > 0.001 ? (-pdx / distToPlayer) * forwardX + (-pdz / distToPlayer) * forwardZ : 1;
+        if (facingDot > 0) {
+          this.damagePlayer(9999, bot.id);
+        }
       }
     });
 
