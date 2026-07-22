@@ -16,7 +16,7 @@ import { MapWall, JumpPad, PickupItem } from './xonoticTypes';
 // itself never ends. Every surface — hub and streamed alike — sits under a solid, unbroken
 // ceiling; there is no sky and no hole anywhere.
 
-export const WALL_COLOR = '#c9b458';    // damp yellow wallpaper
+export const WALL_COLOR = '#C9BE6D';    // damp yellow wallpaper
 export const CEILING_COLOR = '#cfc48f'; // stained popcorn ceiling tile
 export const LIGHT_COLOR = '#fef9c3';   // buzzing fluorescent tube
 export const CARPET_COLOR = '#9c9166';  // moist mustard carpet
