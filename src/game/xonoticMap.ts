@@ -19,7 +19,7 @@ import { MapWall, JumpPad, PickupItem } from './xonoticTypes';
 export const WALL_COLOR = '#C9BE6D';    // damp yellow wallpaper
 export const CEILING_COLOR = '#FAF9F6'; // off-white popcorn ceiling tile
 export const LIGHT_COLOR = '#fef9c3';   // buzzing fluorescent tube
-export const CARPET_COLOR = '#9c9166';  // moist mustard carpet
+export const CARPET_COLOR = '#D2B48C';  // tan carpet
 export const PUDDLE_COLOR = '#4a4326';  // stagnant, contaminated floor water
 
 export const WALL_H = 6.5; // backrooms ceiling height

@@ -681,7 +681,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     }
 
     const floorMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#9c9166'),
+      color: new THREE.Color('#D2B48C'),
       roughness: 0.92,
       metalness: 0.0,
     });
@@ -800,7 +800,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     const streamedWallMat = new THREE.MeshStandardMaterial({ color: 0xffffff, map: wallpaperTexture, roughness: 0.85, metalness: 0.0 });
     const streamedCeilingMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#FAF9F6'), roughness: 0.95, metalness: 0.0 });
     const streamedLightMat = new THREE.MeshBasicMaterial({ color: new THREE.Color('#fef9c3') });
-    const streamedFloorMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#9c9166'), roughness: 0.92, metalness: 0.0 });
+    const streamedFloorMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#D2B48C'), roughness: 0.92, metalness: 0.0 });
     const streamedChunkMeshes = new Map<string, THREE.Mesh[]>();
     let lastStreamCx = Number.NaN;
     let lastStreamCz = Number.NaN;
