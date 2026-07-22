@@ -656,21 +656,12 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     rendererRef.current = renderer;
 
     // 4. Lighting Rig (flat, oppressive buzzing-fluorescent illumination — no directional "sun" feel)
-    const ambientLight = new THREE.AmbientLight('#fef9c3', 1.6); // warm fluorescent wash
+    const ambientLight = new THREE.AmbientLight('#fef9c3', 2.6); // warm fluorescent wash
     scene.add(ambientLight);
 
     const dirLight = new THREE.DirectionalLight('#fdf6b2', 1.4); // soft overhead fill, low-ceiling rooms don't need harsh directional sun
     dirLight.position.set(30, 80, 30);
-    dirLight.castShadow = true;
-    dirLight.shadow.mapSize.width = 1024; // Balanced quality/performance shadow resolution
-    dirLight.shadow.mapSize.height = 1024;
-    dirLight.shadow.camera.near = 0.5;
-    dirLight.shadow.camera.far = 150;
-    dirLight.shadow.camera.left = -90; // Expanded to match 160x160 arena
-    dirLight.shadow.camera.right = 90;
-    dirLight.shadow.camera.top = 90;
-    dirLight.shadow.camera.bottom = -90;
-    dirLight.shadow.bias = -0.0005; // Eliminates shadow acne artifacts
+    dirLight.castShadow = false; // no sun-like directional shadow — flat fluorescent look only
     scene.add(dirLight);
 
     const accentColors = ['#fde68a', '#facc15', '#eab308']; // warm fluorescent flicker accents, no more red/purple horror lighting
@@ -861,11 +852,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         }
       });
     };
-
-    // Faint carpet-tile seams
-    const gridHelper = new THREE.GridHelper(160, 80, '#7a7048', '#7a7048');
-    gridHelper.position.y = 0.05;
-    scene.add(gridHelper);
 
     // 6. First-Person Viewmodel Gun Setup
     const gunGroup = new THREE.Group();
