@@ -59,7 +59,7 @@ function buildDemogorgonModel(bot: Bot): THREE.Group {
   const bodyH = isStrong ? 1.45 : 1.20;
   const bodyD = isStrong ? 0.42 : 0.30;
   const armW = isStrong ? 0.14 : 0.095; // fleshy, muscular predator arms
-  const armL = isStrong ? 2.15 : 1.75;  // extremely long, scary limbs
+  const armL = isStrong ? 2.15 : 2.2;   // extremely long, scary limbs
   
   // Basal slender skeletal core of the torso
   const torsoGeo = new THREE.BoxGeometry(bodyW * 0.9, bodyH, bodyD * 0.9);
@@ -159,7 +159,7 @@ function buildDemogorgonModel(bot: Bot): THREE.Group {
   shoulderPadR.rotation.z = 0.18;
   torsoMesh.add(shoulderPadR);
 
-  const basePosY = isStrong ? 2.10 : 1.65; // raised hips to fit lanky legs standing cleanly on the floor
+  const basePosY = isStrong ? 2.10 : 2.06; // raised hips to fit lanky legs standing cleanly on the floor
   const theta = 0.48; // Menacing animalistic hunched/bent back angle (around 27 degrees)
   
   // Pivot around bottom of torso so it aligns cleanly to the hips at z=0, y=basePosY
@@ -396,7 +396,7 @@ function buildDemogorgonModel(bot: Bot): THREE.Group {
 
   // 4. LEGS (Extremely realistic digitigrade animal structure: Hip -> Thigh -> Knee -> Forward Calf -> Foot)
   const legW = isStrong ? 0.16 : 0.11;  // beefy powerful powerful digitigrade leg segments
-  const legH = isStrong ? 2.45 : 2.00;  // extremely long intimidating legs (increased slightly as requested)
+  const legH = isStrong ? 2.45 : 2.50;  // extremely long intimidating legs (increased slightly as requested)
 
   const buildRealisticLeg = (isLeft: boolean) => {
     const legGroup = new THREE.Group();
@@ -497,10 +497,11 @@ function buildDemogorgonModel(bot: Bot): THREE.Group {
     isBoss: isStrong
   };
 
-  // Demogorgons stand well over human height (~2.8 units vs. ~1.8 for the reference player model
-  // in buildRemotePlayerModel) so it visibly looms over the player, not just "a head taller".
-  // Boss model has larger proportions (legH/bodyH bigger), so needs smaller scale to match same height.
-  group.scale.setScalar(isStrong ? 0.80 : 1.0);
+  // Height comes from genuinely longer legs/arms (legH, armL, basePosY above), not from scaling the
+  // whole rig up — scaling here just floats the model since bot.pos.y's render offset assumes this
+  // base scale. Boss model has larger proportions (legH/bodyH bigger), so needs smaller scale to
+  // match the same relative height.
+  group.scale.setScalar(isStrong ? 0.60 : 0.75);
 
   return group;
 }
