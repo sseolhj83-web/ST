@@ -530,13 +530,21 @@ export class XonoticEngine {
 
       bot.stateTimer -= dt;
 
-      if (bot.state !== 'hunting') {
-        // Lurking: drift to a spot loosely near the player, out of sight, and periodically roll
-        // for an ambush.
+      // The monster is always kept on a short leash around the player — it never wanders far
+      // enough to lose track of them. If something (a chase through the maze, a stream/unload
+      // hiccup) ever pushes it past the leash radius, it drops whatever it was doing and beelines
+      // back in, at a speed faster than the player's own top sprint so the gap always closes.
+      const LEASH_RADIUS = 7;
+      const isLeashPulling = distToPlayer > LEASH_RADIUS;
+
+      if (isLeashPulling) {
+        bot.targetPos = { ...player.pos };
+      } else if (bot.state !== 'hunting') {
+        // Lurking: drift to a spot within the leash, out of sight, and periodically roll for an ambush.
         if (bot.stateTimer <= 0) {
           bot.stateTimer = 2 + Math.random() * 3;
           const angle = Math.random() * Math.PI * 2;
-          const dist = 22 + Math.random() * 20;
+          const dist = 3 + Math.random() * (LEASH_RADIUS - 3);
           bot.targetPos = { x: player.pos.x + Math.cos(angle) * dist, y: 1.5, z: player.pos.z + Math.sin(angle) * dist };
 
           if (Math.random() < 0.22) {
@@ -548,7 +556,7 @@ export class XonoticEngine {
       } else {
         // Hunting: relentlessly close in on the player's current position.
         bot.targetPos = { ...player.pos };
-        if (bot.stateTimer <= 0 || distToPlayer > 60) {
+        if (bot.stateTimer <= 0) {
           bot.state = 'wandering'; // back to lurking
           bot.isHidden = true;
           bot.stateTimer = 8 + Math.random() * 12;
@@ -560,8 +568,12 @@ export class XonoticEngine {
       const dz = targetCoords.z - bot.pos.z;
       const distToGoal = Math.sqrt(dx * dx + dz * dz);
 
-      // Slightly slower than the player's top sprint speed — outrunning it is possible, but risky.
-      const monsterSpeed = bot.state === 'hunting' ? this.maxGroundSpeed * 0.82 : 5.5;
+      // Slightly slower than the player's top sprint speed while hunting normally — outrunning it
+      // is possible, but risky. Leash-pulling overrides this with a speed above the player's max so
+      // straying past the leash radius is always temporary.
+      const monsterSpeed = isLeashPulling ? this.maxGroundSpeed * 1.3
+        : bot.state === 'hunting' ? this.maxGroundSpeed * 0.82
+        : 5.5;
       if (distToGoal > 1.0) {
         bot.vel.x = (dx / distToGoal) * monsterSpeed;
         bot.vel.z = (dz / distToGoal) * monsterSpeed;
@@ -599,7 +611,7 @@ export class XonoticEngine {
       }
     });
 
-    this.state.monsterWarning = nearestMonsterDist < 7;
+    this.state.monsterWarning = nearestMonsterDist < 3;
   }
 
   // 2D (XZ) segment-vs-wall visibility check via the slab method — used to stop the monster from
