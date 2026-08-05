@@ -1,72 +1,47 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import { supabase } from '../supabaseClient';
 import { Mail, Lock, User, LogIn, UserPlus, ShieldAlert, Gamepad2 } from 'lucide-react';
 
 interface AuthProps {
   onAuthSuccess: (user: any) => void;
 }
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export const Auth = ({ onAuthSuccess }: AuthProps) => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
-  const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setErrorMessage('');
     setInfoMessage('');
 
-    if (isSignUp) {
-      if (username.trim().length < 2) {
-        setErrorMessage('닉네임은 2자 이상 입력해야 합니다.');
-        setLoading(false);
-        return;
-      }
-      
-      const { error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            username: username.trim(),
-          },
-        },
-      });
-
-      if (signUpError) {
-        setErrorMessage(signUpError.message);
-      } else {
-        // 이메일 인증 없이 즉시 로그인
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (signInError) {
-          setErrorMessage('가입은 완료되었으나 로그인에 실패했습니다: ' + signInError.message);
-        } else if (signInData.user) {
-          onAuthSuccess(signInData.user);
-        }
-      }
-    } else {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        setErrorMessage(error.message === 'Invalid login credentials' ? '이메일 또는 비밀번호가 잘못되었습니다.' : error.message);
-      } else if (data.user) {
-        onAuthSuccess(data.user);
-      }
+    const trimmedEmail = email.trim();
+    if (!EMAIL_PATTERN.test(trimmedEmail)) {
+      setErrorMessage('올바른 이메일 형식을 입력해주세요.');
+      return;
     }
-    setLoading(false);
+
+    if (isSignUp && username.trim().length < 2) {
+      setErrorMessage('닉네임은 2자 이상 입력해야 합니다.');
+      return;
+    }
+
+    // 백엔드 서버 없이 이메일 형식만 검증해 즉시 로그인 처리
+    const mockUser = {
+      id: trimmedEmail.toLowerCase(),
+      email: trimmedEmail,
+      user_metadata: {
+        username: isSignUp ? username.trim() : trimmedEmail.split('@')[0],
+      },
+    };
+    localStorage.setItem('xonotic_mock_user', JSON.stringify(mockUser));
+    onAuthSuccess(mockUser);
   };
 
   return (
@@ -169,12 +144,9 @@ export const Auth = ({ onAuthSuccess }: AuthProps) => {
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={loading}
             className="w-full py-3.5 mt-2 bg-gradient-to-r from-cyan-500 via-indigo-500 to-pink-500 hover:opacity-90 disabled:opacity-50 text-white font-mono rounded-xl font-black text-sm uppercase tracking-wider shadow-[0_0_20px_rgba(6,182,212,0.2)] border border-cyan-400/20 hover:scale-[1.01] active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
-            {loading ? (
-              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            ) : isSignUp ? (
+            {isSignUp ? (
               <>
                 <UserPlus className="w-4 h-4" />
                 <span>계정 생성 (Sign Up)</span>

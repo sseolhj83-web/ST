@@ -62,42 +62,34 @@ export default function App() {
     };
   }, [isMobile]);
 
-  // Handle active session check on mount
+  // Handle active session check on mount (local mock auth, no backend server)
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setUser(session.user);
+    try {
+      const saved = localStorage.getItem('xonotic_mock_user');
+      if (saved) {
+        setUser(JSON.parse(saved));
         setAppState('LOBBY');
-      } else {
-        setAppState('AUTH');
+        return;
       }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
-        setUser(session.user);
-        // Don't override PLAYING state (e.g. on token refresh mid-game)
-        setAppState(prev => prev === 'PLAYING' ? prev : 'LOBBY');
-      } else {
-        setUser(null);
-        setAppState('AUTH');
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    } catch {}
+    setAppState('AUTH');
   }, []);
 
   // Sync highscore from user_stats table on login
   useEffect(() => {
     if (!user) return;
     const fetchHighScore = async () => {
-      const { data } = await supabase
-        .from('user_stats')
-        .select('highest_score')
-        .eq('user_id', user.id)
-        .single();
-      if (data) {
-        setHighScore(data.highest_score);
+      try {
+        const { data } = await supabase
+          .from('user_stats')
+          .select('highest_score')
+          .eq('user_id', user.id)
+          .single();
+        if (data) {
+          setHighScore(data.highest_score);
+        }
+      } catch (err) {
+        console.error('Error fetching high score:', err);
       }
     };
     fetchHighScore();
@@ -395,6 +387,7 @@ export default function App() {
             <Lobby
               user={user}
               onLogout={() => {
+                localStorage.removeItem('xonotic_mock_user');
                 setUser(null);
                 setAppState('AUTH');
               }}

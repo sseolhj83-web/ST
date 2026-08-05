@@ -311,7 +311,11 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
   const handleSignOut = async () => {
     const confirmOut = window.confirm('정말 로그아웃 하시겠습니까?');
     if (confirmOut) {
-      await supabase.auth.signOut();
+      try {
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.error('Error signing out of Supabase:', err);
+      }
       onLogout();
     }
   };
