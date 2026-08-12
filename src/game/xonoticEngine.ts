@@ -20,6 +20,7 @@ export class XonoticEngine {
   private lastUpdate: number = 0;
   private lastStreamCx: number = Number.NaN;
   private lastStreamCz: number = Number.NaN;
+  private timeoutManifested: boolean = false;
   private onStateChange: (state: XonoticGameState) => void;
 
   // Arena Physics parameters (highly responsive like standard Quake/Xonotic engines)
@@ -298,17 +299,26 @@ export class XonoticEngine {
     }
   }
 
-  // 7 minutes with no escape: the monster manifests right on top of the player and the run is over.
+  // 7 minutes with no escape: the monster manifests somewhere within 5m of the player and relentlessly
+  // hunts them down. It doesn't teleport right on top of / directly in front of them, and it still has
+  // to actually close the distance and be seen (same line-of-sight + view-cone rule as any other kill)
+  // — no free damage just because the timer ran out. Only fires once; after that the normal hunting AI
+  // takes over.
   private checkTimeoutDeath() {
     const { player } = this.state;
     if (this.state.escaped || player.health <= 0 || this.state.matchTime < 420) return;
+    if (this.timeoutManifested) return;
+    this.timeoutManifested = true;
+
     const monster = this.state.bots.find(b => b.isMonster);
     if (monster) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 2 + Math.random() * 3; // 2-5m away, in a random direction
+      monster.pos = { x: player.pos.x + Math.cos(angle) * dist, y: player.pos.y, z: player.pos.z + Math.sin(angle) * dist };
       monster.isHidden = false;
       monster.state = 'hunting';
-      monster.pos = { x: player.pos.x, y: player.pos.y, z: player.pos.z - 1.5 };
+      monster.stateTimer = 9999; // never gives up and goes back to lurking once manifested
     }
-    this.damagePlayer(9999, 'the_monster');
   }
 
   public connectRealtime(roomId: string, userId: string, supabaseClient: any, username: string) {
@@ -605,14 +615,15 @@ export class XonoticEngine {
       // Kill on contact while hunting — distToPlayer alone is a straight-line XZ distance that
       // ignores geometry, so without the line-of-sight check the monster could "touch" the player
       // through a thin wall separating two adjacent corridors, dealing damage the player never saw
-      // coming from anything. Also requires the monster to be somewhere in front of the player (not
-      // a blind-spot attack from directly behind) — it still has to close in on a side the player
-      // could see coming.
+      // coming from anything. Also requires the monster to be within the player's actual view cone
+      // (not just the front 180° hemisphere, which is wider than the camera's ~85° FOV and let hits
+      // land from just outside the screen edge) — it has to be somewhere the player could actually see it.
       if (bot.state === 'hunting' && distToPlayer < 2.2 && this.hasClearLineOfSight(bot.pos, player.pos)) {
         const forwardX = Math.sin(player.yaw);
         const forwardZ = -Math.cos(player.yaw);
         const facingDot = distToPlayer > 0.001 ? (-pdx / distToPlayer) * forwardX + (-pdz / distToPlayer) * forwardZ : 1;
-        if (facingDot > 0) {
+        const VIEW_CONE_COS = 0.5; // ~60° half-angle, inside the rendered camera frustum
+        if (facingDot > VIEW_CONE_COS) {
           this.damagePlayer(9999, bot.id);
         }
       }
