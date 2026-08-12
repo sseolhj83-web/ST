@@ -85,7 +85,6 @@ export function isHubChunk(cx: number, cz: number): boolean {
 export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
   const walls: MapWall[] = [];
   const wallT = 0.5;
-  const doorW = 4;
   const prefix = `stream_${cx}_${cz}`;
   const originX = cx * CHUNK_SIZE + CHUNK_SIZE / 2;
   const originZ = cz * CHUNK_SIZE + CHUNK_SIZE / 2;
@@ -97,14 +96,27 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
   const ixBase = cx * 2; // this chunk owns cell-index columns/rows ixBase and ixBase+1
   const izBase = cz * 2;
 
+  // Room-size variety — every chunk used to be an identical 2x2 grid of same-size 20x20 rooms,
+  // forever, which is exactly why the maze felt like the same structure on loop. Each chunk now
+  // independently (and deterministically, so collision/render copies still agree) rolls whether to
+  // drop its own interior partition line on each axis and merge that pair of cells into one open
+  // room instead — mixing in elongated rooms and the occasional big open lounge among the normal
+  // 4-room chunks. Only the chunk's own interior lines are ever dropped, never the shared edge
+  // lines a neighboring chunk owns, so chunk boundaries/doorway ownership are untouched.
+  const styleRand = mulberry32(hashSeed(cx, cz, 500));
+  const mergeVertical = styleRand() < 0.3;
+  const mergeHorizontal = styleRand() < 0.3;
+
   // Vertical partitions (fixed x, spanning z)
   for (let li = 0; li < 2; li++) {
+    if (li === 1 && mergeVertical) continue; // shared interior line dropped -> open room
     const ix = ixBase + li;
     const gx = ix * CELL;
     for (let ci = 0; ci < 2; ci++) {
       const iz = izBase + ci;
       const gz = iz * CELL;
       const rand = mulberry32(hashSeed(ix, iz, 1));
+      const doorW = 3 + mulberry32(hashSeed(ix, iz, 4))() * 3; // 3-6, varies per doorway
       const doorCenter = gz + CELL / 2 + (rand() - 0.5) * (CELL - doorW - 2);
       const gapStart = doorCenter - doorW / 2;
       const gapEnd = doorCenter + doorW / 2;
@@ -122,12 +134,14 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
 
   // Horizontal partitions (fixed z, spanning x)
   for (let li = 0; li < 2; li++) {
+    if (li === 1 && mergeHorizontal) continue; // shared interior line dropped -> open room
     const iz = izBase + li;
     const gz = iz * CELL;
     for (let ci = 0; ci < 2; ci++) {
       const ix = ixBase + ci;
       const gx = ix * CELL;
       const rand = mulberry32(hashSeed(ix, iz, 2));
+      const doorW = 3 + mulberry32(hashSeed(ix, iz, 5))() * 3; // 3-6, varies per doorway
       const doorCenter = gx + CELL / 2 + (rand() - 0.5) * (CELL - doorW - 2);
       const gapStart = doorCenter - doorW / 2;
       const gapEnd = doorCenter + doorW / 2;
