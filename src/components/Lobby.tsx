@@ -71,6 +71,11 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
       matches_played: 0,
     };
 
+    // 네트워크 조회가 끝날 때까지 profile이 null로 남아있으면 그 사이 방 개설 등 버튼이
+    // 조용히 무시되므로, 우선 로컬 값으로 즉시 채우고 성공 시에만 실제 값으로 덮어씀
+    setProfile(localFallbackProfile);
+    setStats(localFallbackStats);
+
     const fetchUserData = async () => {
       try {
         const { data: profileData, error: profileErr } = await supabase
