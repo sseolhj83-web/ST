@@ -374,7 +374,7 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
         <div className="flex items-center gap-3">
           <Gamepad2 className="w-8 h-8 text-cyan-400 animate-pulse" />
           <div>
-            <h1 className="text-2xl font-black tracking-tighter text-red-600">
+            <h1 className="text-2xl font-black tracking-tighter text-yellow-400">
               BACk ROOM
             </h1>
             <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest leading-none mt-1">
