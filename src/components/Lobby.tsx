@@ -59,11 +59,20 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
   const lobbyChannelRef = useRef<any>(null);
   const roomChannelRef = useRef<any>(null);
 
-  // 1. Fetch User Profile and Stats
+  // 1. Fetch User Profile and Stats (Supabase 백엔드 접속 불가 시 로컬 값으로 폴백)
   useEffect(() => {
+    const localFallbackProfile: UserProfile = {
+      username: user.user_metadata?.username || (user.email ? user.email.split('@')[0] : '전투원'),
+    };
+    const localFallbackStats: UserStats = {
+      highest_score: 0,
+      total_frags: 0,
+      total_deaths: 0,
+      matches_played: 0,
+    };
+
     const fetchUserData = async () => {
       try {
-        // Fetch Profile
         const { data: profileData, error: profileErr } = await supabase
           .from('profiles')
           .select('username, avatar_url')
@@ -72,8 +81,12 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
 
         if (profileErr) throw profileErr;
         setProfile(profileData);
+      } catch (err) {
+        console.warn('Supabase 프로필 조회 실패, 로컬 값으로 대체합니다:', err);
+        setProfile(localFallbackProfile);
+      }
 
-        // Fetch Stats
+      try {
         const { data: statsData, error: statsErr } = await supabase
           .from('user_stats')
           .select('highest_score, total_frags, total_deaths, matches_played')
@@ -83,7 +96,7 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
         if (statsErr) throw statsErr;
         setStats(statsData);
       } catch (err) {
-        console.error('Error fetching user data:', err);
+        setStats(localFallbackStats);
       }
     };
 
@@ -93,16 +106,21 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
   // 2. Fetch Rooms & Subscribe to Rooms DB Changes
   useEffect(() => {
     const fetchRooms = async () => {
-      const { data, error } = await supabase
-        .from('rooms')
-        .select('*')
-        .eq('status', 'waiting')
-        .order('created_at', { ascending: false });
+      try {
+        const { data, error } = await supabase
+          .from('rooms')
+          .select('*')
+          .eq('status', 'waiting')
+          .order('created_at', { ascending: false });
 
-      if (!error && data) {
-        setRooms(data);
+        if (error) throw error;
+        setRooms(data || []);
+      } catch (err) {
+        console.warn('Supabase 방 목록 조회 실패 (오프라인 상태일 수 있음):', err);
+        setRooms([]);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     fetchRooms();
@@ -234,11 +252,13 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
     e.preventDefault();
     if (!roomNameInput.trim() || !profile) return;
 
+    const roomName = roomNameInput.trim();
+
     try {
       const { data, error } = await supabase
         .from('rooms')
         .insert({
-          name: roomNameInput.trim(),
+          name: roomName,
           host_id: user.id,
           host_username: profile.username,
           max_players: 4,
@@ -249,14 +269,29 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
 
       if (error) throw error;
       setActiveRoom(data);
-      setRoomNameInput('');
-    } catch (err: any) {
-      alert(`방 생성 실패: ${err.message}`);
+    } catch (err) {
+      // Supabase 백엔드에 접속할 수 없을 때는 로컬 전용 방으로 대체해 솔로 플레이는 계속 가능하게 함
+      console.warn('Supabase 방 생성 실패, 로컬 방으로 대체합니다:', err);
+      setActiveRoom({
+        id: `local-${user.id}`,
+        name: roomName,
+        host_id: user.id,
+        host_username: profile.username,
+        max_players: 4,
+        status: 'waiting',
+      });
     }
+
+    // 서버 presence 동기화 여부와 무관하게 자기 자신은 즉시 참가자 목록에 반영
+    setRoomPlayers([{ id: user.id, username: profile.username }]);
+    setRoomNameInput('');
   };
 
   const handleJoinRoom = (room: Room) => {
     setActiveRoom(room);
+    if (profile) {
+      setRoomPlayers([{ id: user.id, username: profile.username }]);
+    }
   };
 
   const handleLeaveRoom = async () => {
@@ -284,15 +319,19 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
   const handleStartGame = async () => {
     if (!activeRoom || activeRoom.host_id !== user.id) return;
 
+    // 1. Update room status to 'playing' in database (백엔드 접속 불가 시에도 로컬 진행은 막지 않음)
     try {
-      // 1. Update room status to 'playing' in database
       await supabase
         .from('rooms')
         .update({ status: 'playing' })
         .eq('id', activeRoom.id);
+    } catch (err) {
+      console.warn('방 상태 업데이트 실패 (오프라인 상태일 수 있음):', err);
+    }
 
-      // 2. Broadcast start event to all OTHER players in the room channel
-      // (Supabase broadcast does NOT echo back to the sender)
+    // 2. Broadcast start event to all OTHER players in the room channel
+    // (Supabase broadcast does NOT echo back to the sender)
+    try {
       if (roomChannelRef.current) {
         await roomChannelRef.current.send({
           type: 'broadcast',
@@ -300,12 +339,12 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
           payload: { players: roomPlayers },
         });
       }
-
-      // 3. Host starts the game directly (broadcast doesn't reach the sender)
-      onStartGame(activeRoom.id, true, roomPlayers);
-    } catch (err: any) {
-      alert(`게임 시작 에러: ${err.message}`);
+    } catch (err) {
+      console.warn('게임 시작 브로드캐스트 실패 (오프라인 상태일 수 있음):', err);
     }
+
+    // 3. Host always starts locally regardless of backend connectivity (broadcast doesn't reach the sender anyway)
+    onStartGame(activeRoom.id, true, roomPlayers);
   };
 
   const handleSignOut = async () => {
@@ -331,7 +370,7 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
           <Gamepad2 className="w-8 h-8 text-cyan-400 animate-pulse" />
           <div>
             <h1 className="text-2xl font-black tracking-tighter text-red-600">
-              기묘한 이야기
+              BACk ROOM
             </h1>
             <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest leading-none mt-1">
               Command Center

@@ -59,7 +59,7 @@ export const Auth = ({ onAuthSuccess }: AuthProps) => {
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-xs text-cyan-400 font-bold tracking-widest uppercase mb-3">
             <Gamepad2 className="w-3.5 h-3.5 animate-pulse" />
-            <span>XONOTIC SECURITY GATE</span>
+            <span>BACk ROOM SECURITY GATE</span>
           </div>
           <h2 className="text-3xl font-black tracking-tight uppercase text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-indigo-500 to-pink-500 leading-none">
             {isSignUp ? 'REGISTER' : 'LOGIN'}

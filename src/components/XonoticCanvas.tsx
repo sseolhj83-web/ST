@@ -1636,7 +1636,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         <div className="absolute inset-0 bg-black/75 backdrop-blur-sm flex flex-col items-center justify-center z-50 text-center px-4 transition-all animate-fade-in">
           <div className="max-w-md p-8 rounded-2xl bg-slate-900/90 border border-cyan-500/30 shadow-[0_0_50px_rgba(6,182,212,0.15)]">
             <h2 className="text-3xl font-sans tracking-tight text-white mb-2 uppercase select-none">
-              Xonotic Web Arena
+              BACk ROOM
             </h2>
             <p className="text-sm font-sans text-slate-400 mb-6 font-medium leading-relaxed">
               격렬한 3D 아레나 FPS 게임에 참여하세요. 화면을 클릭하거나 아래 버튼으로 게임을 직접 시작하세요!
