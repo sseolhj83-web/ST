@@ -59,6 +59,36 @@ function hashSeed(a: number, b: number, c: number): number {
   return h >>> 0;
 }
 
+// --- Streamed-maze zone palettes ---------------------------------------------------------
+// The infinite maze beyond the hub used to be one endless stretch of the exact same yellow
+// wallpaper, forever — so even with varied room sizes it still all looked identical. Grouping
+// several chunks together into a "zone" and reskinning it with a different (still grim, still
+// Backrooms-y) palette gives distant exploration the classic "different level" feel: you can
+// tell an area apart from the one before it, not just by its layout but by how it looks.
+export interface ZoneTheme {
+  wallColor: string;
+  ceilingColor: string;
+  carpetColor: string;
+  lightColor: string;
+}
+
+export const ZONE_THEMES: ZoneTheme[] = [
+  { wallColor: '#C9BE6D', ceilingColor: '#DCD7C8', carpetColor: '#D2B48C', lightColor: '#fef9c3' }, // classic damp yellow
+  { wallColor: '#8FA06B', ceilingColor: '#C4CBB4', carpetColor: '#4F5A3D', lightColor: '#eaf2cf' }, // sickly mold green
+  { wallColor: '#B97A4B', ceilingColor: '#D9C6A8', carpetColor: '#6E4128', lightColor: '#ffd9a0' }, // rusted industrial orange
+  { wallColor: '#DED9BE', ceilingColor: '#EDEAD9', carpetColor: '#BFB99A', lightColor: '#fffdf2' }, // bleached, over-lit level
+];
+
+const ZONE_SPAN = 3; // chunks per zone edge — big enough that a zone reads as an area, not a flicker
+
+// Which palette a given streamed chunk belongs to. Chunks are grouped into ZONE_SPAN x ZONE_SPAN
+// blocks so the theme holds steady across a whole neighborhood of the maze before changing again.
+export function zoneIndexFor(cx: number, cz: number): number {
+  const zx = Math.floor(cx / ZONE_SPAN);
+  const zz = Math.floor(cz / ZONE_SPAN);
+  return Math.floor(mulberry32(hashSeed(zx, zz, 900))() * ZONE_THEMES.length);
+}
+
 // --- Infinite streaming grid -------------------------------------------------------------
 // The world beyond the hub is an endless deterministic maze: partition walls sit on every grid
 // line spaced CELL apart, each split by a doorway gap whose position is derived from a hash of
@@ -174,6 +204,11 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
       });
     }
   }
+
+  // Tag every wall in this chunk with its zone so the renderer can reskin whole neighborhoods of
+  // the maze with a different palette (see ZONE_THEMES above) instead of one endless yellow blur.
+  const zone = zoneIndexFor(cx, cz);
+  walls.forEach(w => { w.zone = zone; });
 
   return walls;
 }

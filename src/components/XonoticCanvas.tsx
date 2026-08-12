@@ -6,7 +6,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { XonoticGameState, Bot, Projectile, PickupItem } from '../game/xonoticTypes';
-import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS, ESCAPE_WALL_ID, getPuddles, PUDDLE_COLOR, WALL_H } from '../game/xonoticMap';
+import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS, ESCAPE_WALL_ID, getPuddles, PUDDLE_COLOR, WALL_H, ZONE_THEMES } from '../game/xonoticMap';
 
 // Helper to build procedural low-poly Demogorgon models — the single Backrooms monster
 function buildDemogorgonModel(bot: Bot): THREE.Group {
@@ -686,15 +686,16 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     });
 
     // Procedural damp-wallpaper texture — a flat single color read as dull/lifeless across long
-    // corridors, so this breaks it up with fine grain + blotchy stains. One shared texture reused
-    // by every wall material (hub and infinite streamed maze alike), so it costs nothing extra per wall.
-    const wallpaperTexture = (() => {
+    // corridors, so this breaks it up with fine grain + blotchy stains. Takes a base color so the
+    // same grain/stain treatment can be reused to build a distinct texture per streamed-maze zone
+    // palette (see ZONE_THEMES) instead of one flat color repeated across the whole infinite maze.
+    const createWallpaperTexture = (baseColor: string) => {
       const size = 128;
       const canvas = document.createElement('canvas');
       canvas.width = size;
       canvas.height = size;
       const ctx = canvas.getContext('2d')!;
-      ctx.fillStyle = '#C9BE6D'; // bright yellow wallpaper base
+      ctx.fillStyle = baseColor;
       ctx.fillRect(0, 0, size, size);
 
       const imgData = ctx.getImageData(0, 0, size, size);
@@ -706,7 +707,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       }
       ctx.putImageData(imgData, 0, 0);
 
-      // Faint stains only — kept subtle so the wallpaper still reads as bright yellow overall
+      // Faint stains only — kept subtle so the wallpaper still reads as its base color overall
       for (let i = 0; i < 8; i++) {
         const sx = Math.random() * size;
         const sy = Math.random() * size;
@@ -726,7 +727,10 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       tex.repeat.set(3, 2);
       tex.colorSpace = THREE.SRGBColorSpace;
       return tex;
-    })();
+    };
+
+    // One shared texture for the hub's fixed wallpaper (hand-authored core, always the classic look).
+    const wallpaperTexture = createWallpaperTexture(ZONE_THEMES[0].wallColor);
 
     // 5. Build static map geometry — the Backrooms: damp yellow wallpaper, popcorn ceilings, buzzing tubes
     const map = getXonoticMap();
@@ -802,11 +806,15 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
 
     // 5b. Infinite streamed maze — beyond the hand-built hub above, chunks of the same yellow
     // Backrooms maze are generated/torn down on the fly around the player so the map never ends.
-    // Materials are shared (not re-created per wall) since chunks load/unload constantly.
-    const streamedWallMat = new THREE.MeshStandardMaterial({ color: 0xffffff, map: wallpaperTexture, roughness: 0.85, metalness: 0.0 });
-    const streamedCeilingMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#DCD7C8'), roughness: 0.95, metalness: 0.0 });
-    const streamedLightMat = new THREE.MeshBasicMaterial({ color: new THREE.Color('#fef9c3') });
-    const streamedFloorMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#D2B48C'), roughness: 0.92, metalness: 0.0 });
+    // Materials are shared (not re-created per wall) since chunks load/unload constantly. One
+    // material set per ZONE_THEMES entry — each chunk picks its set via the `zone` xonoticMap.ts
+    // already stamped on its walls, so whole neighborhoods of the maze reskin together instead of
+    // the entire infinite maze being one endless repeat of the same palette.
+    const zoneWallTextures = ZONE_THEMES.map(theme => createWallpaperTexture(theme.wallColor));
+    const zoneWallMats = zoneWallTextures.map(tex => new THREE.MeshStandardMaterial({ color: 0xffffff, map: tex, roughness: 0.85, metalness: 0.0 }));
+    const zoneCeilingMats = ZONE_THEMES.map(theme => new THREE.MeshStandardMaterial({ color: new THREE.Color(theme.ceilingColor), roughness: 0.95, metalness: 0.0 }));
+    const zoneLightMats = ZONE_THEMES.map(theme => new THREE.MeshBasicMaterial({ color: new THREE.Color(theme.lightColor) }));
+    const zoneFloorMats = ZONE_THEMES.map(theme => new THREE.MeshStandardMaterial({ color: new THREE.Color(theme.carpetColor), roughness: 0.92, metalness: 0.0 }));
     const streamedChunkMeshes = new Map<string, THREE.Mesh[]>();
     let lastStreamCx = Number.NaN;
     let lastStreamCz = Number.NaN;
@@ -828,10 +836,11 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       const chunkWalls = generateStreamedChunk(cx, cz);
       const meshes: THREE.Mesh[] = chunkWalls.map(wall => {
         const geometry = new THREE.BoxGeometry(wall.size.x, wall.size.y, wall.size.z);
-        const material = wall.id.startsWith('floor_') ? streamedFloorMat
-          : wall.emissive ? streamedLightMat
-          : wall.id.endsWith('_ceiling') ? streamedCeilingMat
-          : streamedWallMat;
+        const zone = wall.zone ?? 0;
+        const material = wall.id.startsWith('floor_') ? zoneFloorMats[zone]
+          : wall.emissive ? zoneLightMats[zone]
+          : wall.id.endsWith('_ceiling') ? zoneCeilingMats[zone]
+          : zoneWallMats[zone];
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.set(wall.pos.x, wall.pos.y, wall.pos.z);
         mesh.receiveShadow = !wall.emissive;
@@ -1434,10 +1443,11 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         botMeshes.clear();
 
         Array.from(streamedChunkMeshes.keys()).forEach(key => disposeStreamedChunk(key));
-        streamedWallMat.dispose();
-        streamedCeilingMat.dispose();
-        streamedLightMat.dispose();
-        streamedFloorMat.dispose();
+        zoneWallMats.forEach(m => m.dispose());
+        zoneWallTextures.forEach(t => t.dispose());
+        zoneCeilingMats.forEach(m => m.dispose());
+        zoneLightMats.forEach(m => m.dispose());
+        zoneFloorMats.forEach(m => m.dispose());
         puddleMat.dispose();
         wallpaperTexture.dispose();
 
