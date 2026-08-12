@@ -215,9 +215,15 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
 
   let mazeIdCounter = 0;
 
-  // Vertical-running partitions (fixed x, spanning z) — split per cell with a deterministic doorway gap
+  // Vertical-running partitions (fixed x, spanning z) — split per cell with a deterministic doorway gap.
+  // Each segment also independently rolls a chance to be dropped entirely (no wall at all, not even a
+  // doorway) so two neighboring cells merge into one bigger room — otherwise this hand-built core was
+  // the one part of the map that never got any room-size variety, even after the infinite maze did.
   gridLines.forEach(gx => {
     for (let gz = -innerHalf; gz < innerHalf; gz += cell) {
+      const mergeRand = mulberry32(hashSeed(gx, gz, 104));
+      if (mergeRand() < 0.3) continue; // merged into the neighboring cell — no wall here at all
+
       const rand = mulberry32(hashSeed(gx, gz, 100));
       const wallT = 0.2 + mulberry32(hashSeed(gx, gz, 102))() * 2.0; // 0.2 (paper-thin) to 2.2 (very thick) — no two walls match
       const doorCenter = gz + cell / 2 + (rand() - 0.5) * (cell - doorW - 2);
@@ -235,9 +241,12 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
     }
   });
 
-  // Horizontal-running partitions (fixed z, spanning x)
+  // Horizontal-running partitions (fixed z, spanning x) — same per-segment merge chance as above.
   gridLines.forEach(gz => {
     for (let gx = -innerHalf; gx < innerHalf; gx += cell) {
+      const mergeRand = mulberry32(hashSeed(gx, gz, 105));
+      if (mergeRand() < 0.3) continue; // merged into the neighboring cell — no wall here at all
+
       const rand = mulberry32(hashSeed(gx, gz, 101));
       const wallT = 0.2 + mulberry32(hashSeed(gx, gz, 103))() * 2.0; // 0.2 (paper-thin) to 2.2 (very thick) — no two walls match
       const doorCenter = gx + cell / 2 + (rand() - 0.5) * (cell - doorW - 2);
