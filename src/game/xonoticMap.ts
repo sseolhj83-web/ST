@@ -84,7 +84,6 @@ export function isHubChunk(cx: number, cz: number): boolean {
 // wall twice and never disagree about where a doorway sits.
 export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
   const walls: MapWall[] = [];
-  const wallT = 0.5;
   const prefix = `stream_${cx}_${cz}`;
   const originX = cx * CHUNK_SIZE + CHUNK_SIZE / 2;
   const originZ = cz * CHUNK_SIZE + CHUNK_SIZE / 2;
@@ -117,6 +116,7 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
       const gz = iz * CELL;
       const rand = mulberry32(hashSeed(ix, iz, 1));
       const doorW = 3 + mulberry32(hashSeed(ix, iz, 4))() * 3; // 3-6, varies per doorway
+      const wallT = 0.2 + mulberry32(hashSeed(ix, iz, 6))() * 2.0; // 0.2 (paper-thin) to 2.2 (very thick) — no two walls match
       const doorCenter = gz + CELL / 2 + (rand() - 0.5) * (CELL - doorW - 2);
       const gapStart = doorCenter - doorW / 2;
       const gapEnd = doorCenter + doorW / 2;
@@ -142,6 +142,7 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
       const gx = ix * CELL;
       const rand = mulberry32(hashSeed(ix, iz, 2));
       const doorW = 3 + mulberry32(hashSeed(ix, iz, 5))() * 3; // 3-6, varies per doorway
+      const wallT = 0.2 + mulberry32(hashSeed(ix, iz, 7))() * 2.0; // 0.2 (paper-thin) to 2.2 (very thick) — no two walls match
       const doorCenter = gx + CELL / 2 + (rand() - 0.5) * (CELL - doorW - 2);
       const gapStart = doorCenter - doorW / 2;
       const gapEnd = doorCenter + doorW / 2;
@@ -209,7 +210,6 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   const innerHalf = 60;    // maze core spans [-60, 60]
   const cell = CELL;       // grid cell size
   const wallH = WALL_H;    // backrooms ceiling height
-  const wallT = 0.5;       // partition thickness
   const doorW = 4;         // doorway gap width
   const gridLines = [-40, -20, 0, 20, 40]; // interior partition lines within the core
 
@@ -219,6 +219,7 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   gridLines.forEach(gx => {
     for (let gz = -innerHalf; gz < innerHalf; gz += cell) {
       const rand = mulberry32(hashSeed(gx, gz, 100));
+      const wallT = 0.2 + mulberry32(hashSeed(gx, gz, 102))() * 2.0; // 0.2 (paper-thin) to 2.2 (very thick) — no two walls match
       const doorCenter = gz + cell / 2 + (rand() - 0.5) * (cell - doorW - 2);
       const gapStart = doorCenter - doorW / 2;
       const gapEnd = doorCenter + doorW / 2;
@@ -238,6 +239,7 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   gridLines.forEach(gz => {
     for (let gx = -innerHalf; gx < innerHalf; gx += cell) {
       const rand = mulberry32(hashSeed(gx, gz, 101));
+      const wallT = 0.2 + mulberry32(hashSeed(gx, gz, 103))() * 2.0; // 0.2 (paper-thin) to 2.2 (very thick) — no two walls match
       const doorCenter = gx + cell / 2 + (rand() - 0.5) * (cell - doorW - 2);
       const gapStart = doorCenter - doorW / 2;
       const gapEnd = doorCenter + doorW / 2;
@@ -278,7 +280,7 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   walls.push({
     id: ESCAPE_WALL_ID,
     pos: { x: ESCAPE_WALL_POS.x, y: ESCAPE_WALL_POS.y, z: ESCAPE_WALL_POS.z },
-    size: { x: 8, y: wallH, z: wallT },
+    size: { x: 8, y: wallH, z: 0.5 },
     color: wallColor,
     flicker: true,
   });
