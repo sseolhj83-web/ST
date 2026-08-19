@@ -660,10 +660,13 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // 4. Lighting Rig (flat, oppressive buzzing-fluorescent illumination — no directional "sun" feel).
     // Kept dim on purpose: real brightness comes from the roaming fixture-light pool below, which
     // pools light under nearby fluorescent tubes and lets everywhere else actually read as dark.
-    const ambientLight = new THREE.AmbientLight('#fef9c3', 0.55); // dim base wash so unlit areas are still navigable
+    // Cut way down from the old 0.55/0.4 — real Backrooms photos go near-black between fluorescent
+    // tubes, and this base wash was flattening that out. Just enough left that pitch-black stretches
+    // still read as navigable geometry instead of a void.
+    const ambientLight = new THREE.AmbientLight('#fef9c3', 0.12); // barely-there base wash — unlit stretches read as genuinely dark
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight('#fdf6b2', 0.4); // faint overhead fill, no harsh directional sun
+    const dirLight = new THREE.DirectionalLight('#fdf6b2', 0.08); // near-negligible overhead fill, no harsh directional sun
     dirLight.position.set(30, 80, 30);
     dirLight.castShadow = false; // no sun-like directional shadow — flat fluorescent look only
     scene.add(dirLight);
@@ -671,9 +674,11 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // A fixed-size pool of point lights that snap to the nearest fluorescent fixtures around the
     // player every frame (see updateFixtureLights below). Bounded cost regardless of map size —
     // real per-fixture lights would mean hundreds active across the infinite streamed maze.
+    // Boosted intensity/reach so the areas that ARE lit read as genuinely bright — the contrast
+    // against the now much dimmer base is what sells "dark areas are dark, lit ones aren't".
     const FIXTURE_LIGHT_POOL_SIZE = 10;
     const fixtureLights: THREE.PointLight[] = Array.from({ length: FIXTURE_LIGHT_POOL_SIZE }, () => {
-      const light = new THREE.PointLight('#fef9c3', 9, 16, 2);
+      const light = new THREE.PointLight('#fef9c3', 13, 19, 2);
       light.visible = false;
       scene.add(light);
       return light;
