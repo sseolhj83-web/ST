@@ -95,28 +95,31 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
   const ixBase = cx * 2; // this chunk owns cell-index columns/rows ixBase and ixBase+1
   const izBase = cz * 2;
 
-  // Room-size variety — every chunk used to be an identical 2x2 grid of same-size 20x20 rooms,
-  // forever, which is exactly why the maze felt like the same structure on loop. Each chunk now
-  // independently (and deterministically, so collision/render copies still agree) rolls whether to
-  // drop its own interior partition line on each axis and merge that pair of cells into one open
-  // room instead — mixing in elongated rooms and the occasional big open lounge among the normal
-  // 4-room chunks. Only the chunk's own interior lines are ever dropped, never the shared edge
-  // lines a neighboring chunk owns, so chunk boundaries/doorway ownership are untouched.
-  const styleRand = mulberry32(hashSeed(cx, cz, 500));
-  const mergeVertical = styleRand() < 0.15;
-  const mergeHorizontal = styleRand() < 0.15;
+  // A real maze needs walls that are usually SOLID with only occasional doorways — not a door on
+  // every single cell boundary, which is just an open dungeon grid you can walk through in any
+  // direction. Each cell edge independently (and deterministically, via a hash of its own grid
+  // coordinates, so collision/render copies always agree) rolls whether it gets a doorway at all.
+  // ~55% stays just above the ~50% bond-percolation threshold of a square grid, so the maze remains
+  // mostly one connected sprawl while still generating plenty of dead ends and forced detours.
+  const OPEN_CHANCE = 0.55;
 
   // Vertical partitions (fixed x, spanning z)
   for (let li = 0; li < 2; li++) {
-    if (li === 1 && mergeVertical) continue; // shared interior line dropped -> open room
     const ix = ixBase + li;
     const gx = ix * CELL;
     for (let ci = 0; ci < 2; ci++) {
       const iz = izBase + ci;
       const gz = iz * CELL;
+      const wallT = 0.2 + mulberry32(hashSeed(ix, iz, 6))() * 2.0; // 0.2 (paper-thin) to 2.2 (very thick) — no two walls match
+      const open = mulberry32(hashSeed(ix, iz, 8))() < OPEN_CHANCE;
+
+      if (!open) {
+        walls.push({ id: `${prefix}_v_${ix}_${iz}`, pos: { x: gx, y: WALL_H / 2, z: gz + CELL / 2 }, size: { x: wallT, y: WALL_H, z: CELL }, color: WALL_COLOR });
+        continue;
+      }
+
       const rand = mulberry32(hashSeed(ix, iz, 1));
       const doorW = 2.5 + mulberry32(hashSeed(ix, iz, 4))() * 2.2; // 2.5-4.7, tighter than before — narrower doorways read as more maze-like
-      const wallT = 0.2 + mulberry32(hashSeed(ix, iz, 6))() * 2.0; // 0.2 (paper-thin) to 2.2 (very thick) — no two walls match
       const doorCenter = gz + CELL / 2 + (rand() - 0.5) * (CELL - doorW - 2);
       const gapStart = doorCenter - doorW / 2;
       const gapEnd = doorCenter + doorW / 2;
@@ -134,15 +137,21 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
 
   // Horizontal partitions (fixed z, spanning x)
   for (let li = 0; li < 2; li++) {
-    if (li === 1 && mergeHorizontal) continue; // shared interior line dropped -> open room
     const iz = izBase + li;
     const gz = iz * CELL;
     for (let ci = 0; ci < 2; ci++) {
       const ix = ixBase + ci;
       const gx = ix * CELL;
+      const wallT = 0.2 + mulberry32(hashSeed(ix, iz, 7))() * 2.0; // 0.2 (paper-thin) to 2.2 (very thick) — no two walls match
+      const open = mulberry32(hashSeed(ix, iz, 9))() < OPEN_CHANCE;
+
+      if (!open) {
+        walls.push({ id: `${prefix}_h_${ix}_${iz}`, pos: { x: gx + CELL / 2, y: WALL_H / 2, z: gz }, size: { x: CELL, y: WALL_H, z: wallT }, color: WALL_COLOR });
+        continue;
+      }
+
       const rand = mulberry32(hashSeed(ix, iz, 2));
       const doorW = 2.5 + mulberry32(hashSeed(ix, iz, 5))() * 2.2; // 2.5-4.7, tighter than before — narrower doorways read as more maze-like
-      const wallT = 0.2 + mulberry32(hashSeed(ix, iz, 7))() * 2.0; // 0.2 (paper-thin) to 2.2 (very thick) — no two walls match
       const doorCenter = gx + CELL / 2 + (rand() - 0.5) * (CELL - doorW - 2);
       const gapStart = doorCenter - doorW / 2;
       const gapEnd = doorCenter + doorW / 2;
@@ -155,22 +164,6 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
         const len = gx + CELL - gapEnd;
         walls.push({ id: `${prefix}_h_${ix}_${iz}_b`, pos: { x: gapEnd + len / 2, y: WALL_H / 2, z: gz }, size: { x: len, y: WALL_H, z: wallT }, color: WALL_COLOR });
       }
-    }
-  }
-
-  // A fully-merged chunk (both interior lines dropped) becomes one bare open room with a clean
-  // sightline across it — the least maze-like configuration possible. Drop a single off-center
-  // baffle wall so there's still a turn to walk around instead of a straight line through.
-  if (mergeVertical && mergeHorizontal) {
-    const baffleRand = mulberry32(hashSeed(cx, cz, 501));
-    const vertical = baffleRand() < 0.5;
-    const span = CHUNK_SIZE * (0.5 + baffleRand() * 0.15); // 50%-65% of the room's width, leaves clearance at both ends
-    const wallT = 0.4 + baffleRand() * 1.2;
-    const perpOffset = (baffleRand() - 0.5) * CHUNK_SIZE * 0.4; // shifted off-center, still well clear of the room's outer walls
-    if (vertical) {
-      walls.push({ id: `${prefix}_baffle`, pos: { x: originX + perpOffset, y: WALL_H / 2, z: originZ }, size: { x: wallT, y: WALL_H, z: span }, color: WALL_COLOR });
-    } else {
-      walls.push({ id: `${prefix}_baffle`, pos: { x: originX, y: WALL_H / 2, z: originZ + perpOffset }, size: { x: span, y: WALL_H, z: wallT }, color: WALL_COLOR });
     }
   }
 
@@ -192,6 +185,43 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
   }
 
   return walls;
+}
+
+// Builds a genuine perfect maze (randomized-DFS spanning tree) over the hub's 6x6 core cell grid,
+// so every cell is guaranteed reachable from every other cell — safe for the fixed escape wall,
+// Red Room, and pickups, which all sit inside this grid — while still producing real corridors and
+// dead ends instead of a fully-doored open grid. A fixed seed keeps it identical on every call.
+function buildHubMazeGraph(cells: number) {
+  const rand = mulberry32(0x9e3779b9);
+  const visited: boolean[][] = Array.from({ length: cells }, () => new Array(cells).fill(false));
+  // vOpen[i][j]: doorway between column i and column i+1, at row j (i: 0..cells-2)
+  const vOpen: boolean[][] = Array.from({ length: cells - 1 }, () => new Array(cells).fill(false));
+  // hOpen[j][i]: doorway between row j and row j+1, at column i (j: 0..cells-2)
+  const hOpen: boolean[][] = Array.from({ length: cells - 1 }, () => new Array(cells).fill(false));
+
+  const stack: [number, number][] = [[0, 0]];
+  visited[0][0] = true;
+  while (stack.length > 0) {
+    const [i, j] = stack[stack.length - 1];
+    const options: Array<{ open: () => void; ni: number; nj: number }> = [];
+    if (i > 0 && !visited[i - 1][j]) options.push({ open: () => { vOpen[i - 1][j] = true; }, ni: i - 1, nj: j });
+    if (i < cells - 1 && !visited[i + 1][j]) options.push({ open: () => { vOpen[i][j] = true; }, ni: i + 1, nj: j });
+    if (j > 0 && !visited[i][j - 1]) options.push({ open: () => { hOpen[j - 1][i] = true; }, ni: i, nj: j - 1 });
+    if (j < cells - 1 && !visited[i][j + 1]) options.push({ open: () => { hOpen[j][i] = true; }, ni: i, nj: j + 1 });
+
+    if (options.length === 0) { stack.pop(); continue; }
+    const pick = options[Math.floor(rand() * options.length)];
+    pick.open();
+    visited[pick.ni][pick.nj] = true;
+    stack.push([pick.ni, pick.nj]);
+  }
+
+  // Light braiding — open a few extra edges beyond the spanning tree so it isn't a strict
+  // single-solution labyrinth, while staying mostly closed/maze-like.
+  for (let i = 0; i < cells - 1; i++) for (let j = 0; j < cells; j++) if (!vOpen[i][j] && rand() < 0.12) vOpen[i][j] = true;
+  for (let j = 0; j < cells - 1; j++) for (let i = 0; i < cells; i++) if (!hOpen[j][i] && rand() < 0.12) hOpen[j][i] = true;
+
+  return { vOpen, hOpen };
 }
 
 export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickups: PickupItem[] } {
@@ -228,20 +258,27 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   const wallH = WALL_H;    // backrooms ceiling height
   const doorW = 3.2;       // doorway gap width — narrower than the old 4 for tighter, more maze-like passages
   const gridLines = [-40, -20, 0, 20, 40]; // interior partition lines within the core
+  const cellsPerAxis = gridLines.length + 1; // 6 columns/rows of cells across the core
 
   let mazeIdCounter = 0;
 
-  // Vertical-running partitions (fixed x, spanning z) — split per cell with a deterministic doorway gap.
-  // Each segment also independently rolls a chance to be dropped entirely (no wall at all, not even a
-  // doorway) so two neighboring cells merge into one bigger room — otherwise this hand-built core was
-  // the one part of the map that never got any room-size variety, even after the infinite maze did.
-  gridLines.forEach(gx => {
+  // A genuine maze graph (spanning tree + light braiding) over the 6x6 core — see buildHubMazeGraph.
+  // Every cell is guaranteed reachable, so the escape wall/Red Room/pickups can never be sealed off.
+  const { vOpen, hOpen } = buildHubMazeGraph(cellsPerAxis);
+
+  // Vertical-running partitions (fixed x, spanning z) — solid by default; only carved into a
+  // doorway where the maze graph says this edge is part of the path network.
+  gridLines.forEach((gx, li) => {
     for (let gz = -innerHalf; gz < innerHalf; gz += cell) {
-      const mergeRand = mulberry32(hashSeed(gx, gz, 104));
-      if (mergeRand() < 0.15) continue; // merged into the neighboring cell — no wall here at all
+      const row = (gz + innerHalf) / cell;
+      const wallT = 0.2 + mulberry32(hashSeed(gx, gz, 102))() * 2.0; // 0.2 (paper-thin) to 2.2 (very thick) — no two walls match
+
+      if (!vOpen[li][row]) {
+        walls.push({ id: `maze_v_${mazeIdCounter++}`, pos: { x: gx, y: wallH / 2, z: gz + cell / 2 }, size: { x: wallT, y: wallH, z: cell }, color: wallColor });
+        continue;
+      }
 
       const rand = mulberry32(hashSeed(gx, gz, 100));
-      const wallT = 0.2 + mulberry32(hashSeed(gx, gz, 102))() * 2.0; // 0.2 (paper-thin) to 2.2 (very thick) — no two walls match
       const doorCenter = gz + cell / 2 + (rand() - 0.5) * (cell - doorW - 2);
       const gapStart = doorCenter - doorW / 2;
       const gapEnd = doorCenter + doorW / 2;
@@ -257,14 +294,18 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
     }
   });
 
-  // Horizontal-running partitions (fixed z, spanning x) — same per-segment merge chance as above.
-  gridLines.forEach(gz => {
+  // Horizontal-running partitions (fixed z, spanning x) — same maze-graph gating as above.
+  gridLines.forEach((gz, lj) => {
     for (let gx = -innerHalf; gx < innerHalf; gx += cell) {
-      const mergeRand = mulberry32(hashSeed(gx, gz, 105));
-      if (mergeRand() < 0.15) continue; // merged into the neighboring cell — no wall here at all
+      const col = (gx + innerHalf) / cell;
+      const wallT = 0.2 + mulberry32(hashSeed(gx, gz, 103))() * 2.0; // 0.2 (paper-thin) to 2.2 (very thick) — no two walls match
+
+      if (!hOpen[lj][col]) {
+        walls.push({ id: `maze_h_${mazeIdCounter++}`, pos: { x: gx + cell / 2, y: wallH / 2, z: gz }, size: { x: cell, y: wallH, z: wallT }, color: wallColor });
+        continue;
+      }
 
       const rand = mulberry32(hashSeed(gx, gz, 101));
-      const wallT = 0.2 + mulberry32(hashSeed(gx, gz, 103))() * 2.0; // 0.2 (paper-thin) to 2.2 (very thick) — no two walls match
       const doorCenter = gx + cell / 2 + (rand() - 0.5) * (cell - doorW - 2);
       const gapStart = doorCenter - doorW / 2;
       const gapEnd = doorCenter + doorW / 2;
