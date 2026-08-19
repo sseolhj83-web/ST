@@ -103,8 +103,8 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
   // 4-room chunks. Only the chunk's own interior lines are ever dropped, never the shared edge
   // lines a neighboring chunk owns, so chunk boundaries/doorway ownership are untouched.
   const styleRand = mulberry32(hashSeed(cx, cz, 500));
-  const mergeVertical = styleRand() < 0.3;
-  const mergeHorizontal = styleRand() < 0.3;
+  const mergeVertical = styleRand() < 0.15;
+  const mergeHorizontal = styleRand() < 0.15;
 
   // Vertical partitions (fixed x, spanning z)
   for (let li = 0; li < 2; li++) {
@@ -115,7 +115,7 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
       const iz = izBase + ci;
       const gz = iz * CELL;
       const rand = mulberry32(hashSeed(ix, iz, 1));
-      const doorW = 3 + mulberry32(hashSeed(ix, iz, 4))() * 3; // 3-6, varies per doorway
+      const doorW = 2.5 + mulberry32(hashSeed(ix, iz, 4))() * 2.2; // 2.5-4.7, tighter than before — narrower doorways read as more maze-like
       const wallT = 0.2 + mulberry32(hashSeed(ix, iz, 6))() * 2.0; // 0.2 (paper-thin) to 2.2 (very thick) — no two walls match
       const doorCenter = gz + CELL / 2 + (rand() - 0.5) * (CELL - doorW - 2);
       const gapStart = doorCenter - doorW / 2;
@@ -141,7 +141,7 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
       const ix = ixBase + ci;
       const gx = ix * CELL;
       const rand = mulberry32(hashSeed(ix, iz, 2));
-      const doorW = 3 + mulberry32(hashSeed(ix, iz, 5))() * 3; // 3-6, varies per doorway
+      const doorW = 2.5 + mulberry32(hashSeed(ix, iz, 5))() * 2.2; // 2.5-4.7, tighter than before — narrower doorways read as more maze-like
       const wallT = 0.2 + mulberry32(hashSeed(ix, iz, 7))() * 2.0; // 0.2 (paper-thin) to 2.2 (very thick) — no two walls match
       const doorCenter = gx + CELL / 2 + (rand() - 0.5) * (CELL - doorW - 2);
       const gapStart = doorCenter - doorW / 2;
@@ -155,6 +155,22 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
         const len = gx + CELL - gapEnd;
         walls.push({ id: `${prefix}_h_${ix}_${iz}_b`, pos: { x: gapEnd + len / 2, y: WALL_H / 2, z: gz }, size: { x: len, y: WALL_H, z: wallT }, color: WALL_COLOR });
       }
+    }
+  }
+
+  // A fully-merged chunk (both interior lines dropped) becomes one bare open room with a clean
+  // sightline across it — the least maze-like configuration possible. Drop a single off-center
+  // baffle wall so there's still a turn to walk around instead of a straight line through.
+  if (mergeVertical && mergeHorizontal) {
+    const baffleRand = mulberry32(hashSeed(cx, cz, 501));
+    const vertical = baffleRand() < 0.5;
+    const span = CHUNK_SIZE * (0.5 + baffleRand() * 0.15); // 50%-65% of the room's width, leaves clearance at both ends
+    const wallT = 0.4 + baffleRand() * 1.2;
+    const perpOffset = (baffleRand() - 0.5) * CHUNK_SIZE * 0.4; // shifted off-center, still well clear of the room's outer walls
+    if (vertical) {
+      walls.push({ id: `${prefix}_baffle`, pos: { x: originX + perpOffset, y: WALL_H / 2, z: originZ }, size: { x: wallT, y: WALL_H, z: span }, color: WALL_COLOR });
+    } else {
+      walls.push({ id: `${prefix}_baffle`, pos: { x: originX, y: WALL_H / 2, z: originZ + perpOffset }, size: { x: span, y: WALL_H, z: wallT }, color: WALL_COLOR });
     }
   }
 
@@ -210,7 +226,7 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   const innerHalf = 60;    // maze core spans [-60, 60]
   const cell = CELL;       // grid cell size
   const wallH = WALL_H;    // backrooms ceiling height
-  const doorW = 4;         // doorway gap width
+  const doorW = 3.2;       // doorway gap width — narrower than the old 4 for tighter, more maze-like passages
   const gridLines = [-40, -20, 0, 20, 40]; // interior partition lines within the core
 
   let mazeIdCounter = 0;
@@ -222,7 +238,7 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   gridLines.forEach(gx => {
     for (let gz = -innerHalf; gz < innerHalf; gz += cell) {
       const mergeRand = mulberry32(hashSeed(gx, gz, 104));
-      if (mergeRand() < 0.3) continue; // merged into the neighboring cell — no wall here at all
+      if (mergeRand() < 0.15) continue; // merged into the neighboring cell — no wall here at all
 
       const rand = mulberry32(hashSeed(gx, gz, 100));
       const wallT = 0.2 + mulberry32(hashSeed(gx, gz, 102))() * 2.0; // 0.2 (paper-thin) to 2.2 (very thick) — no two walls match
@@ -245,7 +261,7 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   gridLines.forEach(gz => {
     for (let gx = -innerHalf; gx < innerHalf; gx += cell) {
       const mergeRand = mulberry32(hashSeed(gx, gz, 105));
-      if (mergeRand() < 0.3) continue; // merged into the neighboring cell — no wall here at all
+      if (mergeRand() < 0.15) continue; // merged into the neighboring cell — no wall here at all
 
       const rand = mulberry32(hashSeed(gx, gz, 101));
       const wallT = 0.2 + mulberry32(hashSeed(gx, gz, 103))() * 2.0; // 0.2 (paper-thin) to 2.2 (very thick) — no two walls match
