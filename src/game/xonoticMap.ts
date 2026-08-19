@@ -167,13 +167,23 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
     }
   }
 
-  // Buzzing fluorescent fixtures — deterministic per cell, roughly 9 out of every 10 cells lit.
+  // Buzzing fluorescent fixtures — clustered into zones instead of an independent per-cell coin
+  // flip. A flat 90% chance per cell only ever produces single unlit rooms surrounded by lit
+  // neighbors (light bleeds between rooms with no occlusion), never an actual dark stretch. Real
+  // Backrooms photos are mostly well-lit with occasional patches plunged into near-total dark —
+  // so a coarse per-zone roll decides whether this whole ~4-cell block is a lit zone (still ~92%
+  // of its cells lit) or a dark zone (only ~10% lit, just enough that it isn't pure black).
+  const FIXTURE_ZONE_CELLS = 4; // zone spans a 4x4 block of cells (~80 units per side)
   for (let li = 0; li < 2; li++) {
     const ix = ixBase + li;
     for (let ci = 0; ci < 2; ci++) {
       const iz = izBase + ci;
+      const zoneX = Math.floor(ix / FIXTURE_ZONE_CELLS);
+      const zoneZ = Math.floor(iz / FIXTURE_ZONE_CELLS);
+      const isDarkZone = mulberry32(hashSeed(zoneX, zoneZ, 600))() < 0.3;
+      const litChance = isDarkZone ? 0.1 : 0.92;
       const rand = mulberry32(hashSeed(ix, iz, 3));
-      if (rand() > 0.9) continue;
+      if (rand() > litChance) continue;
       walls.push({
         id: `${prefix}_light_${ix}_${iz}`,
         pos: { x: ix * CELL + CELL / 2, y: WALL_H - 0.05, z: iz * CELL + CELL / 2 },
@@ -325,10 +335,20 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   // sky anywhere — this is the Backrooms, it is entirely indoors.
   walls.push({ id: 'ceiling_main', pos: { x: 0, y: wallH + 0.15, z: 0 }, size: { x: sizeX, y: 0.3, z: sizeZ }, color: ceilingColor });
 
-  // 4. BUZZING FLUORESCENT FIXTURES — dense grid at every cell center under the ceiling
+  // 4. BUZZING FLUORESCENT FIXTURES — every cell used to get a light unconditionally, which meant
+  // the hub (where the run starts, and where the player spends the most time) never had a single
+  // dark room. Same zone-clustering as the streamed maze below: most of the hub is a well-lit zone,
+  // but a few ~2x2-cell patches are dark zones where fixtures mostly don't spawn at all.
   const cellCenters = [-50, -30, -10, 10, 30, 50];
+  const HUB_FIXTURE_ZONE_CELLS = 2; // zone spans a 2x2 block of cells -> 3x3 zones across the hub core
   cellCenters.forEach((cx, ci) => {
     cellCenters.forEach((cz, zi) => {
+      const zoneX = Math.floor(ci / HUB_FIXTURE_ZONE_CELLS);
+      const zoneZ = Math.floor(zi / HUB_FIXTURE_ZONE_CELLS);
+      const isDarkZone = mulberry32(hashSeed(zoneX, zoneZ, 601))() < 0.3;
+      const litChance = isDarkZone ? 0.12 : 0.95;
+      const rand = mulberry32(hashSeed(cx, cz, 8));
+      if (rand() > litChance) return;
       walls.push({
         id: `light_${ci}_${zi}`,
         pos: { x: cx, y: wallH - 0.05, z: cz },
