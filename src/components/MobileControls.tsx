@@ -3,7 +3,6 @@ import { useRef, useCallback } from 'react';
 interface MobileControlsProps {
   keysRef: React.MutableRefObject<{ w: boolean; s: boolean; a: boolean; d: boolean; space: boolean; }>;
   mouseDeltaRef: React.MutableRefObject<{ dx: number; dy: number }>;
-  isMouseDownRef: React.MutableRefObject<boolean>;
 }
 
 const JOYSTICK_RADIUS = 52;
@@ -24,7 +23,7 @@ type LookState = {
   lastY: number;
 };
 
-export function MobileControls({ keysRef, mouseDeltaRef, isMouseDownRef }: MobileControlsProps) {
+export function MobileControls({ keysRef, mouseDeltaRef }: MobileControlsProps) {
   const joystickState = useRef<JoystickState>({ active: false, touchId: -1, startX: 0, startY: 0 });
   const lookState = useRef<LookState>({ active: false, touchId: -1, lastX: 0, lastY: 0 });
 
@@ -210,7 +209,7 @@ export function MobileControls({ keysRef, mouseDeltaRef, isMouseDownRef }: Mobil
         />
       </div>
 
-      {/* ── Right area: look drag + fire button ────────────────── */}
+      {/* ── Right area: look drag ────────────────── */}
       <div
         className="absolute right-0 top-0 bottom-0 pointer-events-auto"
         style={{ width: '55%', touchAction: 'none' }}
@@ -223,23 +222,6 @@ export function MobileControls({ keysRef, mouseDeltaRef, isMouseDownRef }: Mobil
         <div className="absolute top-3 right-3 text-white/25 text-xs font-mono pointer-events-none select-none">
           시점
         </div>
-
-        {/* Fire button */}
-        <button
-          className="absolute bottom-6 right-6 pointer-events-auto select-none flex items-center justify-center font-bold text-base rounded-full text-white"
-          style={{
-            width: 80,
-            height: 80,
-            background: 'rgba(220,38,38,0.75)',
-            border: '3px solid rgba(252,165,165,0.7)',
-            touchAction: 'none',
-          }}
-          onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); isMouseDownRef.current = true; }}
-          onTouchEnd={(e) => { e.preventDefault(); e.stopPropagation(); isMouseDownRef.current = false; }}
-          onTouchCancel={(e) => { e.preventDefault(); e.stopPropagation(); isMouseDownRef.current = false; }}
-        >
-          발사
-        </button>
       </div>
     </div>
   );

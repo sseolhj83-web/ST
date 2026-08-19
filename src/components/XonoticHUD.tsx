@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Player3D, FragLog, Weapon } from '../game/xonoticTypes';
+import { Player3D, FragLog } from '../game/xonoticTypes';
 import { Shield, Heart } from 'lucide-react';
 
 interface XonoticHUDProps {
@@ -86,7 +86,7 @@ export const XonoticHUD: React.FC<XonoticHUDProps> = ({
                 {frag.killer === 'You' ? '플레이어' : frag.killer}
               </span>
               <span className="text-rose-400 text-[10px] font-bold uppercase bg-rose-500/10 px-1.5 py-0.5 rounded mx-2 border border-rose-500/25">
-                {frag.weapon === 'vaporizer' ? '증발시킴 ⚡' : frag.weapon === 'rocket' ? '폭사시킴 💥' : '처치함 💀'}
+                처치함 💀
               </span>
               <span className={frag.victim === 'You' ? 'text-red-400 font-bold' : 'text-slate-200'}>
                 {frag.victim === 'You' ? '플레이어' : frag.victim}
@@ -113,7 +113,7 @@ export const XonoticHUD: React.FC<XonoticHUDProps> = ({
         )}
       </div>
 
-      {/* 3. BOTTOM PANEL STATS (HEALTH, WEAPONS, SHIELD) */}
+      {/* 3. BOTTOM PANEL STATS (HEALTH, SHIELD) */}
       <div className="w-full flex items-end justify-between">
         
         {/* Left Bottom corner: HP / Armour values */}
@@ -142,41 +142,6 @@ export const XonoticHUD: React.FC<XonoticHUDProps> = ({
               <span className="text-3xl font-black text-white font-mono tracking-tight">{Math.round(player.armor)}</span>
             </div>
           </div>
-        </div>
-
-        {/* Right Bottom corner: Futuristic Weapon Grid & Ammo counters */}
-        <div className="flex gap-2 bg-slate-900/85 backdrop-blur-md rounded-2xl p-2.5 border border-white/10 shadow-3xl pointer-events-auto">
-          {(Object.values(player.weapons) as Weapon[]).map((w, index) => {
-            const isActive = player.currentWeapon === w.type;
-            const keyNum = index + 1;
-
-            return (
-              <div
-                key={w.type}
-                className={`relative px-4 py-3 rounded-xl border flex flex-col items-center justify-center min-w-[70px] select-none cursor-pointer transition-all ${
-                  isActive
-                    ? 'border-cyan-500/40 bg-cyan-500/15 shadow-[0_0_15px_rgba(6,182,212,0.1)]'
-                    : 'border-white/5 hover:border-white/10 hover:bg-white/5'
-                }`}
-              >
-                {/* Weapon index overlay */}
-                <span className="absolute top-1 left-1.5 text-[9px] font-mono text-white/40 block font-bold">
-                  {keyNum}
-                </span>
-
-                <span className={`text-[11px] font-bold uppercase font-sans tracking-wide block ${isActive ? 'text-white' : 'text-slate-400'}`}>
-                  {w.name}
-                </span>
-
-                {/* Ammo numbers */}
-                <div className="flex items-baseline gap-0.5 mt-1">
-                  <span className={`font-mono text-lg font-bold leading-none ${isActive ? 'text-cyan-400' : 'text-slate-500'}`}>
-                    {w.ammo === Infinity ? '∞' : w.ammo}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
         </div>
       </div>
     </div>

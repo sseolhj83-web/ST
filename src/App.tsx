@@ -26,8 +26,6 @@ export default function App() {
   const gameStateRef = useRef<XonoticGameState | null>(null);
   const keysRef = useRef({ w: false, s: false, a: false, d: false, space: false, arrowleft: false, arrowright: false, arrowup: false, arrowdown: false });
   const mouseDeltaRef = useRef({ dx: 0, dy: 0 });
-  const isMouseDownRef = useRef(false);
-  const isRightMouseDownRef = useRef(false);
   const lastTimeRef = useRef(0);
   const animationFrameIdRef = useRef<number | null>(null);
   const appStateRef = useRef<AppState>('AUTH');
@@ -163,14 +161,6 @@ export default function App() {
       if (code === 'ArrowUp') { keysRef.current.arrowup = true; e.preventDefault(); }
       if (code === 'ArrowDown') { keysRef.current.arrowdown = true; e.preventDefault(); }
 
-      // Gun Hotkeys - dynamic delegation prevents stale closure gaps
-      if (key === '1') engineRef.current?.changeWeapon('laser');
-      if (key === '2') engineRef.current?.changeWeapon('vaporizer');
-      if (key === '3') engineRef.current?.changeWeapon('rocket');
-      if (key === '4') engineRef.current?.changeWeapon('electro');
-      if (key === '5') engineRef.current?.changeWeapon('grenade');
-      if (key === '6') engineRef.current?.changeWeapon('flamethrower');
-
       // Time Freeze Hotkey
       if (code === 'KeyF' || key === 'f' || key === 'ㄹ') {
         engineRef.current?.toggleFreeze();
@@ -193,37 +183,17 @@ export default function App() {
       if (code === 'ArrowDown') keysRef.current.arrowdown = false;
     };
 
-    const handleMouseDown = (e: MouseEvent) => {
-      if (e.button === 0) {
-        isMouseDownRef.current = true;
-      } else if (e.button === 2) {
-        isRightMouseDownRef.current = true;
-      }
-    };
-
-    const handleMouseUp = (e: MouseEvent) => {
-      if (e.button === 0) {
-        isMouseDownRef.current = false;
-      } else if (e.button === 2) {
-        isRightMouseDownRef.current = false;
-      }
-    };
-
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
     };
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
-    window.addEventListener('mousedown', handleMouseDown);
-    window.addEventListener('mouseup', handleMouseUp);
     window.addEventListener('contextmenu', handleContextMenu);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
-      window.removeEventListener('mousedown', handleMouseDown);
-      window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('contextmenu', handleContextMenu);
       if (animationFrameIdRef.current) {
         cancelAnimationFrame(animationFrameIdRef.current);
@@ -246,8 +216,6 @@ export default function App() {
         keysRef.current,
         mouseDeltaRef.current.dx,
         mouseDeltaRef.current.dy,
-        isMouseDownRef.current,
-        isRightMouseDownRef.current,
         dt
       );
       // Reset mouse move delta registers after consuming
@@ -304,7 +272,6 @@ export default function App() {
     // Smooth reset controls states
     keysRef.current = { w: false, s: false, a: false, d: false, space: false, arrowleft: false, arrowright: false, arrowup: false, arrowdown: false };
     mouseDeltaRef.current = { dx: 0, dy: 0 };
-    isMouseDownRef.current = false;
     
     setGameResult('NONE');
     setAppState('PLAYING');
@@ -334,10 +301,8 @@ export default function App() {
   }, []);
 
   const handleMouseMove = useCallback((dx: number, dy: number) => {
-    // If aiming, drastically reduce camera lookaround speed for ultra pinpoint tracking precision
-    const sensFactor = isRightMouseDownRef.current ? 0.35 : 1.0;
-    mouseDeltaRef.current.dx += dx * sensFactor;
-    mouseDeltaRef.current.dy += dy * sensFactor;
+    mouseDeltaRef.current.dx += dx;
+    mouseDeltaRef.current.dy += dy;
   }, []);
 
   const handleStartGameFromLobby = useCallback((roomId: string, isHost: boolean, currentPlayers: any[]) => {
@@ -459,7 +424,6 @@ export default function App() {
                 <MobileControls
                   keysRef={keysRef}
                   mouseDeltaRef={mouseDeltaRef}
-                  isMouseDownRef={isMouseDownRef}
                 />
               )}
 

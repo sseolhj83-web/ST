@@ -5,7 +5,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { XonoticGameState, Bot, Projectile, PickupItem } from '../game/xonoticTypes';
+import { XonoticGameState, Bot, PickupItem } from '../game/xonoticTypes';
 import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS, ESCAPE_WALL_ID, getPuddles, PUDDLE_COLOR, WALL_H } from '../game/xonoticMap';
 
 // Helper to build procedural low-poly Demogorgon models — the single Backrooms monster
@@ -662,13 +662,13 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // pools light under nearby fluorescent tubes and lets everywhere else actually read as dark.
     // History: 0.55/0.4 (original, too flat/bright) -> 0.12/0.08 (too dark everywhere, fixture pool
     // wasn't strong enough yet to carry the contrast) -> 0.24/0.14 (unlit stretches still not dark
-    // enough). Base dropped back down here; this time the fixture pool below is boosted further too,
-    // so lit pools should stay clearly bright even with the darker base — contrast should come from
-    // that gap, not from keeping the base itself bright.
-    const ambientLight = new THREE.AmbientLight('#fef9c3', 0.14); // dim base wash — unlit stretches should read as genuinely dark
+    // enough) -> 0.14/0.07. Dropped even further here now that the player carries an always-on
+    // flashlight (see flashlightSpot below) — that's the intended light source away from fixtures,
+    // so the ambient floor can go almost to black without leaving the player truly blind.
+    const ambientLight = new THREE.AmbientLight('#fef9c3', 0.06); // near-black base — the flashlight and fixtures do the actual work
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight('#fdf6b2', 0.07); // near-negligible overhead fill, no harsh directional sun
+    const dirLight = new THREE.DirectionalLight('#fdf6b2', 0.03); // near-negligible overhead fill, no harsh directional sun
     dirLight.position.set(30, 80, 30);
     dirLight.castShadow = false; // no sun-like directional shadow — flat fluorescent look only
     scene.add(dirLight);
@@ -927,61 +927,59 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       });
     };
 
-    // 6. First-Person Viewmodel Gun Setup
-    const gunGroup = new THREE.Group();
-    
-    const barrelGeo = new THREE.CylinderGeometry(0.12, 0.12, 1.4, 12);
-    barrelGeo.rotateX(Math.PI / 2);
-    const barrelMat = new THREE.MeshStandardMaterial({ color: '#4b5563', metalness: 0.9, roughness: 0.1 });
-    const barrel = new THREE.Mesh(barrelGeo, barrelMat);
-    barrel.position.set(0, 0, -1);
-    gunGroup.add(barrel);
+    // 6. First-Person Viewmodel: handheld flashlight (replaces the old weapon viewmodel)
+    const flashlightGroup = new THREE.Group();
 
-    const bodyGeo = new THREE.BoxGeometry(0.35, 0.35, 0.8);
-    const bodyMat = new THREE.MeshStandardMaterial({ color: '#1f2937', metalness: 0.7 });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.set(0, -0.05, -0.5);
-    gunGroup.add(body);
+    const flBodyGeo = new THREE.CylinderGeometry(0.09, 0.11, 0.85, 12);
+    flBodyGeo.rotateX(Math.PI / 2);
+    const flBodyMat = new THREE.MeshStandardMaterial({ color: '#111827', metalness: 0.55, roughness: 0.4 });
+    const flBody = new THREE.Mesh(flBodyGeo, flBodyMat);
+    flBody.position.set(0, 0, -0.5);
+    flashlightGroup.add(flBody);
 
-    const gunNeonGeo = new THREE.BoxGeometry(0.08, 0.08, 0.9);
-    const gunNeonMat = new THREE.MeshBasicMaterial({ color: '#06b6d4' });
-    const gunNeon = new THREE.Mesh(gunNeonGeo, gunNeonMat);
-    gunNeon.position.set(0, 0.16, -0.6);
-    gunGroup.add(gunNeon);
+    const flGripGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.22, 12);
+    flGripGeo.rotateX(Math.PI / 2);
+    const flGripMat = new THREE.MeshStandardMaterial({ color: '#1f2937', metalness: 0.3, roughness: 0.7 });
+    const flGrip = new THREE.Mesh(flGripGeo, flGripMat);
+    flGrip.position.set(0, 0, -0.05);
+    flashlightGroup.add(flGrip);
 
-    const mFlashGeo = new THREE.SphereGeometry(0.24, 8, 8);
-    const mFlashMat = new THREE.MeshBasicMaterial({ color: '#f59e0b', transparent: true, opacity: 0.95 });
-    const mFlash = new THREE.Mesh(mFlashGeo, mFlashMat);
-    mFlash.position.set(0, 0, -1.8);
-    mFlash.visible = false;
-    gunGroup.add(mFlash);
-    
-    const mLight = new THREE.PointLight('#f59e0b', 0, 15);
-    mLight.position.set(0, 0, -1.9);
-    gunGroup.add(mLight);
+    // Bright emissive lens disc at the front — the flashlight's visible "bulb"
+    const flLensGeo = new THREE.CircleGeometry(0.095, 16);
+    const flLensMat = new THREE.MeshStandardMaterial({
+      color: '#fff4d6',
+      emissive: new THREE.Color('#fff4d6'),
+      emissiveIntensity: 2.4,
+      roughness: 0.25,
+    });
+    const flLens = new THREE.Mesh(flLensGeo, flLensMat);
+    flLens.position.set(0, 0, -0.93);
+    flashlightGroup.add(flLens);
 
-    scene.add(gunGroup);
+    scene.add(flashlightGroup);
+
+    // Always-on flashlight SpotLight — the player's actual light source in the pitch-dark maze.
+    // No shadow casting, matching the deliberately shadow-free ambient/directional rig above.
+    const flashlightSpot = new THREE.SpotLight('#fff4d6', 30, 35, 0.4, 0.35, 2);
+    flashlightSpot.castShadow = false;
+    scene.add(flashlightSpot);
+    const flashlightTarget = new THREE.Object3D();
+    scene.add(flashlightTarget);
+    flashlightSpot.target = flashlightTarget;
 
     // 7. Dynamic Meshes local cache Maps
     const botMeshes = new Map<string, THREE.Group>();       // the Demogorgon
     const remoteMeshes = new Map<string, THREE.Group>();    // online human players
-    const projectileMeshes = new Map<string, THREE.Mesh>();
     const pickupMeshes = new Map<string, THREE.Group>();
-    
-    let lastClientFireTime = 0;
-    let recoilProgress = 0;
-    let mFTime = 0;
-    const projCache = new Map<string, { pos: { x: number; y: number; z: number }; color: string; type: string }>();
-    let transientVisuals: { mesh: THREE.Mesh; light?: THREE.PointLight; born: number; duration: number; startScale: number; endScale: number }[] = [];
 
     // Pre-allocated math and color objects to prevent GC thrashing inside the fast animate loop
     const _camDir = new THREE.Vector3();
     const _rightVec = new THREE.Vector3();
     const _upVec = new THREE.Vector3(0, 1, 0);
-    const _gunPos = new THREE.Vector3();
-    const _finalGunPos = new THREE.Vector3();
+    const _flPos = new THREE.Vector3();
     const _lookTarget = new THREE.Vector3();
     const _targetLook = new THREE.Vector3();
+    const _spotTargetPos = new THREE.Vector3();
 
     let lastTime = performance.now();
     let botAnimTime = 0;
@@ -1012,14 +1010,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
 
         // A3. Pool light under the fluorescent fixtures nearest the player, dark elsewhere
         updateFixtureLights(player.pos.x, player.pos.z);
-        
-        // Smoothly animate Field of View (Zoom / ADS)
-        const targetFOV = player.isAiming ? 32 : 85;
-        if (Math.abs(camera.fov - targetFOV) > 0.05) {
-          camera.fov += (targetFOV - camera.fov) * 0.22;
-          camera.updateProjectionMatrix();
-        }
-        
+
         // Euler look angles using pre-allocated _targetLook vector
         _targetLook.set(
           camera.position.x + Math.sin(player.yaw) * Math.cos(player.pitch),
@@ -1028,45 +1019,30 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         );
         camera.lookAt(_targetLook);
 
-        // B. Swing and recoil First-person weapon model
-        if (gunGroup) {
-          const isCurrentlyAiming = !!player.isAiming;
-          
-          // Shrink the gun so it occupies less screen space (cleaner visual profile)
-          const gunScale = isCurrentlyAiming ? 0.35 : 0.52;
-          gunGroup.scale.set(gunScale, gunScale, gunScale);
+        // B. Position the handheld flashlight viewmodel, and aim the real flashlight SpotLight
+        // exactly where the player is looking.
+        camera.getWorldDirection(_camDir);
+        _rightVec.crossVectors(_camDir, _upVec).normalize();
 
-          // Position weapon cleanly:
-          // In ADS, center the gun and slide it down significantly so the red crosshair dot is unobstructed
-          const rightOffset = isCurrentlyAiming ? 0.0 : 0.22;
-          const downOffset = isCurrentlyAiming ? -0.42 : -0.26;
-          const forwardOffset = isCurrentlyAiming ? -0.52 : -0.58;
+        if (flashlightGroup) {
+          const rightOffset = 0.22;
+          const downOffset = -0.26;
+          const forwardOffset = -0.58;
 
-          camera.getWorldDirection(_camDir);
-
-          _rightVec.crossVectors(_camDir, _upVec).normalize();
-
-          _gunPos.copy(camera.position)
+          _flPos.copy(camera.position)
             .addScaledVector(_camDir, forwardOffset)
             .addScaledVector(_rightVec, rightOffset)
             .addScaledVector(_upVec, downOffset);
 
-          _finalGunPos.copy(_gunPos)
-            .addScaledVector(_camDir, recoilProgress * -0.16)
-            .addScaledVector(_upVec, recoilProgress * 0.04);
-
-          gunGroup.position.copy(_finalGunPos);
+          flashlightGroup.position.copy(_flPos);
           _lookTarget.copy(camera.position).addScaledVector(_camDir, 25);
-          gunGroup.lookAt(_lookTarget);
-          gunGroup.rotateY(Math.PI);
-
-          // Change neon indicator colors based on what gun is currently equipped
-          const weaponNeonMesh = gunGroup.children[2] as THREE.Mesh;
-          if (weaponNeonMesh && weaponNeonMesh.material) {
-            const weaponColor = player.weapons[player.currentWeapon].color;
-            (weaponNeonMesh.material as THREE.MeshBasicMaterial).color.set(weaponColor);
-          }
+          flashlightGroup.lookAt(_lookTarget);
+          flashlightGroup.rotateY(Math.PI);
         }
+
+        flashlightSpot.position.copy(camera.position);
+        _spotTargetPos.copy(camera.position).addScaledVector(_camDir, 15);
+        flashlightTarget.position.copy(_spotTargetPos);
 
         // C. Render Bots (enemies) and Remote Players (teammates) separately
         const activeEnemyIds = new Set(stateVal.bots.filter(b => !b.isTeammate).map(b => b.id));
@@ -1232,40 +1208,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           botGroup.position.z = bot.pos.z;
         });
 
-        // D. Render Projectiles
-        const activeProjIds = new Set(stateVal.projectiles.map(p => p.id));
-        projectileMeshes.forEach((mesh, id) => {
-          if (!activeProjIds.has(id)) {
-            disposeHierarchy(mesh);
-            scene.remove(mesh);
-            projectileMeshes.delete(id);
-          }
-        });
-
-        stateVal.projectiles.forEach(proj => {
-          let mesh = projectileMeshes.get(proj.id);
-          if (!mesh) {
-            const isRocket = proj.type === 'rocket';
-            const isGrenade = proj.type === 'grenade';
-            let geo;
-            if (isRocket) {
-              geo = new THREE.CylinderGeometry(0.15, 0.15, 1.1, 8);
-              geo.rotateX(Math.PI / 2);
-            } else if (isGrenade) {
-              geo = new THREE.DodecahedronGeometry(0.38, 1);
-            } else {
-              geo = new THREE.SphereGeometry(proj.radius, 8, 8);
-            }
-            
-            const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(proj.color) });
-            mesh = new THREE.Mesh(geo, mat);
-            scene.add(mesh);
-            projectileMeshes.set(proj.id, mesh);
-          }
-          mesh.position.set(proj.pos.x, proj.pos.y, proj.pos.z);
-        });
-
-        // E. Render Pickups
+        // D. Render Pickups
         const timeTick = performance.now() * 0.003;
         const activePickupIds = new Set(stateVal.pickups.map(p => p.id));
 
@@ -1297,18 +1240,10 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
               itemMesh = new THREE.Mesh(crossBox1, materialCross);
               const bar2 = new THREE.Mesh(crossBox2, materialCross);
               itemMesh.add(bar2);
-            } else if (pick.type === 'armor_mega') {
+            } else {
               const octaGeo = new THREE.OctahedronGeometry(0.8);
               const materialOcta = new THREE.MeshStandardMaterial({ color: '#3b82f6', roughness: 0.05, metalness: 0.9 });
               itemMesh = new THREE.Mesh(octaGeo, materialOcta);
-            } else if (pick.type === 'weapon_grenade') {
-              const sphereGeo = new THREE.SphereGeometry(0.48, 16, 16);
-              const sphereMat = new THREE.MeshStandardMaterial({ color: '#10b981', roughness: 0.1, metalness: 0.8 });
-              itemMesh = new THREE.Mesh(sphereGeo, sphereMat);
-            } else {
-              const boxGeo = new THREE.BoxGeometry(0.6, 0.45, 1.1);
-              const boxMat = new THREE.MeshStandardMaterial({ color: '#f59e0b', roughness: 0.2 });
-              itemMesh = new THREE.Mesh(boxGeo, boxMat);
             }
 
             group.add(itemMesh);
@@ -1328,116 +1263,13 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           }
         });
 
-        // F. Weapon muzzle flash logic matching current weapons
-        const nowTime = performance.now();
-        const currWeapon = player.currentWeapon;
-        const lastFire = player.weapons[currWeapon].lastFireTime;
-
-        if (lastFire > lastClientFireTime) {
-          lastClientFireTime = lastFire;
-          recoilProgress = 1.0;
-          mFTime = nowTime;
-
-          if (mFlash) {
-            mFlash.visible = true;
-            mFlash.scale.setScalar(0.7 + Math.random() * 0.7);
-            mFlash.rotation.z = Math.random() * Math.PI;
-          }
-          if (mLight) {
-            mLight.intensity = 5.0;
-            const col = player.weapons[currWeapon].color;
-            mLight.color.set(col);
-          }
-        }
-
-        if (nowTime - mFTime > 50) {
-          if (mFlash) mFlash.visible = false;
-          if (mLight) mLight.intensity = 0;
-        }
-
-        if (recoilProgress > 0) {
-          recoilProgress = Math.max(0, recoilProgress - 0.08);
-        }
-
-        // G. Projectile explosions tracking
-        const currentProjIds = new Set(stateVal.projectiles.map(p => p.id));
-        projCache.forEach((cached, idleId) => {
-          if (!currentProjIds.has(idleId)) {
-            // Projectile burst fx
-            const isRocket = cached.type === 'rocket';
-            const isGrenade = cached.type === 'grenade';
-            const maxScale = isRocket ? 5.5 : isGrenade ? 6.5 : 2.2;
-            const duration = isRocket ? 350 : isGrenade ? 450 : 150;
-
-            const expGeo = new THREE.SphereGeometry(0.5, 12, 12);
-            const expMat = new THREE.MeshBasicMaterial({
-              color: new THREE.Color(cached.color),
-              transparent: true,
-              opacity: 0.95,
-              wireframe: isRocket || isGrenade
-            });
-            const expMesh = new THREE.Mesh(expGeo, expMat);
-            expMesh.position.set(cached.pos.x, cached.pos.y, cached.pos.z);
-            scene.add(expMesh);
-
-            let expLight: THREE.PointLight | undefined;
-            if (isRocket || isGrenade) {
-              expLight = new THREE.PointLight(cached.color, isGrenade ? 20 : 15, isGrenade ? 22 : 18);
-              expLight.position.set(cached.pos.x, cached.pos.y, cached.pos.z);
-              scene.add(expLight);
-            }
-
-            transientVisuals.push({
-              mesh: expMesh,
-              light: expLight,
-              born: nowTime,
-              duration: duration,
-              startScale: 0.1,
-              endScale: maxScale
-            });
-
-            projCache.delete(idleId);
-          }
-        });
-
-        stateVal.projectiles.forEach(p => {
-          projCache.set(p.id, {
-            pos: { ...p.pos },
-            color: p.color,
-            type: p.type
-          });
-        });
-
-        transientVisuals = transientVisuals.filter(fx => {
-          const age = nowTime - fx.born;
-          if (age >= fx.duration) {
-            scene.remove(fx.mesh);
-            disposeHierarchy(fx.mesh); // Deep recursive disposal of geometry & materials to prevent WebGL leaks!
-            if (fx.light) scene.remove(fx.light);
-            return false;
-          }
-
-          const ratio = age / fx.duration;
-          const scaleVal = fx.startScale + (fx.endScale - fx.startScale) * ratio;
-          fx.mesh.scale.setScalar(scaleVal);
-
-          if (fx.mesh.material) {
-            (fx.mesh.material as THREE.MeshBasicMaterial).opacity = 0.95 * (1.0 - ratio);
-          }
-          if (fx.light) {
-            fx.light.intensity = 15.0 * (1.0 - ratio * ratio);
-          }
-
-          return true;
-        });
-
-        // J. The one escape wall — a severe, chaotic strobe so it reads as "wrong" the moment
+        // F. The one escape wall — a severe, chaotic strobe so it reads as "wrong" the moment
         // someone's flashlight lands on it, but otherwise blends into the maze.
         if (escapeWallMesh) {
           (escapeWallMesh as THREE.Mesh).visible = Math.random() > 0.35;
         }
 
-        // J2. A minority of ordinary fluorescent tubes buzz/flicker (see applyFlicker above) —
+        // F2. A minority of ordinary fluorescent tubes buzz/flicker (see applyFlicker above) —
         // subtler and far less frequent than the escape wall's strobe.
         const flickerT = now * 0.008;
         flickerFixtureMeshes.forEach(mesh => applyFlicker(mesh, flickerT));
@@ -1607,58 +1439,10 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       {/* Three.js Canvas mount */}
       <div ref={mountRef} className="w-full h-full" />
 
-      {/* Scope Zoom Background Mask Layer */}
-      {isActive && !!state.player.isAiming && (
-        <div className="absolute inset-0 pointer-events-none z-40 flex items-center justify-center animate-fade-in">
-          {/* Outermost pitch-black vignette border */}
-          <div className="absolute inset-0 bg-[radial-gradient(circle_650px_at_center,transparent_20%,rgba(0,0,0,0.92)_100%)]" targetid="vignette" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_380px_at_center,transparent_85%,rgba(0,0,0,0.98)_100%)]" />
-          
-          {/* Glass Circular Scope border outline */}
-          <div className="w-[380px] h-[380px] rounded-full border-[3px] border-cyan-500/60 shadow-[0_0_35px_rgba(6,182,212,0.35),_inset_0_0_40px_rgba(6,182,212,0.18)] bg-cyan-950/[0.04] relative flex items-center justify-center">
-            {/* Scope Compass Headings */}
-            <span className="absolute top-4 text-[9px] font-mono text-cyan-400/90 font-bold tracking-widest uppercase animate-pulse">
-              ADS LOCK-ON PRECISION
-            </span>
-            <span className="absolute bottom-4 text-[8px] font-mono text-slate-400/80 uppercase">
-              RECOIL SENSITIVITY DECAYED
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Crosshair drawn perfectly in dead center */}
+      {/* Minimal center-of-screen marker — just an orientation reference, not a weapon reticle */}
       {isActive && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-45">
-          {state.player.isAiming ? (
-            <div className="relative flex items-center justify-center">
-              {/* Specialized Sniper Zoom Reticle */}
-              <div className="w-2.5 h-2.5 bg-red-500 rounded-full border border-black shadow-[0_0_8px_rgba(239,68,68,0.9)] z-50"></div>
-              {/* Extended Crosshair lines */}
-              <div className="absolute h-[1.5px] w-52 bg-gradient-to-r from-transparent via-cyan-400 to-transparent"></div>
-              <div className="absolute w-[1.5px] h-52 bg-gradient-to-b from-transparent via-cyan-400 to-transparent"></div>
-              {/* Rings */}
-              <div className="absolute w-24 h-24 rounded-full border border-cyan-500/40 border-dashed"></div>
-              <div className="absolute w-40 h-40 rounded-full border border-cyan-500/20"></div>
-              {/* Horizontal / Vertical Tick marks */}
-              <div className="absolute h-8 w-[1px] bg-cyan-400/80 -translate-x-[36px]"></div>
-              <div className="absolute h-8 w-[1px] bg-cyan-400/80 translate-x-[36px]"></div>
-              <div className="absolute w-8 h-[1px] bg-cyan-400/80 -translate-y-[36px]"></div>
-              <div className="absolute w-8 h-[1px] bg-cyan-400/80 translate-y-[36px]"></div>
-              <span className="absolute text-[8px] font-mono text-cyan-400/85 -translate-x-[44px] -translate-y-2">15m</span>
-              <span className="absolute text-[8px] font-mono text-cyan-400/85 translate-x-[44px] -translate-y-2">15m</span>
-            </div>
-          ) : (
-            <div className="relative">
-              {/* Standard Quake-style Crosshair */}
-              <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full border border-black/50 shadow-md"></div>
-              {/* Outer crosshairs */}
-              <div className="absolute w-4 h-[2px] bg-emerald-400 left-[-12px] top-[2px] border-l border-t border-b border-black/30"></div>
-              <div className="absolute w-4 h-[2px] bg-emerald-400 right-[-12px] top-[2px] border-r border-t border-b border-black/30"></div>
-              <div className="absolute w-[2px] h-4 bg-emerald-400 top-[-12px] left-[2px] border-t border-l border-r border-black/30"></div>
-              <div className="absolute w-[2px] h-4 bg-emerald-400 bottom-[-12px] left-[2px] border-b border-l border-r border-black/30"></div>
-            </div>
-          )}
+          <div className="w-1.5 h-1.5 bg-white/70 rounded-full border border-black/50 shadow-md"></div>
         </div>
       )}
 
@@ -1693,16 +1477,11 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
                 MANUAL PLAY (드래그 조준 모드 - iframe/모바일 추천)
               </button>
             </div>
-            <div className="mt-8 grid grid-cols-2 gap-4 text-left text-xs text-slate-400 border-t border-slate-800 pt-6">
+            <div className="mt-8 grid grid-cols-1 gap-4 text-left text-xs text-slate-400 border-t border-slate-800 pt-6">
               <div>
                 <span className="font-mono text-cyan-400 block mb-1">MOVEMENTS</span>
                 W, A, S, D<br />
                 SPACE (BUNNY JUMP)
-              </div>
-              <div>
-                <span className="font-mono text-purple-400 block mb-1">WEAPONS CONTROL</span>
-                LEFT CLICK (SHOOT)<br />
-                1, 2, 3, 4 (CHANGE GUNS)
               </div>
             </div>
           </div>
@@ -1711,10 +1490,8 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     </div>
   );
 }, (prevProps, nextProps) => {
-  // Prevent React re-renders on the WebGL canvas on standard position/velocity ticks,
-  // but allow updates when pointerlock hooks re-bind, or when the player aims in/out (to render
-  // the zoom screen layer).
+  // Prevent React re-renders on the WebGL canvas on standard position/velocity ticks — only
+  // allow updates when pointerlock hooks re-bind.
   return prevProps.onPointerLockChange === nextProps.onPointerLockChange &&
-         prevProps.onMouseMove === nextProps.onMouseMove &&
-         prevProps.state.player.isAiming === nextProps.state.player.isAiming;
+         prevProps.onMouseMove === nextProps.onMouseMove;
 });
