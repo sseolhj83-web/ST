@@ -804,9 +804,11 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     });
 
     // Fixture positions feeding the roaming light pool — the static hub set, plus per-chunk sets
-    // kept in sync as the infinite maze streams in/out below.
+    // kept in sync as the infinite maze streams in/out below. Decorative extra tubes (lightDecor)
+    // are excluded — otherwise a single lit cell's 3 tubes would eat 3 of the pool's limited slots
+    // instead of one, shrinking how many distinct rooms actually get covered.
     const hubFixturePositions: { x: number; z: number }[] = map.walls
-      .filter(w => w.emissive)
+      .filter(w => w.emissive && !w.lightDecor)
       .map(w => ({ x: w.pos.x, z: w.pos.z }));
     const chunkFixturePositions = new Map<string, { x: number; z: number }[]>();
 
@@ -866,7 +868,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         return mesh;
       });
       streamedChunkMeshes.set(key, meshes);
-      chunkFixturePositions.set(key, chunkWalls.filter(w => w.emissive).map(w => ({ x: w.pos.x, z: w.pos.z })));
+      chunkFixturePositions.set(key, chunkWalls.filter(w => w.emissive && !w.lightDecor).map(w => ({ x: w.pos.x, z: w.pos.z })));
 
       const flickerMeshes: THREE.Mesh[] = [];
       chunkWalls.forEach((wall, i) => {

@@ -94,6 +94,8 @@ export interface MapWall {
   collisionOnly?: boolean;
   flicker?: boolean; // the one severely-flickering escape wall — visual hint only
   puddle?: boolean;  // decorative murky floor puddle — visual only, no collision
+  lightDecor?: boolean; // extra tube alongside a lit cell's primary fixture — visual density only,
+                         // excluded from the roaming light-pool's target list (see XonoticCanvas.tsx)
 }
 
 export interface FragLog {

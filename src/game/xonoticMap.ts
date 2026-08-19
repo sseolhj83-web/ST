@@ -180,12 +180,27 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
       const litChance = isDarkZone ? 0.08 : 0.97;
       const rand = mulberry32(hashSeed(ix, iz, 3));
       if (rand() > litChance) continue;
+      const baseX = ix * CELL + CELL / 2;
+      const baseZ = iz * CELL + CELL / 2;
       walls.push({
         id: `${prefix}_light_${ix}_${iz}`,
-        pos: { x: ix * CELL + CELL / 2, y: WALL_H - 0.05, z: iz * CELL + CELL / 2 },
+        pos: { x: baseX, y: WALL_H - 0.05, z: baseZ },
         size: { x: 3.5, y: 0.15, z: 0.9 },
         color: LIGHT_COLOR,
         emissive: true,
+      });
+      // A real Backrooms ceiling has rows of tube lights, not one fixture per room — two more
+      // flank the primary tube. Decorative only (lightDecor): they don't feed the roaming
+      // light-pool's target list (see XonoticCanvas.tsx), just add ceiling density.
+      [-6, 6].forEach((offset, oi) => {
+        walls.push({
+          id: `${prefix}_light_${ix}_${iz}_extra${oi}`,
+          pos: { x: baseX + offset, y: WALL_H - 0.05, z: baseZ },
+          size: { x: 3.5, y: 0.15, z: 0.9 },
+          color: LIGHT_COLOR,
+          emissive: true,
+          lightDecor: true,
+        });
       });
     }
   }
@@ -351,6 +366,18 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
         size: { x: 3.5, y: 0.15, z: 0.9 },
         color: lightColor,
         emissive: true,
+      });
+      // Same ceiling-density touch as the streamed maze: two flanking decorative tubes per lit
+      // cell, excluded from the roaming light-pool's target list (see lightDecor in xonoticTypes.ts).
+      [-6, 6].forEach((offset, oi) => {
+        walls.push({
+          id: `light_${ci}_${zi}_extra${oi}`,
+          pos: { x: cx + offset, y: wallH - 0.05, z: cz },
+          size: { x: 3.5, y: 0.15, z: 0.9 },
+          color: lightColor,
+          emissive: true,
+          lightDecor: true,
+        });
       });
     });
   });
