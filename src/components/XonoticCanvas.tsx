@@ -660,14 +660,15 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // 4. Lighting Rig (flat, oppressive buzzing-fluorescent illumination — no directional "sun" feel).
     // Kept dim on purpose: real brightness comes from the roaming fixture-light pool below, which
     // pools light under nearby fluorescent tubes and lets everywhere else actually read as dark.
-    // First pass (0.55/0.4 -> 0.12/0.08) went too far the other way and read as uniformly dark
-    // everywhere, not just far from fixtures. Settled here: dim enough that unlit stretches are
-    // genuinely dark, bright enough that most of the map (90% of cells have a fixture) doesn't feel
-    // like a black void — the fixture pool below is what should carry the actual contrast.
-    const ambientLight = new THREE.AmbientLight('#fef9c3', 0.24); // dim base wash — unlit stretches read as dark, not invisible
+    // History: 0.55/0.4 (original, too flat/bright) -> 0.12/0.08 (too dark everywhere, fixture pool
+    // wasn't strong enough yet to carry the contrast) -> 0.24/0.14 (unlit stretches still not dark
+    // enough). Base dropped back down here; this time the fixture pool below is boosted further too,
+    // so lit pools should stay clearly bright even with the darker base — contrast should come from
+    // that gap, not from keeping the base itself bright.
+    const ambientLight = new THREE.AmbientLight('#fef9c3', 0.14); // dim base wash — unlit stretches should read as genuinely dark
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight('#fdf6b2', 0.14); // faint overhead fill, no harsh directional sun
+    const dirLight = new THREE.DirectionalLight('#fdf6b2', 0.07); // near-negligible overhead fill, no harsh directional sun
     dirLight.position.set(30, 80, 30);
     dirLight.castShadow = false; // no sun-like directional shadow — flat fluorescent look only
     scene.add(dirLight);
@@ -679,7 +680,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // against the now much dimmer base is what sells "dark areas are dark, lit ones aren't".
     const FIXTURE_LIGHT_POOL_SIZE = 14; // a few more slots so more of the (mostly-lit) map stays covered at once
     const fixtureLights: THREE.PointLight[] = Array.from({ length: FIXTURE_LIGHT_POOL_SIZE }, () => {
-      const light = new THREE.PointLight('#fef9c3', 14, 21, 2);
+      const light = new THREE.PointLight('#fef9c3', 17, 23, 2);
       light.visible = false;
       scene.add(light);
       return light;
