@@ -4,7 +4,7 @@
  */
 
 import { XonoticGameState, Player3D, Bot, Projectile, WeaponType, JumpPad, PickupItem, MapWall, FragLog } from './xonoticTypes';
-import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS, ESCAPE_WALL_ID, ESCAPE_WALL_POS, RED_ROOM_CENTER, RED_ROOM_RADIUS, SPAWN_POINT, WALL_H } from './xonoticMap';
+import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS, ESCAPE_WALL_ID, ESCAPE_WALL_POS, SPAWN_POINT, WALL_H } from './xonoticMap';
 
 export class XonoticEngine {
   public state: XonoticGameState;
@@ -75,7 +75,6 @@ export class XonoticEngine {
       matchTime: 0,
       isFrozen: false,
       monsterWarning: false,
-      inRedRoom: false,
       escaped: false,
     };
   }
@@ -260,7 +259,6 @@ export class XonoticEngine {
     this.updateProjectiles(dt);
     this.updatePickups(dt);
     this.checkEscapeWall();
-    this.checkRedRoom(dt);
     this.checkTimeoutDeath();
     this.checkCollisions();
 
@@ -280,22 +278,6 @@ export class XonoticEngine {
     const dz = player.pos.z - ESCAPE_WALL_POS.z;
     if (Math.sqrt(dx * dx + dz * dz) < 2.2) {
       this.state.escaped = true;
-    }
-  }
-
-  // The Red Room: step inside once and the curse is permanent for the rest of the run — a slow,
-  // unstoppable health drain that no pickup can undo.
-  private checkRedRoom(dt: number) {
-    const { player } = this.state;
-    if (!this.state.inRedRoom) {
-      const dx = player.pos.x - RED_ROOM_CENTER.x;
-      const dz = player.pos.z - RED_ROOM_CENTER.z;
-      if (Math.sqrt(dx * dx + dz * dz) < RED_ROOM_RADIUS) {
-        this.state.inRedRoom = true;
-      }
-    }
-    if (this.state.inRedRoom && player.health > 0) {
-      this.damagePlayer(dt * 15, 'red_room');
     }
   }
 

@@ -1605,11 +1605,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       {/* Three.js Canvas mount */}
       <div ref={mountRef} className="w-full h-full" />
 
-      {/* The Red Room curse: permanent red peripheral vignette — once this is on, it never turns off */}
-      {!!state.inRedRoom && (
-        <div className="absolute inset-0 pointer-events-none z-30 bg-[radial-gradient(circle_at_center,transparent_35%,rgba(153,0,0,0.55)_100%)] animate-pulse" />
-      )}
-
       {/* Scope Zoom Background Mask Layer */}
       {isActive && !!state.player.isAiming && (
         <div className="absolute inset-0 pointer-events-none z-40 flex items-center justify-center animate-fade-in">
@@ -1715,10 +1710,9 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
   );
 }, (prevProps, nextProps) => {
   // Prevent React re-renders on the WebGL canvas on standard position/velocity ticks,
-  // but allow updates when pointerlock hooks re-bind, when the player aims in/out (to render the
-  // zoom screen layer), or when the permanent Red Room curse takes hold (red vignette overlay).
+  // but allow updates when pointerlock hooks re-bind, or when the player aims in/out (to render
+  // the zoom screen layer).
   return prevProps.onPointerLockChange === nextProps.onPointerLockChange &&
          prevProps.onMouseMove === nextProps.onMouseMove &&
-         prevProps.state.player.isAiming === nextProps.state.player.isAiming &&
-         prevProps.state.inRedRoom === nextProps.state.inRedRoom;
+         prevProps.state.player.isAiming === nextProps.state.player.isAiming;
 });

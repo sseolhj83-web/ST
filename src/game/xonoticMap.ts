@@ -10,7 +10,7 @@ import { MapWall, JumpPad, PickupItem } from './xonoticTypes';
 // carpet stretching further than anyone has mapped.
 //
 // This file builds a hand-authored 160x160 "hub" (getXonoticMap) — the guaranteed-reachable core
-// that always holds the same pickups, the one Red Room, and the one flickering escape wall.
+// that always holds the same pickups and the one flickering escape wall.
 // Beyond the hub, generateStreamedChunk() extends the exact same yellow-partition grid outward
 // forever, streamed in/out around the player by xonoticEngine.ts / XonoticCanvas.tsx, so the maze
 // itself never ends. Every surface — hub and streamed alike — sits under a solid, unbroken
@@ -32,11 +32,6 @@ export const CELL = 20;    // maze partition grid spacing, shared by the hub and
 // in victory (see stepSimulator).
 export const ESCAPE_WALL_ID = 'escape_wall';
 export const ESCAPE_WALL_POS = { x: -33, y: WALL_H / 2, z: -47 };
-
-// The Red Room — one fixed, unmarked spot in the hub. Stray inside it and your peripheral vision
-// turns red for the rest of the run: there is no way back out (see stepSimulator's curse damage).
-export const RED_ROOM_CENTER = { x: -52, z: 52 };
-export const RED_ROOM_RADIUS = 9;
 
 // A safe, always-open spawn point out in the hallway ring, clear of every partition wall.
 export const SPAWN_POINT = { x: 0, y: 1.5, z: 70 };
@@ -170,9 +165,10 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
   // Buzzing fluorescent fixtures — clustered into zones instead of an independent per-cell coin
   // flip. A flat 90% chance per cell only ever produces single unlit rooms surrounded by lit
   // neighbors (light bleeds between rooms with no occlusion), never an actual dark stretch. Real
-  // Backrooms photos are mostly well-lit with occasional patches plunged into near-total dark —
-  // so a coarse per-zone roll decides whether this whole ~4-cell block is a lit zone (still ~92%
-  // of its cells lit) or a dark zone (only ~10% lit, just enough that it isn't pure black).
+  // Backrooms photos are DENSELY lit almost everywhere, with only occasional patches plunged into
+  // near-total dark — so a coarse per-zone roll decides whether this whole ~4-cell block is a lit
+  // zone (~97% of its cells lit, i.e. lights nearly everywhere) or a dark zone (only ~8% lit, just
+  // enough that it isn't pure black), and lit zones are the large majority.
   const FIXTURE_ZONE_CELLS = 4; // zone spans a 4x4 block of cells (~80 units per side)
   for (let li = 0; li < 2; li++) {
     const ix = ixBase + li;
@@ -180,8 +176,8 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
       const iz = izBase + ci;
       const zoneX = Math.floor(ix / FIXTURE_ZONE_CELLS);
       const zoneZ = Math.floor(iz / FIXTURE_ZONE_CELLS);
-      const isDarkZone = mulberry32(hashSeed(zoneX, zoneZ, 600))() < 0.3;
-      const litChance = isDarkZone ? 0.1 : 0.92;
+      const isDarkZone = mulberry32(hashSeed(zoneX, zoneZ, 600))() < 0.18;
+      const litChance = isDarkZone ? 0.08 : 0.97;
       const rand = mulberry32(hashSeed(ix, iz, 3));
       if (rand() > litChance) continue;
       walls.push({
@@ -198,9 +194,9 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
 }
 
 // Builds a genuine perfect maze (randomized-DFS spanning tree) over the hub's 6x6 core cell grid,
-// so every cell is guaranteed reachable from every other cell — safe for the fixed escape wall,
-// Red Room, and pickups, which all sit inside this grid — while still producing real corridors and
-// dead ends instead of a fully-doored open grid. A fixed seed keeps it identical on every call.
+// so every cell is guaranteed reachable from every other cell — safe for the fixed escape wall and
+// pickups, which all sit inside this grid — while still producing real corridors and dead ends
+// instead of a fully-doored open grid. A fixed seed keeps it identical on every call.
 function buildHubMazeGraph(cells: number) {
   const rand = mulberry32(0x9e3779b9);
   const visited: boolean[][] = Array.from({ length: cells }, () => new Array(cells).fill(false));
@@ -273,7 +269,7 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
   let mazeIdCounter = 0;
 
   // A genuine maze graph (spanning tree + light braiding) over the 6x6 core — see buildHubMazeGraph.
-  // Every cell is guaranteed reachable, so the escape wall/Red Room/pickups can never be sealed off.
+  // Every cell is guaranteed reachable, so the escape wall/pickups can never be sealed off.
   const { vOpen, hOpen } = buildHubMazeGraph(cellsPerAxis);
 
   // Vertical-running partitions (fixed x, spanning z) — solid by default; only carved into a
@@ -345,8 +341,8 @@ export function getXonoticMap(): { walls: MapWall[]; jumpPads: JumpPad[]; pickup
     cellCenters.forEach((cz, zi) => {
       const zoneX = Math.floor(ci / HUB_FIXTURE_ZONE_CELLS);
       const zoneZ = Math.floor(zi / HUB_FIXTURE_ZONE_CELLS);
-      const isDarkZone = mulberry32(hashSeed(zoneX, zoneZ, 601))() < 0.3;
-      const litChance = isDarkZone ? 0.12 : 0.95;
+      const isDarkZone = mulberry32(hashSeed(zoneX, zoneZ, 601))() < 0.18;
+      const litChance = isDarkZone ? 0.1 : 0.98;
       const rand = mulberry32(hashSeed(cx, cz, 8));
       if (rand() > litChance) return;
       walls.push({

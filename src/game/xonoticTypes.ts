@@ -113,6 +113,5 @@ export interface XonoticGameState {
   matchTime: number;
   isFrozen?: boolean;
   monsterWarning?: boolean; // the monster is within 7m of the player right now
-  inRedRoom?: boolean;      // permanent once true — found the Red Room, there is no way back out
   escaped?: boolean;        // found and dove through the flickering wall — the run is won
 }
