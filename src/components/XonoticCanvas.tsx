@@ -854,10 +854,11 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       const mannequin = buildMannequinModel(i);
       mannequin.position.set(m.x, 0, m.z);
       mannequin.rotation.y = m.rotationY;
+      mannequin.scale.setScalar(1.2);
       scene.add(mannequin);
       mannequinStates.push({
         group: mannequin,
-        headPos: new THREE.Vector3(m.x, 1.5, m.z),
+        headPos: new THREE.Vector3(m.x, 1.5 * 1.2, m.z),
         litCount: 0,
         wasLit: false,
         alive: true,
