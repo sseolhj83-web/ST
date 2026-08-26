@@ -661,10 +661,10 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // no light emitted; see wall.emissive material below). The flashlight the player carries
     // (flashlightSpot below) is the ONLY real light source; this rig is just a near-black ambient
     // floor so the player isn't in literal 100%-black outside the flashlight cone.
-    const ambientLight = new THREE.AmbientLight('#fef9c3', 0.06);
+    const ambientLight = new THREE.AmbientLight('#fef9c3', 0.02);
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight('#fdf6b2', 0.03); // near-negligible overhead fill, no harsh directional sun
+    const dirLight = new THREE.DirectionalLight('#fdf6b2', 0.01); // near-negligible overhead fill, no harsh directional sun
     dirLight.position.set(30, 80, 30);
     dirLight.castShadow = false; // no sun-like directional shadow — flat, unlit look
     scene.add(dirLight);
