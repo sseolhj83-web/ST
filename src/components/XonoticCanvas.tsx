@@ -6,7 +6,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { XonoticGameState, Bot, PickupItem } from '../game/xonoticTypes';
-import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS, ESCAPE_WALL_ID, getPuddles, PUDDLE_COLOR, WALL_H } from '../game/xonoticMap';
+import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS, ESCAPE_WALL_ID, getPuddles, PUDDLE_COLOR } from '../game/xonoticMap';
 
 // Helper to build procedural low-poly Demogorgon models — the single Backrooms monster
 function buildDemogorgonModel(bot: Bot): THREE.Group {
@@ -657,34 +657,17 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // 4. Lighting Rig (flat, oppressive buzzing-fluorescent illumination — no directional "sun" feel).
-    // Kept dim on purpose: real brightness comes from the roaming fixture-light pool below, which
-    // pools light under nearby fluorescent tubes and lets everywhere else actually read as dark.
-    // History: 0.55/0.4 (original, too flat/bright) -> 0.12/0.08 (too dark everywhere, fixture pool
-    // wasn't strong enough yet to carry the contrast) -> 0.24/0.14 (unlit stretches still not dark
-    // enough) -> 0.14/0.07. Dropped even further here now that the player carries an always-on
-    // flashlight (see flashlightSpot below) — that's the intended light source away from fixtures,
-    // so the ambient floor can go almost to black without leaving the player truly blind.
-    const ambientLight = new THREE.AmbientLight('#fef9c3', 0.06); // near-black base — the flashlight and fixtures do the actual work
+    // 4. Lighting Rig — every fluorescent fixture in the maze is switched off (dead tube meshes,
+    // no light emitted; see wall.emissive material below). The flashlight the player carries
+    // (flashlightSpot below) is the ONLY real light source; this rig is just a near-black ambient
+    // floor so the player isn't in literal 100%-black outside the flashlight cone.
+    const ambientLight = new THREE.AmbientLight('#fef9c3', 0.06);
     scene.add(ambientLight);
 
     const dirLight = new THREE.DirectionalLight('#fdf6b2', 0.03); // near-negligible overhead fill, no harsh directional sun
     dirLight.position.set(30, 80, 30);
-    dirLight.castShadow = false; // no sun-like directional shadow — flat fluorescent look only
+    dirLight.castShadow = false; // no sun-like directional shadow — flat, unlit look
     scene.add(dirLight);
-
-    // A fixed-size pool of point lights that snap to the nearest fluorescent fixtures around the
-    // player every frame (see updateFixtureLights below). Bounded cost regardless of map size —
-    // real per-fixture lights would mean hundreds active across the infinite streamed maze.
-    // Boosted intensity/reach so the areas that ARE lit read as genuinely bright — the contrast
-    // against the now much dimmer base is what sells "dark areas are dark, lit ones aren't".
-    const FIXTURE_LIGHT_POOL_SIZE = 14; // a few more slots so more of the (mostly-lit) map stays covered at once
-    const fixtureLights: THREE.PointLight[] = Array.from({ length: FIXTURE_LIGHT_POOL_SIZE }, () => {
-      const light = new THREE.PointLight('#fef9c3', 17, 23, 2);
-      light.visible = false;
-      scene.add(light);
-      return light;
-    });
 
     const floorMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color('#D2B48C'),
@@ -735,21 +718,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       return tex;
     })();
 
-    // A minority of fluorescent tubes buzz/flicker instead of staying lit steady — real dying
-    // fixtures, distinct from the escape wall's severe chaotic strobe. Each flickering tube gets its
-    // own random phase (userData.flickerSeed) so they don't all blink in unison; applyFlicker() below
-    // drives them every frame from a shared time value via two layered sine waves for an irregular,
-    // organic on/off pattern instead of uniform per-frame noise.
-    const FLICKER_CHANCE = 0.18;
-    const applyFlicker = (mesh: THREE.Mesh, t: number) => {
-      const seed = (mesh.userData.flickerSeed as number) || 0;
-      const wave = Math.sin((t + seed) * 7.3) * Math.sin((t + seed) * 2.1);
-      mesh.visible = wave > -0.82;
-    };
-    const flickerFixtureMeshes: THREE.Mesh[] = []; // hub fixtures — static, never unloaded
-    const chunkFlickerMeshes = new Map<string, THREE.Mesh[]>(); // streamed fixtures, per chunk
-
-    // 5. Build static map geometry — the Backrooms: damp yellow wallpaper, popcorn ceilings, buzzing tubes
+    // 5. Build static map geometry — the Backrooms: damp yellow wallpaper, popcorn ceilings, dead tubes
     const map = getXonoticMap();
     let escapeWallMesh: THREE.Mesh | null = null;
     map.walls.forEach(wall => {
@@ -767,8 +736,9 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           metalness: 0.0,
         });
       } else if (wall.emissive) {
-        // Buzzing fluorescent light fixtures
-        material = new THREE.MeshBasicMaterial({ color: new THREE.Color(wall.color) });
+        // Dead fluorescent tube fixtures — every one is switched off; the flashlight is the
+        // only light source, so these read as dark glass/housing the beam can graze, not a glow.
+        material = new THREE.MeshStandardMaterial({ color: '#4a4838', roughness: 0.5, metalness: 0.15 });
       } else if (wall.flicker) {
         // The one escape wall — only subtly off from ordinary wallpaper up close (slightly cooler
         // tone, faint emissive) so a searching player can tell something's wrong on inspection, but
@@ -793,24 +763,9 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
 
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(wall.pos.x, wall.pos.y, wall.pos.z);
-      mesh.receiveShadow = !wall.emissive;
-      mesh.castShadow = !wall.emissive;
       scene.add(mesh);
       if (wall.id === ESCAPE_WALL_ID) escapeWallMesh = mesh;
-      if (wall.emissive && Math.random() < FLICKER_CHANCE) {
-        mesh.userData.flickerSeed = Math.random() * 1000;
-        flickerFixtureMeshes.push(mesh);
-      }
     });
-
-    // Fixture positions feeding the roaming light pool — the static hub set, plus per-chunk sets
-    // kept in sync as the infinite maze streams in/out below. Decorative extra tubes (lightDecor)
-    // are excluded — otherwise a single lit cell's 3 tubes would eat 3 of the pool's limited slots
-    // instead of one, shrinking how many distinct rooms actually get covered.
-    const hubFixturePositions: { x: number; z: number }[] = map.walls
-      .filter(w => w.emissive && !w.lightDecor)
-      .map(w => ({ x: w.pos.x, z: w.pos.z }));
-    const chunkFixturePositions = new Map<string, { x: number; z: number }[]>();
 
     // 5c. Decorative, non-collidable puddles of contaminated standing water on the carpet
     const puddleMat = new THREE.MeshStandardMaterial({
@@ -832,7 +787,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // Materials are shared (not re-created per wall) since chunks load/unload constantly.
     const streamedWallMat = new THREE.MeshStandardMaterial({ color: 0xffffff, map: wallpaperTexture, roughness: 0.85, metalness: 0.0 });
     const streamedCeilingMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#DCD7C8'), roughness: 0.95, metalness: 0.0 });
-    const streamedLightMat = new THREE.MeshBasicMaterial({ color: new THREE.Color('#fef9c3') });
+    const streamedLightMat = new THREE.MeshStandardMaterial({ color: '#4a4838', roughness: 0.5, metalness: 0.15 });
     const streamedFloorMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#D2B48C'), roughness: 0.92, metalness: 0.0 });
     const streamedChunkMeshes = new Map<string, THREE.Mesh[]>();
     let lastStreamCx = Number.NaN;
@@ -846,8 +801,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         mesh.geometry.dispose();
       });
       streamedChunkMeshes.delete(key);
-      chunkFixturePositions.delete(key);
-      chunkFlickerMeshes.delete(key);
     };
 
     const loadStreamedChunk = (cx: number, cz: number) => {
@@ -862,42 +815,10 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           : streamedWallMat;
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.set(wall.pos.x, wall.pos.y, wall.pos.z);
-        mesh.receiveShadow = !wall.emissive;
-        mesh.castShadow = !wall.emissive;
         scene.add(mesh);
         return mesh;
       });
       streamedChunkMeshes.set(key, meshes);
-      chunkFixturePositions.set(key, chunkWalls.filter(w => w.emissive && !w.lightDecor).map(w => ({ x: w.pos.x, z: w.pos.z })));
-
-      const flickerMeshes: THREE.Mesh[] = [];
-      chunkWalls.forEach((wall, i) => {
-        if (wall.emissive && Math.random() < FLICKER_CHANCE) {
-          meshes[i].userData.flickerSeed = Math.random() * 1000;
-          flickerMeshes.push(meshes[i]);
-        }
-      });
-      if (flickerMeshes.length > 0) chunkFlickerMeshes.set(key, flickerMeshes);
-    };
-
-    // Repositions the fixed-size fixture-light pool onto the N fluorescent fixtures nearest the
-    // player each frame, so brightness pools under nearby tubes and drops off to the dim ambient
-    // everywhere else — instead of one real light per fixture, which wouldn't scale to the
-    // infinite streamed maze.
-    const updateFixtureLights = (px: number, pz: number) => {
-      const candidates = hubFixturePositions.concat(...chunkFixturePositions.values());
-      candidates.sort((a, b) => {
-        const da = (a.x - px) ** 2 + (a.z - pz) ** 2;
-        const db = (b.x - px) ** 2 + (b.z - pz) ** 2;
-        return da - db;
-      });
-      for (let i = 0; i < fixtureLights.length; i++) {
-        const fixture = candidates[i];
-        const light = fixtureLights[i];
-        if (!fixture) { light.visible = false; continue; }
-        light.visible = true;
-        light.position.set(fixture.x, WALL_H - 1.2, fixture.z);
-      }
     };
 
     // Loads/unloads chunks around the player's current position; cheap to call every frame since
@@ -1007,9 +928,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
 
         // A2. Stream the infinite maze in/out around wherever the player currently is
         updateStreamedChunks(player.pos.x, player.pos.z);
-
-        // A3. Pool light under the fluorescent fixtures nearest the player, dark elsewhere
-        updateFixtureLights(player.pos.x, player.pos.z);
 
         // Euler look angles using pre-allocated _targetLook vector
         _targetLook.set(
@@ -1268,12 +1186,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         if (escapeWallMesh) {
           (escapeWallMesh as THREE.Mesh).visible = Math.random() > 0.35;
         }
-
-        // F2. A minority of ordinary fluorescent tubes buzz/flicker (see applyFlicker above) —
-        // subtler and far less frequent than the escape wall's strobe.
-        const flickerT = now * 0.008;
-        flickerFixtureMeshes.forEach(mesh => applyFlicker(mesh, flickerT));
-        chunkFlickerMeshes.forEach(meshes => meshes.forEach(mesh => applyFlicker(mesh, flickerT)));
 
         // H. Call Render
         renderer.render(scene, camera);
