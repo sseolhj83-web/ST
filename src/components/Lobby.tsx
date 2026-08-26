@@ -253,43 +253,50 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
   }, [activeRoom, profile]);
 
   // Actions
-  const handleCreateRoom = async (e: React.FormEvent) => {
+  const handleCreateRoom = (e: React.FormEvent) => {
     e.preventDefault();
     if (!roomNameInput.trim() || !profile) return;
 
     const roomName = roomNameInput.trim();
+    const tempId = `local-${user.id}-${Math.random().toString(36).slice(2)}`;
 
-    try {
-      const { data, error } = await supabase
-        .from('rooms')
-        .insert({
-          name: roomName,
-          host_id: user.id,
-          host_username: profile.username,
-          max_players: 4,
-          status: 'waiting',
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      setActiveRoom(data);
-    } catch (err) {
-      // Supabase 백엔드에 접속할 수 없을 때는 로컬 전용 방으로 대체해 솔로 플레이는 계속 가능하게 함
-      console.warn('Supabase 방 생성 실패, 로컬 방으로 대체합니다:', err);
-      setActiveRoom({
-        id: `local-${user.id}`,
-        name: roomName,
-        host_id: user.id,
-        host_username: profile.username,
-        max_players: 4,
-        status: 'waiting',
-      });
-    }
-
-    // 서버 presence 동기화 여부와 무관하게 자기 자신은 즉시 참가자 목록에 반영
+    // Optimistic UI — enter the room screen immediately instead of waiting on the Supabase
+    // round-trip (that network wait was the "몇초 늦게 방이 만들어짐" delay). The insert below
+    // still runs in the background and swaps the real DB id in once it resolves.
+    setActiveRoom({
+      id: tempId,
+      name: roomName,
+      host_id: user.id,
+      host_username: profile.username,
+      max_players: 4,
+      status: 'waiting',
+    });
     setRoomPlayers([{ id: user.id, username: profile.username }]);
     setRoomNameInput('');
+
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('rooms')
+          .insert({
+            name: roomName,
+            host_id: user.id,
+            host_username: profile.username,
+            max_players: 4,
+            status: 'waiting',
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        // Swap the temp local room for the real DB row, but only if the player hasn't already
+        // left this room while the insert was still in flight.
+        setActiveRoom((current) => (current && current.id === tempId ? data : current));
+      } catch (err) {
+        // Supabase 백엔드에 접속할 수 없을 때는 이미 표시 중인 로컬 방으로 계속 진행
+        console.warn('Supabase 방 생성 실패, 로컬 방으로 계속 진행합니다:', err);
+      }
+    })();
   };
 
   const handleJoinRoom = (room: Room) => {
