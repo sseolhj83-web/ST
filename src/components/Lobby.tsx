@@ -328,35 +328,39 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
     }
   };
 
-  const handleStartGame = async () => {
+  const handleStartGame = () => {
     if (!activeRoom || activeRoom.host_id !== user.id) return;
 
-    // 1. Update room status to 'playing' in database (백엔드 접속 불가 시에도 로컬 진행은 막지 않음)
-    try {
-      await supabase
-        .from('rooms')
-        .update({ status: 'playing' })
-        .eq('id', activeRoom.id);
-    } catch (err) {
-      console.warn('방 상태 업데이트 실패 (오프라인 상태일 수 있음):', err);
-    }
-
-    // 2. Broadcast start event to all OTHER players in the room channel
-    // (Supabase broadcast does NOT echo back to the sender)
-    try {
-      if (roomChannelRef.current) {
-        await roomChannelRef.current.send({
-          type: 'broadcast',
-          event: 'start-game',
-          payload: { players: roomPlayers },
-        });
-      }
-    } catch (err) {
-      console.warn('게임 시작 브로드캐스트 실패 (오프라인 상태일 수 있음):', err);
-    }
-
-    // 3. Host always starts locally regardless of backend connectivity (broadcast doesn't reach the sender anyway)
+    // Host starts locally right away — no reason to make them wait on the network round-trip for
+    // either of these (that wait was the same "몇초 늦게 반응함" delay as room creation had).
+    // The DB update and the broadcast to other players still happen, just in the background.
     onStartGame(activeRoom.id, true, roomPlayers);
+
+    (async () => {
+      // 1. Update room status to 'playing' in database (백엔드 접속 불가 시에도 로컬 진행은 막지 않음)
+      try {
+        await supabase
+          .from('rooms')
+          .update({ status: 'playing' })
+          .eq('id', activeRoom.id);
+      } catch (err) {
+        console.warn('방 상태 업데이트 실패 (오프라인 상태일 수 있음):', err);
+      }
+
+      // 2. Broadcast start event to all OTHER players in the room channel
+      // (Supabase broadcast does NOT echo back to the sender)
+      try {
+        if (roomChannelRef.current) {
+          await roomChannelRef.current.send({
+            type: 'broadcast',
+            event: 'start-game',
+            payload: { players: roomPlayers },
+          });
+        }
+      } catch (err) {
+        console.warn('게임 시작 브로드캐스트 실패 (오프라인 상태일 수 있음):', err);
+      }
+    })();
   };
 
   const handleSignOut = async () => {
@@ -400,7 +404,11 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
       </div>
 
       <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10 max-w-7xl mx-auto w-full">
-        <AnimatePresence mode="wait">
+        {/* mode="wait" would serialize this switch (finish the lobby's exit fade before the room
+            view even starts animating in) — an extra beat of visible delay on top of the actual
+            state change, which is exactly what must NOT happen here. Default (concurrent) mode
+            lets the incoming view start animating immediately. */}
+        <AnimatePresence>
           {!activeRoom ? (
             /* ========================================================================= */
             /* LOBBY STATE (Profile, Online Users, Room List)                            */
