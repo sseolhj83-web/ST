@@ -152,14 +152,6 @@ export class XonoticEngine {
           player.vel.x += wishDir.x * 2;
           player.vel.z += wishDir.z * 2;
         }
-
-        // Cap the stacked speed so chained hops can't grow it without bound (see maxBhopSpeed)
-        const bhopSpeed = Math.sqrt(player.vel.x * player.vel.x + player.vel.z * player.vel.z);
-        if (bhopSpeed > this.maxBhopSpeed) {
-          const scale = this.maxBhopSpeed / bhopSpeed;
-          player.vel.x *= scale;
-          player.vel.z *= scale;
-        }
       }
     }
 
@@ -173,6 +165,18 @@ export class XonoticEngine {
       const accelSpeed = Math.min(addSpeed, currentAccel * dt);
       player.vel.x += wishDir.x * accelSpeed;
       player.vel.z += wishDir.z * accelSpeed;
+    }
+
+    // Hard cap on total horizontal speed, enforced every frame (not just at the moment of a jump
+    // press). Air-strafing can otherwise build speed past maxBhopSpeed without bound while
+    // airborne — collision below is a discrete per-frame AABB check, not swept/continuous, so a
+    // fast enough single-frame move can skip clean through a wall before ever registering as
+    // overlapping it. This is what let running-and-jumping at a wall phase through it.
+    const horizSpeed = Math.sqrt(player.vel.x * player.vel.x + player.vel.z * player.vel.z);
+    if (horizSpeed > this.maxBhopSpeed) {
+      const scale = this.maxBhopSpeed / horizSpeed;
+      player.vel.x *= scale;
+      player.vel.z *= scale;
     }
 
     // Integrate gravity
