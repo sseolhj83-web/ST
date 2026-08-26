@@ -347,10 +347,10 @@ export class XonoticEngine {
 
     // Apply simple boundary walls collision directly in X, Y, Z
     player.pos.x += player.vel.x * dt;
-    this.checkWallAxisBound(player.pos, player.vel, 'x', 0.8);
+    this.checkWallAxisBound(player.pos, player.vel, 'x', 0.8, 1.6);
 
     player.pos.y += player.vel.y * dt;
-    player.onGround = this.checkWallAxisBound(player.pos, player.vel, 'y', 1.6);
+    player.onGround = this.checkWallAxisBound(player.pos, player.vel, 'y', 0.8, 1.6);
 
     // Absolute fail-safe: Prevent falling below the floor (Y >= 1.0) under any circumstance
     if (player.pos.y < 1.0) {
@@ -360,7 +360,7 @@ export class XonoticEngine {
     }
 
     player.pos.z += player.vel.z * dt;
-    this.checkWallAxisBound(player.pos, player.vel, 'z', 0.8);
+    this.checkWallAxisBound(player.pos, player.vel, 'z', 0.8, 1.6);
 
   }
 
@@ -446,9 +446,9 @@ export class XonoticEngine {
       // Apply physics
       bot.vel.y += this.gravity * dt;
       bot.pos.x += bot.vel.x * dt;
-      this.checkWallAxisBound(bot.pos, bot.vel, 'x', 1.2);
+      this.checkWallAxisBound(bot.pos, bot.vel, 'x', 1.2, 2.0);
       bot.pos.y += bot.vel.y * dt;
-      let botOnGround = this.checkWallAxisBound(bot.pos, bot.vel, 'y', 2.0);
+      let botOnGround = this.checkWallAxisBound(bot.pos, bot.vel, 'y', 1.2, 2.0);
 
       if (bot.pos.y < 1.0) {
         bot.pos.y = 1.0;
@@ -457,7 +457,7 @@ export class XonoticEngine {
       }
 
       bot.pos.z += bot.vel.z * dt;
-      this.checkWallAxisBound(bot.pos, bot.vel, 'z', 1.2);
+      this.checkWallAxisBound(bot.pos, bot.vel, 'z', 1.2, 2.0);
 
       if (botOnGround) {
         bot.vel.y = 0;
@@ -610,7 +610,7 @@ export class XonoticEngine {
     return false;
   }
 
-  private checkWallAxisBound(pos: { x: number; y: number; z: number }, vel: { x: number; y: number; z: number }, axis: 'x' | 'y' | 'z', radius: number, skipCollisionOnly = false): boolean {
+  private checkWallAxisBound(pos: { x: number; y: number; z: number }, vel: { x: number; y: number; z: number }, axis: 'x' | 'y' | 'z', lateralRadius: number, verticalRadius: number, skipCollisionOnly = false): boolean {
     let touchedFloor = false;
 
     // No horizontal boundary clamp — the maze streams outward forever (see updateStreamedChunks),
@@ -647,9 +647,17 @@ export class XonoticEngine {
       const hY = wall.size.y / 2;
       const hZ = wall.size.z / 2;
 
-      const inX = pos.x + radius >= wall.pos.x - hX && pos.x - radius <= wall.pos.x + hX;
-      const inY = pos.y + radius >= wall.pos.y - hY && pos.y - radius <= wall.pos.y + hY;
-      const inZ = pos.z + radius >= wall.pos.z - hZ && pos.z - radius <= wall.pos.z + hZ;
+      // X/Z overlap must always use the lateral radius and Y overlap the vertical radius,
+      // regardless of which axis is currently being resolved. Reusing whichever single radius
+      // this call happened to receive (as this used to do — the 'y' pass called in with the much
+      // bigger vertical radius) made the X/Z overlap test far too generous during the vertical
+      // pass, registering a "collision" against a wall the player was still clearly short of
+      // laterally, and launching them straight up past the ceiling and clean over the wall. That
+      // was the actual cause of running into a wall (with any vertical velocity at all, e.g. from
+      // a jump) appearing to phase straight through it.
+      const inX = pos.x + lateralRadius >= wall.pos.x - hX && pos.x - lateralRadius <= wall.pos.x + hX;
+      const inY = pos.y + verticalRadius >= wall.pos.y - hY && pos.y - verticalRadius <= wall.pos.y + hY;
+      const inZ = pos.z + lateralRadius >= wall.pos.z - hZ && pos.z - lateralRadius <= wall.pos.z + hZ;
 
       if (inX && inY && inZ) {
         // Push out by a hair more than exact contact (skin margin) so the position doesn't rest
@@ -659,17 +667,17 @@ export class XonoticEngine {
         const skin = 0.02;
         if (axis === 'x') {
           const pushDir = pos.x > wall.pos.x ? 1 : -1;
-          pos.x = wall.pos.x + pushDir * (hX + radius + skin);
+          pos.x = wall.pos.x + pushDir * (hX + lateralRadius + skin);
           // Kill the incoming velocity instead of bouncing it back — a bounce plus held movement
           // input re-drove the player into the wall next frame, then bounced again, forever.
           vel.x = 0;
         } else if (axis === 'z') {
           const pushDir = pos.z > wall.pos.z ? 1 : -1;
-          pos.z = wall.pos.z + pushDir * (hZ + radius + skin);
+          pos.z = wall.pos.z + pushDir * (hZ + lateralRadius + skin);
           vel.z = 0;
         } else if (axis === 'y') {
           const pushDir = pos.y > wall.pos.y ? 1 : -1;
-          pos.y = wall.pos.y + pushDir * (hY + radius + skin);
+          pos.y = wall.pos.y + pushDir * (hY + verticalRadius + skin);
           vel.y = 0;
           if (pushDir > 0) {
             touchedFloor = true;
