@@ -637,8 +637,8 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
 
     // 1. Create Scene & the sickly fluorescent-lit Backrooms haze
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#8a7f4a'); // hazy mustard-yellow backrooms air
-    scene.fog = new THREE.FogExp2('#7a6f42', 0.006); // thicker haze — corridors vanish into the same murk
+    scene.background = new THREE.Color('#0a0906'); // near-black — distant unlit maze must fade to dark, not a bright haze
+    scene.fog = new THREE.FogExp2('#0a0906', 0.006); // matches background so far geometry fades to black, not a glowing horizon
     sceneRef.current = scene;
 
     // 2. Camera Setup (Generous 85-degree Quake-style Field of View)
