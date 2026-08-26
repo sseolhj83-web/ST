@@ -1,47 +1,53 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import { Mail, Lock, User, LogIn, UserPlus, ShieldAlert, Gamepad2 } from 'lucide-react';
+import { User, LogIn, ShieldAlert, Gamepad2 } from 'lucide-react';
 
 interface AuthProps {
   onAuthSuccess: (user: any) => void;
 }
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const GUEST_ID_KEY = 'xonotic_guest_id';
+const PLAYER_KEY = 'xonotic_player';
+
+// No accounts anymore — multiplayer is entirely room-code based (see Lobby.tsx), so all this
+// needs is a display name plus a stable per-device id for local stats/session identity.
+function getOrCreateGuestId(): string {
+  try {
+    const existing = localStorage.getItem(GUEST_ID_KEY);
+    if (existing) return existing;
+  } catch {}
+  const id = typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `guest-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+  try { localStorage.setItem(GUEST_ID_KEY, id); } catch {}
+  return id;
+}
 
 export const Auth = ({ onAuthSuccess }: AuthProps) => {
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  const [infoMessage, setInfoMessage] = useState('');
 
-  const handleAuth = async (e: React.FormEvent) => {
+  const handleEnter = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
-    setInfoMessage('');
 
-    const trimmedEmail = email.trim();
-    if (!EMAIL_PATTERN.test(trimmedEmail)) {
-      setErrorMessage('올바른 이메일 형식을 입력해주세요.');
-      return;
-    }
-
-    if (isSignUp && username.trim().length < 2) {
+    const trimmed = username.trim();
+    if (trimmed.length < 2) {
       setErrorMessage('닉네임은 2자 이상 입력해야 합니다.');
       return;
     }
 
-    // 백엔드 서버 없이 이메일 형식만 검증해 즉시 로그인 처리
-    const mockUser = {
-      id: trimmedEmail.toLowerCase(),
-      email: trimmedEmail,
-      user_metadata: {
-        username: isSignUp ? username.trim() : trimmedEmail.split('@')[0],
-      },
+    const guestUser = {
+      id: getOrCreateGuestId(),
+      user_metadata: { username: trimmed },
     };
-    localStorage.setItem('xonotic_mock_user', JSON.stringify(mockUser));
-    onAuthSuccess(mockUser);
+    try { localStorage.setItem(PLAYER_KEY, JSON.stringify(guestUser)); } catch {}
+    onAuthSuccess(guestUser);
   };
 
   return (
@@ -59,66 +65,35 @@ export const Auth = ({ onAuthSuccess }: AuthProps) => {
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-xs text-cyan-400 font-bold tracking-widest uppercase mb-3">
             <Gamepad2 className="w-3.5 h-3.5 animate-pulse" />
-            <span>BACk ROOM SECURITY GATE</span>
+            <span>BACk ROOM</span>
           </div>
           <h2 className="text-3xl font-black tracking-tight uppercase text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-indigo-500 to-pink-500 leading-none">
-            {isSignUp ? 'REGISTER' : 'LOGIN'}
+            ENTER
           </h2>
           <p className="text-xs text-slate-400 mt-2 font-mono uppercase tracking-wider">
-            {isSignUp ? 'Create your combat profile' : 'Enter your credentials to deploy'}
+            계정 없이 닉네임만으로 바로 입장
           </p>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleAuth} className="space-y-5">
-          {isSignUp && (
-            <div className="space-y-1.5">
-              <label className="text-[10px] text-cyan-400 font-bold tracking-wider uppercase block">닉네임 (Nickname)</label>
-              <div className="relative">
-                <User className="absolute left-4 top-3.5 w-4 h-4 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="호출명을 입력하세요 (2자 이상)"
-                  required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 bg-slate-950/80 border border-white/10 focus:border-cyan-500/50 rounded-xl text-sm text-white placeholder-slate-600 outline-none transition-all font-sans"
-                />
-              </div>
-            </div>
-          )}
-
+        <form onSubmit={handleEnter} className="space-y-5">
           <div className="space-y-1.5">
-            <label className="text-[10px] text-cyan-400 font-bold tracking-wider uppercase block">이메일 (Email)</label>
+            <label className="text-[10px] text-cyan-400 font-bold tracking-wider uppercase block">닉네임 (Nickname)</label>
             <div className="relative">
-              <Mail className="absolute left-4 top-3.5 w-4 h-4 text-slate-500" />
+              <User className="absolute left-4 top-3.5 w-4 h-4 text-slate-500" />
               <input
-                type="email"
-                placeholder="email@example.com"
+                type="text"
+                placeholder="호출명을 입력하세요 (2자 이상)"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                autoFocus
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 className="w-full pl-11 pr-4 py-3 bg-slate-950/80 border border-white/10 focus:border-cyan-500/50 rounded-xl text-sm text-white placeholder-slate-600 outline-none transition-all font-sans"
               />
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-[10px] text-cyan-400 font-bold tracking-wider uppercase block">비밀번호 (Password)</label>
-            <div className="relative">
-              <Lock className="absolute left-4 top-3.5 w-4 h-4 text-slate-500" />
-              <input
-                type="password"
-                placeholder="••••••••"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-11 pr-4 py-3 bg-slate-950/80 border border-white/10 focus:border-cyan-500/50 rounded-xl text-sm text-white placeholder-slate-600 outline-none transition-all font-sans"
-              />
-            </div>
-          </div>
-
-          {/* Feedback messages */}
+          {/* Feedback message */}
           {errorMessage && (
             <motion.div
               initial={{ opacity: 0, y: -5 }}
@@ -130,50 +105,20 @@ export const Auth = ({ onAuthSuccess }: AuthProps) => {
             </motion.div>
           )}
 
-          {infoMessage && (
-            <motion.div
-              initial={{ opacity: 0, y: -5 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center gap-2.5 text-xs text-emerald-400 font-sans leading-relaxed"
-            >
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0 animate-ping" />
-              <span>{infoMessage}</span>
-            </motion.div>
-          )}
-
           {/* Submit Button */}
           <button
             type="submit"
             className="w-full py-3.5 mt-2 bg-gradient-to-r from-cyan-500 via-indigo-500 to-pink-500 hover:opacity-90 disabled:opacity-50 text-white font-mono rounded-xl font-black text-sm uppercase tracking-wider shadow-[0_0_20px_rgba(6,182,212,0.2)] border border-cyan-400/20 hover:scale-[1.01] active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
-            {isSignUp ? (
-              <>
-                <UserPlus className="w-4 h-4" />
-                <span>계정 생성 (Sign Up)</span>
-              </>
-            ) : (
-              <>
-                <LogIn className="w-4 h-4" />
-                <span>경기장 로그인 (Log In)</span>
-              </>
-            )}
+            <LogIn className="w-4 h-4" />
+            <span>입장 (Enter)</span>
           </button>
         </form>
 
-        {/* Tab Toggle */}
-        <div className="mt-6 text-center text-xs font-sans text-slate-400">
-          {isSignUp ? '이미 계정이 있으신가요?' : '아직 계정이 없으신가요?'}
-          <button
-            onClick={() => {
-              setIsSignUp(!isSignUp);
-              setErrorMessage('');
-              setInfoMessage('');
-            }}
-            className="text-cyan-400 font-bold hover:underline ml-1.5 focus:outline-none cursor-pointer"
-          >
-            {isSignUp ? '로그인하기' : '회원가입하기'}
-          </button>
-        </div>
+        <p className="mt-6 text-center text-xs font-sans text-slate-500 leading-relaxed">
+          방을 만들면 방 코드가 발급됩니다.<br />
+          친구에게 그 코드를 알려주면 코드 입력만으로 같이 플레이할 수 있어요.
+        </p>
       </motion.div>
     </div>
   );

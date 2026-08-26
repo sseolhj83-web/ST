@@ -1,19 +1,23 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../supabaseClient';
-import { 
-  User, 
-  Gamepad2, 
-  LogOut, 
-  Plus, 
-  Users, 
-  ArrowLeft, 
-  Play, 
-  Trophy, 
-  Skull, 
-  Target, 
-  Flame, 
-  Globe 
+import { loadLocalStats, UserStats } from '../game/localStats';
+import {
+  User,
+  Gamepad2,
+  LogOut,
+  Plus,
+  Users,
+  ArrowLeft,
+  Play,
+  Trophy,
+  Skull,
+  Target,
+  Flame,
+  Globe,
+  KeyRound,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 interface LobbyProps {
@@ -23,9 +27,9 @@ interface LobbyProps {
 }
 
 interface Room {
-  id: string;
+  id: string; // the room code — also the Realtime channel key, no database row involved
   name: string;
-  host_id: string;
+  host_id: string; // '' when we joined by code and don't actually know who the host is
   host_username: string;
   max_players: number;
   status: 'waiting' | 'playing' | 'finished';
@@ -33,151 +37,45 @@ interface Room {
 
 interface UserProfile {
   username: string;
-  avatar_url?: string;
 }
 
-interface UserStats {
-  highest_score: number;
-  total_frags: number;
-  total_deaths: number;
-  matches_played: number;
+// No ambiguous-looking characters (0/O, 1/I/L) — codes get read aloud/typed by hand.
+const ROOM_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+function generateRoomCode(): string {
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)];
+  }
+  return code;
 }
 
 export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [stats, setStats] = useState<UserStats | null>(null);
-  const [rooms, setRooms] = useState<Room[]>([]);
+  // No accounts anymore — display name comes straight from the nickname the player entered,
+  // and stats are on-device only (see game/localStats.ts). Nothing to fetch, nothing to await.
+  const profile: UserProfile = { username: user.user_metadata?.username || user.email || '전투원' };
+  const [stats, setStats] = useState<UserStats>(() => loadLocalStats(user.id));
+
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
   const [roomNameInput, setRoomNameInput] = useState('');
-  const [loading, setLoading] = useState(true);
-  
+  const [joinCodeInput, setJoinCodeInput] = useState('');
+  const [codeCopied, setCodeCopied] = useState(false);
+
   // Real-time states
   const [onlineLobbyUsers, setOnlineLobbyUsers] = useState<any[]>([]);
   const [roomPlayers, setRoomPlayers] = useState<any[]>([]);
 
-  // Supabase Channels Refs
+  // Supabase Realtime Channels Refs (presence/broadcast only — no database tables involved)
   const lobbyChannelRef = useRef<any>(null);
   const roomChannelRef = useRef<any>(null);
 
-  // 1. Fetch User Profile and Stats (Supabase 백엔드 접속 불가 시 로컬 값으로 폴백)
+  // Re-read on-device stats whenever the player identity changes (also naturally picks up a
+  // fresh match's result, since this component unmounts/remounts on every LOBBY <-> PLAYING switch).
   useEffect(() => {
-    const localFallbackProfile: UserProfile = {
-      username: user.user_metadata?.username || (user.email ? user.email.split('@')[0] : '전투원'),
-    };
-    const localFallbackStats: UserStats = {
-      highest_score: 0,
-      total_frags: 0,
-      total_deaths: 0,
-      matches_played: 0,
-    };
-
-    // 네트워크 조회가 끝날 때까지 profile이 null로 남아있으면 그 사이 방 개설 등 버튼이
-    // 조용히 무시되므로, 우선 로컬 값으로 즉시 채우고 성공 시에만 실제 값으로 덮어씀
-    setProfile(localFallbackProfile);
-    setStats(localFallbackStats);
-
-    const fetchUserData = async () => {
-      try {
-        const { data: profileData, error: profileErr } = await supabase
-          .from('profiles')
-          .select('username, avatar_url')
-          .eq('id', user.id)
-          .single();
-
-        if (profileErr) throw profileErr;
-        setProfile(profileData);
-      } catch (err) {
-        console.warn('Supabase 프로필 조회 실패, 로컬 값으로 대체합니다:', err);
-        setProfile(localFallbackProfile);
-      }
-
-      try {
-        const { data: statsData, error: statsErr } = await supabase
-          .from('user_stats')
-          .select('highest_score, total_frags, total_deaths, matches_played')
-          .eq('user_id', user.id)
-          .single();
-
-        if (statsErr) throw statsErr;
-        setStats(statsData);
-      } catch (err) {
-        setStats(localFallbackStats);
-      }
-    };
-
-    fetchUserData();
+    setStats(loadLocalStats(user.id));
   }, [user.id]);
 
-  // 2. Fetch Rooms & Subscribe to Rooms DB Changes
+  // 1. Online Players Lobby Presence Sync
   useEffect(() => {
-    const fetchRooms = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('rooms')
-          .select('*')
-          .eq('status', 'waiting')
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-        setRooms(data || []);
-      } catch (err) {
-        console.warn('Supabase 방 목록 조회 실패 (오프라인 상태일 수 있음):', err);
-        setRooms([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchRooms();
-
-    // Subscribe to Rooms postgres changes
-    const roomsSub = supabase
-      .channel('public-rooms-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'rooms' },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const newRoom = payload.new as Room;
-            if (newRoom.status === 'waiting') {
-              setRooms((prev) => [newRoom, ...prev]);
-            }
-          } else if (payload.eventType === 'UPDATE') {
-            const updatedRoom = payload.new as Room;
-            if (updatedRoom.status !== 'waiting') {
-              setRooms((prev) => prev.filter((r) => r.id !== updatedRoom.id));
-            } else {
-              setRooms((prev) =>
-                prev.map((r) => (r.id === updatedRoom.id ? updatedRoom : r))
-              );
-            }
-          } else if (payload.eventType === 'DELETE') {
-            const oldRoom = payload.old as { id: string };
-            setRooms((prev) => prev.filter((r) => r.id !== oldRoom.id));
-            
-            // If the user's active room was deleted, boot them to lobby
-            setActiveRoom((current) => {
-              if (current && current.id === oldRoom.id) {
-                alert('방이 방장에 의해 해체되었습니다.');
-                return null;
-              }
-              return current;
-            });
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      roomsSub.unsubscribe();
-    };
-  }, []);
-
-  // 3. Online Players Lobby Presence Sync
-  useEffect(() => {
-    if (!profile) return;
-
-    // Join lobby presence channel
     const lobbyChan = supabase.channel('lobby_online_users');
     lobbyChannelRef.current = lobbyChan;
 
@@ -193,7 +91,7 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
         });
         setOnlineLobbyUsers(users);
       })
-      .subscribe(async (status) => {
+      .subscribe(async (status: string) => {
         if (status === 'SUBSCRIBED') {
           await lobbyChan.track({
             username: profile.username,
@@ -207,16 +105,18 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
         lobbyChannelRef.current.unsubscribe();
       }
     };
-  }, [profile]);
+  }, [profile.username]);
 
-  // 4. Room Specific Channel (Real-time Broadcast & Presence)
+  // 2. Room Specific Channel (Real-time Broadcast & Presence) — this is the entire multiplayer
+  // room mechanism now. No database row backs a room; joining by code just means subscribing to
+  // the same `room_<code>` channel the host is on.
   useEffect(() => {
-    if (!activeRoom || !profile) {
+    if (!activeRoom) {
       setRoomPlayers([]);
       return;
     }
 
-    // Subscribe to room specific channel for player presence and game launch broadcast
+    const isHost = activeRoom.host_id === user.id;
     const roomChan = supabase.channel(`room_${activeRoom.id}`);
     roomChannelRef.current = roomChan;
 
@@ -232,14 +132,18 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
         });
         setRoomPlayers(players);
       })
-      .on('broadcast', { event: 'start-game' }, (payload) => {
-        // Trigger startGame callback on all clients in the room
-        onStartGame(activeRoom.id, activeRoom.host_id === user.id, payload.payload.players);
+      .on('broadcast', { event: 'start-game' }, (payload: any) => {
+        onStartGame(activeRoom.id, isHost, payload.payload.players);
       })
-      .subscribe(async (status) => {
+      .on('broadcast', { event: 'room-closed' }, () => {
+        alert('방이 방장에 의해 해체되었습니다.');
+        setActiveRoom(null);
+      })
+      .subscribe(async (status: string) => {
         if (status === 'SUBSCRIBED') {
           await roomChan.track({
             username: profile.username,
+            isHost,
             joinedAt: new Date().toISOString(),
           });
         }
@@ -250,22 +154,18 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
         roomChannelRef.current.unsubscribe();
       }
     };
-  }, [activeRoom, profile]);
+  }, [activeRoom, profile.username]);
 
   // Actions
   const handleCreateRoom = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!roomNameInput.trim() || !profile) return;
+    if (!roomNameInput.trim()) return;
 
-    const roomName = roomNameInput.trim();
-    const tempId = `local-${user.id}-${Math.random().toString(36).slice(2)}`;
-
-    // Optimistic UI — enter the room screen immediately instead of waiting on the Supabase
-    // round-trip (that network wait was the "몇초 늦게 방이 만들어짐" delay). The insert below
-    // still runs in the background and swaps the real DB id in once it resolves.
+    // No network round-trip at all anymore — the room code IS the room, there's nothing to
+    // insert into a database and nothing to wait on.
     setActiveRoom({
-      id: tempId,
-      name: roomName,
+      id: generateRoomCode(),
+      name: roomNameInput.trim(),
       host_id: user.id,
       host_username: profile.username,
       max_players: 4,
@@ -273,105 +173,69 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
     });
     setRoomPlayers([{ id: user.id, username: profile.username }]);
     setRoomNameInput('');
-
-    (async () => {
-      try {
-        const { data, error } = await supabase
-          .from('rooms')
-          .insert({
-            name: roomName,
-            host_id: user.id,
-            host_username: profile.username,
-            max_players: 4,
-            status: 'waiting',
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-        // Swap the temp local room for the real DB row, but only if the player hasn't already
-        // left this room while the insert was still in flight.
-        setActiveRoom((current) => (current && current.id === tempId ? data : current));
-      } catch (err) {
-        // Supabase 백엔드에 접속할 수 없을 때는 이미 표시 중인 로컬 방으로 계속 진행
-        console.warn('Supabase 방 생성 실패, 로컬 방으로 계속 진행합니다:', err);
-      }
-    })();
   };
 
-  const handleJoinRoom = (room: Room) => {
-    setActiveRoom(room);
-    if (profile) {
-      setRoomPlayers([{ id: user.id, username: profile.username }]);
-    }
+  const handleJoinByCode = (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = joinCodeInput.trim().toUpperCase();
+    if (code.length < 4) return;
+
+    // We don't know this room's real name/host until presence sync tells us who's actually in
+    // it — host_id stays '' (never matches our own id) so we never mistakenly show a start button.
+    setActiveRoom({
+      id: code,
+      name: `방 코드 ${code}`,
+      host_id: '',
+      host_username: '???',
+      max_players: 4,
+      status: 'waiting',
+    });
+    setRoomPlayers([{ id: user.id, username: profile.username }]);
+    setJoinCodeInput('');
   };
 
-  const handleLeaveRoom = async () => {
+  const handleLeaveRoom = () => {
     if (!activeRoom) return;
 
-    // If host leaves, delete the room
     if (activeRoom.host_id === user.id) {
       const confirmDelete = window.confirm('방장 권한으로 방을 폭파하시겠습니까?');
       if (!confirmDelete) return;
-
-      try {
-        await supabase
-          .from('rooms')
-          .delete()
-          .eq('id', activeRoom.id);
-        setActiveRoom(null);
-      } catch (err: any) {
-        console.error('Error deleting room:', err);
-      }
-    } else {
-      setActiveRoom(null);
+      // Let anyone still in the room know it's gone (no DB row to delete/watch anymore).
+      roomChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'room-closed',
+        payload: {},
+      });
     }
+    setActiveRoom(null);
   };
 
   const handleStartGame = () => {
     if (!activeRoom || activeRoom.host_id !== user.id) return;
 
-    // Host starts locally right away — no reason to make them wait on the network round-trip for
-    // either of these (that wait was the same "몇초 늦게 반응함" delay as room creation had).
-    // The DB update and the broadcast to other players still happen, just in the background.
+    // Host starts locally right away — the broadcast to other players happens in the background,
+    // nothing to wait on.
     onStartGame(activeRoom.id, true, roomPlayers);
-
-    (async () => {
-      // 1. Update room status to 'playing' in database (백엔드 접속 불가 시에도 로컬 진행은 막지 않음)
-      try {
-        await supabase
-          .from('rooms')
-          .update({ status: 'playing' })
-          .eq('id', activeRoom.id);
-      } catch (err) {
-        console.warn('방 상태 업데이트 실패 (오프라인 상태일 수 있음):', err);
-      }
-
-      // 2. Broadcast start event to all OTHER players in the room channel
-      // (Supabase broadcast does NOT echo back to the sender)
-      try {
-        if (roomChannelRef.current) {
-          await roomChannelRef.current.send({
-            type: 'broadcast',
-            event: 'start-game',
-            payload: { players: roomPlayers },
-          });
-        }
-      } catch (err) {
-        console.warn('게임 시작 브로드캐스트 실패 (오프라인 상태일 수 있음):', err);
-      }
-    })();
+    roomChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'start-game',
+      payload: { players: roomPlayers },
+    });
   };
 
-  const handleSignOut = async () => {
-    const confirmOut = window.confirm('정말 로그아웃 하시겠습니까?');
-    if (confirmOut) {
-      try {
-        await supabase.auth.signOut();
-      } catch (err) {
-        console.error('Error signing out of Supabase:', err);
-      }
-      onLogout();
+  const handleSignOut = () => {
+    const confirmOut = window.confirm('닉네임을 초기화하고 처음 화면으로 돌아가시겠습니까?');
+    if (confirmOut) onLogout();
+  };
+
+  const handleCopyCode = async () => {
+    if (!activeRoom) return;
+    try {
+      await navigator.clipboard.writeText(activeRoom.id);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 1500);
+    } catch (err) {
+      console.warn('클립보드 복사 실패:', err);
     }
   };
 
@@ -411,7 +275,7 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
         <AnimatePresence>
           {!activeRoom ? (
             /* ========================================================================= */
-            /* LOBBY STATE (Profile, Online Users, Room List)                            */
+            /* LOBBY STATE (Profile, Online Users, Room Create/Join)                     */
             /* ========================================================================= */
             <>
               {/* Left Column: Profile & Stats / Online players */}
@@ -429,8 +293,8 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
                       <User className="w-5 h-5" />
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Logged In As</span>
-                      <span className="font-black text-white">{profile?.username || '전투원'}</span>
+                      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Call Sign</span>
+                      <span className="font-black text-white">{profile.username}</span>
                     </div>
                   </div>
 
@@ -441,7 +305,7 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
                         <Trophy className="w-3 h-3" />
                         <span>Max Frags</span>
                       </div>
-                      <span className="text-xl font-bold font-mono">{stats?.highest_score ?? 0}</span>
+                      <span className="text-xl font-bold font-mono">{stats.highest_score}</span>
                     </div>
 
                     <div className="bg-white/5 p-3 rounded-xl border border-white/5 flex flex-col justify-center">
@@ -449,7 +313,7 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
                         <Target className="w-3 h-3" />
                         <span>Total Kills</span>
                       </div>
-                      <span className="text-xl font-bold font-mono">{stats?.total_frags ?? 0}</span>
+                      <span className="text-xl font-bold font-mono">{stats.total_frags}</span>
                     </div>
 
                     <div className="bg-white/5 p-3 rounded-xl border border-white/5 flex flex-col justify-center">
@@ -457,7 +321,7 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
                         <Skull className="w-3 h-3" />
                         <span>Deaths</span>
                       </div>
-                      <span className="text-xl font-bold font-mono">{stats?.total_deaths ?? 0}</span>
+                      <span className="text-xl font-bold font-mono">{stats.total_deaths}</span>
                     </div>
 
                     <div className="bg-white/5 p-3 rounded-xl border border-white/5 flex flex-col justify-center">
@@ -465,7 +329,7 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
                         <Flame className="w-3 h-3" />
                         <span>Matches</span>
                       </div>
-                      <span className="text-xl font-bold font-mono">{stats?.matches_played ?? 0}</span>
+                      <span className="text-xl font-bold font-mono">{stats.matches_played}</span>
                     </div>
                   </div>
                 </div>
@@ -481,7 +345,7 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
 
                   <div className="space-y-2 overflow-y-auto max-h-[240px] pr-1">
                     {onlineLobbyUsers.map((onlineUser) => (
-                      <div 
+                      <div
                         key={onlineUser.id}
                         className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/5 text-xs"
                       >
@@ -498,7 +362,7 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
                 </div>
               </motion.div>
 
-              {/* Right Columns: Rooms list & Creation */}
+              {/* Right Columns: Room Create / Join by Code */}
               <motion.div
                 key="lobby-right"
                 initial={{ opacity: 0, x: 20 }}
@@ -528,59 +392,34 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
                       개설
                     </button>
                   </form>
+                  <p className="text-[10px] text-slate-500 mt-3 leading-relaxed">
+                    개설하면 6자리 방 코드가 발급됩니다. 그 코드를 친구에게 알려주세요.
+                  </p>
                 </div>
 
-                {/* Rooms List Grid */}
-                <div className="bg-slate-900/60 backdrop-blur-md rounded-2xl border border-white/10 p-5 shadow-xl flex-1 min-h-[300px] flex flex-col">
-                  <div className="flex items-center gap-2 border-b border-white/5 pb-2 mb-4">
-                    <Users className="w-4 h-4 text-cyan-400" />
-                    <h3 className="text-xs font-bold text-cyan-400 uppercase tracking-wider">
-                      대기 중인 아레나 목록 (Open Matches)
-                    </h3>
-                  </div>
-
-                  {loading ? (
-                    <div className="flex-1 flex items-center justify-center text-slate-500 text-sm font-mono">
-                      <div className="w-6 h-6 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mr-2" />
-                      FETCHING STADIUMS...
-                    </div>
-                  ) : rooms.length === 0 ? (
-                    <div className="flex-1 flex flex-col items-center justify-center text-slate-500 py-10">
-                      <Gamepad2 className="w-12 h-12 stroke-[1] mb-2 opacity-50" />
-                      <p className="text-xs text-center leading-normal">
-                        현재 대기 중인 경기장이 없습니다.<br />
-                        위의 양식을 입력해 먼저 첫 방을 개설해보세요!
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 overflow-y-auto max-h-[350px] pr-1">
-                      {rooms.map((room) => (
-                        <div 
-                          key={room.id}
-                          className="bg-white/5 hover:bg-white/10 border border-white/5 hover:border-cyan-500/20 rounded-xl p-4 transition-all flex flex-col justify-between"
-                        >
-                          <div>
-                            <span className="text-[9px] text-cyan-400 font-bold uppercase tracking-wider block mb-0.5">
-                              Host: {room.host_username}
-                            </span>
-                            <h4 className="font-bold text-sm text-white truncate mb-3">{room.name}</h4>
-                          </div>
-
-                          <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/5">
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              최대 4인전
-                            </span>
-                            <button
-                              onClick={() => handleJoinRoom(room)}
-                              className="px-3.5 py-1.5 bg-cyan-500 hover:bg-cyan-400 text-white rounded-lg text-xs font-bold transition-all cursor-pointer shadow-md"
-                            >
-                              입장
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                {/* Join by Code Panel */}
+                <div className="bg-slate-900/60 backdrop-blur-md rounded-2xl border border-white/10 p-5 shadow-xl">
+                  <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-wider mb-3">
+                    코드로 참가하기 (Join by Code)
+                  </h3>
+                  <form onSubmit={handleJoinByCode} className="flex gap-3">
+                    <input
+                      type="text"
+                      placeholder="방 코드 입력 (예: K3F9QX)"
+                      required
+                      value={joinCodeInput}
+                      onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
+                      maxLength={6}
+                      className="flex-1 px-4 py-3 bg-slate-950/80 border border-white/10 focus:border-cyan-500/50 rounded-xl text-sm text-white placeholder-slate-600 outline-none transition-all font-mono uppercase tracking-widest"
+                    />
+                    <button
+                      type="submit"
+                      className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-pink-500 hover:opacity-90 rounded-xl font-bold text-sm flex items-center gap-1.5 border border-indigo-400/20 active:scale-95 transition-all cursor-pointer shrink-0"
+                    >
+                      <KeyRound className="w-4 h-4" />
+                      참가
+                    </button>
+                  </form>
                 </div>
               </motion.div>
             </>
@@ -616,6 +455,16 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
               <div className="text-center py-4">
                 <h2 className="text-2xl font-black text-white">{activeRoom.name}</h2>
                 <p className="text-xs text-slate-400 mt-1">방장: {activeRoom.host_username}</p>
+
+                <button
+                  onClick={handleCopyCode}
+                  title="코드 복사"
+                  className="mt-4 inline-flex items-center gap-2.5 px-5 py-2.5 bg-slate-950/80 border border-cyan-500/30 hover:border-cyan-500/60 rounded-xl font-mono text-lg tracking-[0.3em] text-cyan-300 transition-all cursor-pointer"
+                >
+                  {activeRoom.id}
+                  {codeCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-slate-500" />}
+                </button>
+                <p className="text-[10px] text-slate-500 mt-2">이 코드를 친구에게 알려주면 같이 플레이할 수 있어요</p>
               </div>
 
               {/* Players presence grid */}
@@ -627,8 +476,8 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
 
                 <div className="grid grid-cols-2 gap-4">
                   {roomPlayers.map((player) => (
-                    <div 
-                      key={player.id} 
+                    <div
+                      key={player.id}
                       className="bg-white/5 border border-white/5 rounded-xl p-3.5 flex items-center gap-3 relative"
                     >
                       <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-300 font-mono text-sm font-bold">
@@ -639,11 +488,11 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
                           {player.username}
                         </div>
                         <div className="text-[9px] text-slate-500 font-mono">
-                          {player.id === activeRoom.host_id ? '방장' : '전투 대기'}
+                          {player.isHost ? '방장' : '전투 대기'}
                         </div>
                       </div>
-                      
-                      {player.id === activeRoom.host_id && (
+
+                      {player.isHost && (
                         <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_5px_rgba(251,191,36,0.5)]" title="Host" />
                       )}
                     </div>
@@ -651,8 +500,8 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
 
                   {/* Empty slots */}
                   {Array.from({ length: Math.max(0, 4 - roomPlayers.length) }).map((_, idx) => (
-                    <div 
-                      key={`empty-${idx}`} 
+                    <div
+                      key={`empty-${idx}`}
                       className="border border-dashed border-white/5 bg-transparent rounded-xl p-3.5 flex items-center justify-center text-[10px] text-slate-600 font-mono"
                     >
                       WAITING FOR COMBATANT...

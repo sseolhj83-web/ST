@@ -10,12 +10,13 @@ import { supabase } from './supabaseClient';
 import { Auth } from './components/Auth';
 import { Lobby } from './components/Lobby';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { loadLocalStats, saveLocalMatchResult } from './game/localStats';
 
-type AppState = 'AUTH' | 'LOBBY' | 'PLAYING';
+type AppState = 'NICKNAME' | 'LOBBY' | 'PLAYING';
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
-  const [appState, setAppState] = useState<AppState>('AUTH');
+  const [appState, setAppState] = useState<AppState>('NICKNAME');
   const [gameState, setGameState] = useState<XonoticGameState | null>(null);
   const [highScore, setHighScore] = useState(0);
   const [isPointerLocked, setIsPointerLocked] = useState(false);
@@ -28,7 +29,7 @@ export default function App() {
   const mouseDeltaRef = useRef({ dx: 0, dy: 0 });
   const lastTimeRef = useRef(0);
   const animationFrameIdRef = useRef<number | null>(null);
-  const appStateRef = useRef<AppState>('AUTH');
+  const appStateRef = useRef<AppState>('NICKNAME');
   const userRef = useRef<any>(null);
   const saveStatsRef = useRef<(score: number, deaths: number) => void>(() => {});
 
@@ -60,85 +61,36 @@ export default function App() {
     };
   }, [isMobile]);
 
-  // Handle active session check on mount (local mock auth, no backend server)
+  // Handle active session check on mount — no backend account, just a remembered nickname/guest id
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('xonotic_mock_user');
+      const saved = localStorage.getItem('xonotic_player');
       if (saved) {
         setUser(JSON.parse(saved));
         setAppState('LOBBY');
         return;
       }
     } catch {}
-    setAppState('AUTH');
+    setAppState('NICKNAME');
   }, []);
 
-  // Sync highscore from user_stats table on login
+  // Sync highscore from on-device stats (see game/localStats.ts) whenever the player is set
   useEffect(() => {
     if (!user) return;
-    const fetchHighScore = async () => {
-      try {
-        const { data } = await supabase
-          .from('user_stats')
-          .select('highest_score')
-          .eq('user_id', user.id)
-          .single();
-        if (data) {
-          setHighScore(data.highest_score);
-        }
-      } catch (err) {
-        console.error('Error fetching high score:', err);
-      }
-    };
-    fetchHighScore();
+    setHighScore(loadLocalStats(user.id).highest_score);
   }, [user]);
 
-  // Save stats to Supabase on match completion
-  const saveStatsToSupabase = useCallback(async (score: number, deaths: number) => {
+  // Save stats on-device on match completion — no account system, so nothing to sync to a server
+  const saveMatchStats = useCallback((score: number, deaths: number) => {
     if (!user) return;
-    try {
-      const { data, error } = await supabase
-        .from('user_stats')
-        .select('highest_score, total_frags, total_deaths, matches_played')
-        .eq('user_id', user.id)
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        throw error;
-      }
-
-      const currentHighest = data ? data.highest_score : 0;
-      const currentFrags = data ? data.total_frags : 0;
-      const currentDeaths = data ? data.total_deaths : 0;
-      const currentMatches = data ? data.matches_played : 0;
-
-      const newHighest = Math.max(currentHighest, score);
-      const newFrags = currentFrags + score;
-      const newDeaths = currentDeaths + deaths;
-      const newMatches = currentMatches + 1;
-
-      const { error: upsertErr } = await supabase
-        .from('user_stats')
-        .upsert({
-          user_id: user.id,
-          highest_score: newHighest,
-          total_frags: newFrags,
-          total_deaths: newDeaths,
-          matches_played: newMatches,
-          updated_at: new Date().toISOString()
-        });
-
-      if (upsertErr) throw upsertErr;
-      setHighScore(newHighest);
-    } catch (err) {
-      console.error('Error saving user stats:', err);
-    }
+    const updated = saveLocalMatchResult(user.id, score, deaths);
+    setHighScore(updated.highest_score);
   }, [user]);
 
   // Keep mutable values synced with refs for use inside RAF/engine callbacks
   useEffect(() => { appStateRef.current = appState; }, [appState]);
   useEffect(() => { userRef.current = user; }, [user]);
-  useEffect(() => { saveStatsRef.current = saveStatsToSupabase; }, [saveStatsToSupabase]);
+  useEffect(() => { saveStatsRef.current = saveMatchStats; }, [saveMatchStats]);
 
   // Initialize key listeners once. Bound to engineRef.current dynamically to avoid stale closures
   useEffect(() => {
@@ -329,9 +281,9 @@ export default function App() {
       )}
 
       <AnimatePresence>
-        {appState === 'AUTH' && (
+        {appState === 'NICKNAME' && (
           <motion.div
-            key="auth"
+            key="nickname"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -352,9 +304,9 @@ export default function App() {
             <Lobby
               user={user}
               onLogout={() => {
-                localStorage.removeItem('xonotic_mock_user');
+                localStorage.removeItem('xonotic_player');
                 setUser(null);
-                setAppState('AUTH');
+                setAppState('NICKNAME');
               }}
               onStartGame={handleStartGameFromLobby}
             />
