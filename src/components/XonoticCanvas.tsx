@@ -1046,16 +1046,21 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         flashlightTarget.position.copy(_spotTargetPos);
 
         // B2. Mannequin peekaboo — catch one in the beam, look away, catch it in the beam again
-        // and it's gone. A rising edge (not-lit -> lit) counts as one "catch"; two catches kills it.
+        // and it's gone. A rising edge (not-lit -> lit) counts as one "catch"; two catches kills
+        // it. Deliberately strict (tight cone, short range) so it only fires when the player has
+        // it clearly, centrally lit up close — a stray graze of light at the cone's edge or from
+        // far away must NOT count.
+        const MANNEQUIN_LIT_MAX_DIST = 18;
+        const MANNEQUIN_LIT_COS = Math.cos(0.18); // ~10 degrees off dead-center
         mannequinStates.forEach(ms => {
           if (!ms.alive) return;
           _toMannequin.subVectors(ms.headPos, camera.position);
           const dist = _toMannequin.length();
           let isLit = false;
-          if (dist < flashlightSpot.distance) {
+          if (dist < MANNEQUIN_LIT_MAX_DIST) {
             _toMannequin.normalize();
             const dot = _toMannequin.dot(_camDir);
-            isLit = dot > Math.cos(flashlightSpot.angle * 0.8);
+            isLit = dot > MANNEQUIN_LIT_COS;
           }
           if (isLit && !ms.wasLit) {
             ms.litCount++;
