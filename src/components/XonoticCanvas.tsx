@@ -6,7 +6,71 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { XonoticGameState, Bot, PickupItem } from '../game/xonoticTypes';
-import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS, ESCAPE_WALL_ID, getPuddles, PUDDLE_COLOR } from '../game/xonoticMap';
+import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS, ESCAPE_WALL_ID, getPuddles, PUDDLE_COLOR, getMannequins } from '../game/xonoticMap';
+
+// Builds a single motionless, faceless human-shaped mannequin — static set dressing meant to
+// startle whoever's flashlight lands on it and briefly reads as "is that a person?" before it's
+// clearly not. Pale, blank, low-poly on purpose (a real store mannequin, not a corpse or monster).
+function buildMannequinModel(index: number): THREE.Group {
+  const group = new THREE.Group();
+
+  const skinMat = new THREE.MeshStandardMaterial({ color: '#cbc4b6', roughness: 0.55, metalness: 0.05 });
+  const jointMat = new THREE.MeshStandardMaterial({ color: '#8f8778', roughness: 0.6, metalness: 0.1 });
+
+  const torsoW = 0.42, torsoH = 0.75, torsoD = 0.24;
+  const torsoY = 1.15;
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(torsoW, torsoH, torsoD), skinMat);
+  torso.position.y = torsoY;
+  group.add(torso);
+
+  const hipW = 0.36, hipH = 0.3, hipD = 0.22;
+  const hipY = torsoY - torsoH / 2 - hipH / 2;
+  const hip = new THREE.Mesh(new THREE.BoxGeometry(hipW, hipH, hipD), skinMat);
+  hip.position.y = hipY;
+  group.add(hip);
+
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.12, 8), jointMat);
+  neck.position.y = torsoY + torsoH / 2 + 0.06;
+  group.add(neck);
+
+  // Faceless blank head — no eyes/mouth geometry, that's the point.
+  const headR = 0.14;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(headR, 12, 10), skinMat);
+  head.position.y = torsoY + torsoH / 2 + 0.12 + headR;
+  // A minority of them have the head twisted at an unnatural angle — an unsettling detail that
+  // only reads on close inspection, not visible from a glance down the corridor.
+  if (index % 3 === 0) head.rotation.z = 0.9;
+  group.add(head);
+
+  const armR = 0.055;
+  [-1, 1].forEach(side => {
+    const upperArm = new THREE.Mesh(new THREE.CylinderGeometry(armR, armR * 0.9, 0.42, 8), skinMat);
+    upperArm.position.set(side * (torsoW / 2 + armR), torsoY + torsoH / 2 - 0.25, 0);
+    group.add(upperArm);
+    const lowerArm = new THREE.Mesh(new THREE.CylinderGeometry(armR * 0.85, armR * 0.7, 0.4, 8), skinMat);
+    lowerArm.position.set(side * (torsoW / 2 + armR), upperArm.position.y - 0.42, 0);
+    group.add(lowerArm);
+  });
+
+  const legR = 0.08;
+  [-1, 1].forEach(side => {
+    const thigh = new THREE.Mesh(new THREE.CylinderGeometry(legR, legR * 0.9, 0.5, 8), skinMat);
+    thigh.position.set(side * 0.11, hipY - hipH / 2 - 0.25, 0);
+    group.add(thigh);
+    const shin = new THREE.Mesh(new THREE.CylinderGeometry(legR * 0.85, legR * 0.7, 0.5, 8), skinMat);
+    shin.position.set(side * 0.11, thigh.position.y - 0.5, 0);
+    group.add(shin);
+  });
+
+  group.traverse(obj => {
+    if (obj instanceof THREE.Mesh) {
+      obj.castShadow = true;
+      obj.receiveShadow = true;
+    }
+  });
+
+  return group;
+}
 
 // Helper to build procedural low-poly Demogorgon models — the single Backrooms monster
 function buildDemogorgonModel(bot: Bot): THREE.Group {
@@ -780,6 +844,15 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       puddle.rotation.x = -Math.PI / 2;
       puddle.position.set(p.x, 0.02, p.z);
       scene.add(puddle);
+    });
+
+    // 5d. A handful of motionless mannequins scattered through the hub — decorative only, never
+    // interacted with, just something to catch in the flashlight beam.
+    getMannequins().forEach((m, i) => {
+      const mannequin = buildMannequinModel(i);
+      mannequin.position.set(m.x, 0, m.z);
+      mannequin.rotation.y = m.rotationY;
+      scene.add(mannequin);
     });
 
     // 5b. Infinite streamed maze — beyond the hand-built hub above, chunks of the same yellow

@@ -421,3 +421,22 @@ export function getPuddles(): { x: number; z: number; radius: number }[] {
     { x: -22, z: -48, radius: 1.7 },
   ];
 }
+
+// Decorative, non-collidable human-shaped mannequins standing motionless in a handful of hub
+// rooms — visual-only set dressing (never added to engine collision), just something unsettling
+// to catch in the flashlight beam. Placed at hub maze cell centers (see cellCenters in
+// getXonoticMap) so every position sits in open room interior, never inside a partition wall.
+// rotationY is where each one is facing (radians) — deliberately arbitrary/unnatural angles, not
+// aligned to the corridor, since a motionless figure facing an odd direction reads as far more
+// wrong than one facing the doorway.
+export function getMannequins(): { x: number; z: number; rotationY: number }[] {
+  return [
+    { x: -50, z: -50, rotationY: 2.3 },
+    { x: -10, z: -30, rotationY: 0.6 },
+    { x: 30, z: -10, rotationY: 4.1 },
+    { x: 50, z: 50, rotationY: 1.2 },
+    { x: -30, z: 30, rotationY: 5.4 },
+    { x: 10, z: 10, rotationY: 3.0 },
+    { x: -50, z: 10, rotationY: 0.1 },
+  ];
+}
