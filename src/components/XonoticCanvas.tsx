@@ -881,7 +881,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
 
     // Always-on flashlight SpotLight — the player's actual light source in the pitch-dark maze.
     // No shadow casting, matching the deliberately shadow-free ambient/directional rig above.
-    const flashlightSpot = new THREE.SpotLight('#fff4d6', 35, 42, 0.55, 0.35, 2);
+    const flashlightSpot = new THREE.SpotLight('#fff4d6', 35, 48, 0.55, 0.35, 2);
     flashlightSpot.castShadow = false;
     scene.add(flashlightSpot);
     const flashlightTarget = new THREE.Object3D();
