@@ -8,7 +8,6 @@ import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE,
 
 export class XonoticEngine {
   public state: XonoticGameState;
-  public isFrozen: boolean = false;
   public roomId: string | null = null;
   public userId: string | null = null;
   public username: string | null = null;
@@ -63,7 +62,6 @@ export class XonoticEngine {
       pickups: JSON.parse(JSON.stringify(this.pickups)), // deep clone initial states
       fragFeed: [],
       matchTime: 0,
-      isFrozen: false,
       monsterWarning: false,
       escaped: false,
     };
@@ -179,12 +177,6 @@ export class XonoticEngine {
 
     // Integrate gravity
     player.vel.y += this.gravity * dt;
-  }
-
-  public toggleFreeze() {
-    this.isFrozen = !this.isFrozen;
-    this.state.isFrozen = this.isFrozen;
-    this.onStateChange({ ...this.state });
   }
 
   // Keeps the maze loaded around wherever the player currently is, streaming in fresh procedural
@@ -373,10 +365,6 @@ export class XonoticEngine {
   // catch them. Also still drives any real online players riding along in `bots` — those just get
   // dead-reckoning physics, no AI.
   private updateMonsterAI(dt: number) {
-    if (this.isFrozen) {
-      this.state.bots.forEach(b => { b.vel.x = 0; b.vel.y = 0; b.vel.z = 0; });
-      return;
-    }
     const { bots, player } = this.state;
     let nearestMonsterDist = Infinity;
 

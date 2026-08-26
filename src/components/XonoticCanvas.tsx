@@ -1001,9 +1001,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       const frameDelta = (now - lastTime) / 1000;
       lastTime = now;
 
-      if (!stateVal.isFrozen) {
-        botAnimTime += frameDelta;
-      }
+      botAnimTime += frameDelta;
 
       try {
         // A. Position camera head-level with the player pos
@@ -1130,7 +1128,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           }
 
           // Procedural locomotion animations for the eerie Demogorgon
-          const isMoving = speedSq > 0.1 && !stateVal.isFrozen;
+          const isMoving = speedSq > 0.1;
           const time = botAnimTime * 12;
 
           // Bob entire bot y-pos slightly in motion or resting breath

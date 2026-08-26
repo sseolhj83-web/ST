@@ -80,7 +80,6 @@ export interface XonoticGameState {
   pickups: PickupItem[];
   fragFeed: FragLog[];
   matchTime: number;
-  isFrozen?: boolean;
   monsterWarning?: boolean; // the monster is within 7m of the player right now
   escaped?: boolean;        // found and dove through the flickering wall — the run is won
 }

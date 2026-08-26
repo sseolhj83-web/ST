@@ -112,11 +112,6 @@ export default function App() {
       if (code === 'ArrowRight') { keysRef.current.arrowright = true; e.preventDefault(); }
       if (code === 'ArrowUp') { keysRef.current.arrowup = true; e.preventDefault(); }
       if (code === 'ArrowDown') { keysRef.current.arrowdown = true; e.preventDefault(); }
-
-      // Time Freeze Hotkey
-      if (code === 'KeyF' || key === 'f' || key === 'ㄹ') {
-        engineRef.current?.toggleFreeze();
-      }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -360,7 +355,6 @@ export default function App() {
                 player={gameState.player}
                 fragFeed={gameState.fragFeed}
                 matchTime={gameState.matchTime}
-                isFrozen={gameState.isFrozen}
                 monsterWarning={gameState.monsterWarning}
                 activeKeys={{
                   w: keysRef.current.w,

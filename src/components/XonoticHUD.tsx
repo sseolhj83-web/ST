@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Player3D, FragLog } from '../game/xonoticTypes';
 import { Shield, Heart } from 'lucide-react';
 
@@ -12,7 +12,6 @@ interface XonoticHUDProps {
   fragFeed: FragLog[];
   matchTime: number;
   activeKeys?: { w: boolean; a: boolean; s: boolean; d: boolean; space: boolean };
-  isFrozen?: boolean;
   monsterWarning?: boolean;
 }
 
@@ -21,23 +20,8 @@ export const XonoticHUD: React.FC<XonoticHUDProps> = ({
   fragFeed,
   matchTime,
   activeKeys,
-  isFrozen,
   monsterWarning,
 }) => {
-  const [showFrozenBanner, setShowFrozenBanner] = useState(false);
-
-  useEffect(() => {
-    if (isFrozen) {
-      setShowFrozenBanner(true);
-      const timer = setTimeout(() => {
-        setShowFrozenBanner(false);
-      }, 7000);
-      return () => clearTimeout(timer);
-    } else {
-      setShowFrozenBanner(false);
-    }
-  }, [isFrozen]);
-
   // Translate seconds to format mm:ss (countdown from 7 minutes)
   const formatTime = (seconds: number) => {
     const remaining = Math.max(0, 420 - seconds);
@@ -94,23 +78,6 @@ export const XonoticHUD: React.FC<XonoticHUDProps> = ({
             </div>
           ))}
         </div>
-      </div>
-
-      {/* 2. MIDDLE VIEW SPACE WITH ELGENT TIME FREEZE NOTIFICATION */}
-      <div className="flex-1 flex items-center justify-center">
-        {showFrozenBanner && (
-          <div className="bg-purple-950/80 backdrop-blur-md border border-purple-500/50 rounded-2xl px-12 py-5 text-center shadow-[0_0_50px_rgba(139,92,246,0.3)] animate-pulse max-w-sm pointer-events-auto">
-            <h2 className="text-xl font-black text-purple-300 tracking-wider font-sans uppercase mb-1">
-              ⚡ 시간 일시정지 (Time Frozen)
-            </h2>
-            <p className="text-xs text-purple-200/80">
-              다른 모든 적들과 발사체가 정지했습니다.<br />플레이어는 자유롭게 이동 및 처치가 가능합니다.
-            </p>
-            <p className="text-[10px] text-purple-400 font-bold uppercase mt-2.5 tracking-widest">
-              F키를 누르면 시간 정지 해제
-            </p>
-          </div>
-        )}
       </div>
 
       {/* 3. BOTTOM PANEL STATS (HEALTH, SHIELD) */}
