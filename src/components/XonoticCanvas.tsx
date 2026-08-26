@@ -846,13 +846,22 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       scene.add(puddle);
     });
 
-    // 5d. A handful of motionless mannequins scattered through the hub — decorative only, never
-    // interacted with, just something to catch in the flashlight beam.
+    // 5d. A handful of motionless mannequins scattered through the hub. Each one tracks whether
+    // the flashlight is currently on it (see the peekaboo check in animate() below): light it up
+    // once, look away, light it up again — the second time it's caught in the beam, it vanishes.
+    const mannequinStates: { group: THREE.Group; headPos: THREE.Vector3; litCount: number; wasLit: boolean; alive: boolean }[] = [];
     getMannequins().forEach((m, i) => {
       const mannequin = buildMannequinModel(i);
       mannequin.position.set(m.x, 0, m.z);
       mannequin.rotation.y = m.rotationY;
       scene.add(mannequin);
+      mannequinStates.push({
+        group: mannequin,
+        headPos: new THREE.Vector3(m.x, 1.5, m.z),
+        litCount: 0,
+        wasLit: false,
+        alive: true,
+      });
     });
 
     // 5b. Infinite streamed maze — beyond the hand-built hub above, chunks of the same yellow
@@ -974,6 +983,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     const _lookTarget = new THREE.Vector3();
     const _targetLook = new THREE.Vector3();
     const _spotTargetPos = new THREE.Vector3();
+    const _toMannequin = new THREE.Vector3();
 
     let lastTime = performance.now();
     let botAnimTime = 0;
@@ -1034,6 +1044,28 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         flashlightSpot.position.copy(camera.position);
         _spotTargetPos.copy(camera.position).addScaledVector(_camDir, 15);
         flashlightTarget.position.copy(_spotTargetPos);
+
+        // B2. Mannequin peekaboo — catch one in the beam, look away, catch it in the beam again
+        // and it's gone. A rising edge (not-lit -> lit) counts as one "catch"; two catches kills it.
+        mannequinStates.forEach(ms => {
+          if (!ms.alive) return;
+          _toMannequin.subVectors(ms.headPos, camera.position);
+          const dist = _toMannequin.length();
+          let isLit = false;
+          if (dist < flashlightSpot.distance) {
+            _toMannequin.normalize();
+            const dot = _toMannequin.dot(_camDir);
+            isLit = dot > Math.cos(flashlightSpot.angle * 0.8);
+          }
+          if (isLit && !ms.wasLit) {
+            ms.litCount++;
+            if (ms.litCount >= 2) {
+              ms.alive = false;
+              ms.group.visible = false;
+            }
+          }
+          ms.wasLit = isLit;
+        });
 
         // C. Render Bots (enemies) and Remote Players (teammates) separately
         const activeEnemyIds = new Set(stateVal.bots.filter(b => !b.isTeammate).map(b => b.id));
