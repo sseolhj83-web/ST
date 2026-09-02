@@ -11,6 +11,7 @@ import { Auth } from './components/Auth';
 import { Lobby } from './components/Lobby';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { loadLocalStats, saveLocalMatchResult } from './game/localStats';
+import { L2_ESCAPE_WALL_POS } from './game/xonoticMapLevel2';
 
 type AppState = 'NICKNAME' | 'LOBBY' | 'PLAYING';
 
@@ -364,6 +365,7 @@ export default function App() {
                 fragFeed={gameState.fragFeed}
                 matchTime={gameState.matchTime}
                 level={activeLevel}
+                exitPos={activeLevel === 2 ? L2_ESCAPE_WALL_POS : null}
                 monsterWarning={gameState.monsterWarning}
                 activeKeys={{
                   w: keysRef.current.w,
