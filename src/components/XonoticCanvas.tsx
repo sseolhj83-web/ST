@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { XonoticGameState, Bot, PickupItem } from '../game/xonoticTypes';
 import { PUDDLE_COLOR } from '../game/xonoticMap';
 import { getLevelModule, chunkKey } from '../game/levels';
-import { BLOCK as L2_BLOCK, L2_WALL_H } from '../game/xonoticMapLevel2';
+import { BLOCK as L2_BLOCK, L2_WALL_H, L2_ESCAPE_WALL_POS } from '../game/xonoticMapLevel2';
 
 // Builds a single motionless, faceless human-shaped mannequin — static set dressing meant to
 // startle whoever's flashlight lands on it and briefly reads as "is that a person?" before it's
@@ -763,6 +763,11 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         scene.add(pl);
         hotelPointLights.push(pl);
       }
+      // A green beacon at the EXIT so it glows recognisably down the corridor from spawn.
+      const exitLight = new THREE.PointLight('#8affab', 2.4, 34, 2);
+      exitLight.castShadow = false;
+      exitLight.position.set(L2_ESCAPE_WALL_POS.x, L2_ESCAPE_WALL_POS.y + 0.6, L2_ESCAPE_WALL_POS.z);
+      scene.add(exitLight);
     }
 
     const floorMat = new THREE.MeshStandardMaterial({
@@ -923,7 +928,8 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       if (wall.id === 'l2_floor_main' || wall.id.startsWith('l2_floor_')) return floorMat;
       if (wall.id === 'l2_ceiling_main' || wall.id.endsWith('_ceiling')) return hotelCeilingMat!;
       if (wall.emissive) return hotelTubeMat!;
-      if (wall.flicker) return new THREE.MeshStandardMaterial({ color: '#c8b98a', emissive: new THREE.Color('#fff3b0'), emissiveIntensity: 0.4, roughness: 0.6 });
+      // The EXIT — a bright green glowing portal, the one non-liminal spot of colour: unmistakably "the way out".
+      if (wall.flicker) return new THREE.MeshStandardMaterial({ color: '#0c1f12', emissive: new THREE.Color('#7dff9e'), emissiveIntensity: 1.7, roughness: 0.5 });
       if (wall.id.includes('_blk_')) return hotelPlainMat!;
       return hotelWallMat!;
     };
@@ -1478,10 +1484,11 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           }
         });
 
-        // F. The one escape wall — a severe, chaotic strobe so it reads as "wrong" the moment
-        // someone's flashlight lands on it, but otherwise blends into the maze.
+        // F. The escape/exit trigger.
+        //  - Level 1: a severe chaotic strobe so it reads as "wrong" once the flashlight lands on it.
+        //  - Level 2: a steady green glow — a friendly beacon you head toward, not an anomaly.
         if (escapeWallMesh) {
-          (escapeWallMesh as THREE.Mesh).visible = Math.random() > 0.35;
+          (escapeWallMesh as THREE.Mesh).visible = isL2 ? true : Math.random() > 0.35;
         }
 
         // H. Call Render
