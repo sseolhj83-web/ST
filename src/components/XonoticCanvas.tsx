@@ -713,7 +713,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     const scene = new THREE.Scene();
     const hazeColor = isL2 ? '#221e18' : '#0a0906';
     scene.background = new THREE.Color(hazeColor);
-    scene.fog = new THREE.FogExp2(hazeColor, isL2 ? 0.0095 : 0.006);
+    scene.fog = new THREE.FogExp2(hazeColor, isL2 ? 0.0085 : 0.006);
     sceneRef.current = scene;
 
     // 2. Camera Setup (Generous 85-degree Quake-style Field of View)
@@ -730,7 +730,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // clipping them to flat white. Level 1 stays untouched (its careful darkness needs linear output).
     if (isL2) {
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 0.82;
+      renderer.toneMappingExposure = 0.9;
     }
     
     // Clear any leftover elements just in case, then append
@@ -745,17 +745,17 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     //    ambient does the flat "liminal fluorescent" wash, a hemisphere adds a little ceiling/
     //    floor gradient, and the point-light pool (below, updated in animate()) puts a brighter
     //    hotspot directly under whichever tubes are nearest the player.
-    const ambientLight = new THREE.AmbientLight(isL2 ? '#ffedc8' : '#fef9c3', isL2 ? 0.42 : 0.02);
+    const ambientLight = new THREE.AmbientLight(isL2 ? '#ffedc8' : '#fef9c3', isL2 ? 0.5 : 0.02);
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight(isL2 ? '#fff2cf' : '#fdf6b2', isL2 ? 0.1 : 0.01);
+    const dirLight = new THREE.DirectionalLight(isL2 ? '#fff2cf' : '#fdf6b2', isL2 ? 0.12 : 0.01);
     dirLight.position.set(30, 80, 30);
     dirLight.castShadow = false; // no sun-like directional shadow — flat, unlit look
     scene.add(dirLight);
 
     const hotelPointLights: THREE.PointLight[] = [];
     if (isL2) {
-      const hemi = new THREE.HemisphereLight('#fff2d0', '#2a2418', 0.2);
+      const hemi = new THREE.HemisphereLight('#fff2d0', '#2a2418', 0.24);
       scene.add(hemi);
       for (let i = 0; i < 5; i++) {
         const pl = new THREE.PointLight('#fff0cc', 0, 26, 2);
@@ -922,7 +922,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     const hotelPlainMat = isL2 ? new THREE.MeshStandardMaterial({ color: 0xffffff, map: hotelPlainTex!, roughness: 0.9, metalness: 0.0 }) : null;
     const hotelCeilingMat = isL2 ? new THREE.MeshStandardMaterial({ color: new THREE.Color('#c7bb98'), roughness: 0.95, metalness: 0.0 }) : null;
     // Level 2 tubes glow bright (self-lit); flat ambient + the point-light pool do the real lighting.
-    const hotelTubeMat = isL2 ? new THREE.MeshStandardMaterial({ color: '#fff8e6', emissive: new THREE.Color('#fff6dc'), emissiveIntensity: 2.1, roughness: 0.4 }) : null;
+    const hotelTubeMat = isL2 ? new THREE.MeshStandardMaterial({ color: '#fff8e6', emissive: new THREE.Color('#fff6dc'), emissiveIntensity: 2.3, roughness: 0.4 }) : null;
 
     const l2MaterialFor = (wall: { id: string; color: string; emissive?: boolean; flicker?: boolean }): THREE.Material => {
       if (wall.id === 'l2_floor_main' || wall.id.startsWith('l2_floor_')) return floorMat;
@@ -1233,7 +1233,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
             const pl = hotelPointLights[n];
             pl.position.set(bx[n], ly, bz[n]);
             const dist = Math.sqrt(bd[n]);
-            const targetI = bd[n] === Infinity ? 0 : Math.max(0, 1.5 * (1 - dist / 24));
+            const targetI = bd[n] === Infinity ? 0 : Math.max(0, 1.7 * (1 - dist / 25));
             pl.intensity += (targetI - pl.intensity) * 0.18;
           }
         }
