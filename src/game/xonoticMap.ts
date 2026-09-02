@@ -36,7 +36,7 @@ export const ESCAPE_WALL_POS = { x: -33, y: WALL_H / 2, z: -47 };
 // A safe, always-open spawn point out in the hallway ring, clear of every partition wall.
 export const SPAWN_POINT = { x: 0, y: 1.5, z: 70 };
 
-function mulberry32(seed: number) {
+export function mulberry32(seed: number) {
   let s = seed >>> 0;
   return function () {
     s = (s + 0x6d2b79f5) | 0;
@@ -46,7 +46,7 @@ function mulberry32(seed: number) {
   };
 }
 
-function hashSeed(a: number, b: number, c: number): number {
+export function hashSeed(a: number, b: number, c: number): number {
   let h = 0x811c9dc5;
   h ^= a; h = Math.imul(h, 0x01000193);
   h ^= b; h = Math.imul(h, 0x01000193);
@@ -206,6 +206,39 @@ export function generateStreamedChunk(cx: number, cz: number): MapWall[] {
   }
 
   return walls;
+}
+
+// Builds a genuine perfect maze (randomized-DFS spanning tree) over an NxN cell grid, so every cell
+// is guaranteed reachable from every other — shared by the Level 1 hub below and the Level 2 hotel
+// hub (see xonoticMapLevel2.ts). vOpen[i][j]: passage between column i and i+1 at row j. hOpen[j][i]:
+// passage between row j and j+1 at column i. A fixed seed keeps it identical on every call.
+export function buildPerfectMaze(cells: number, seed = 0x9e3779b9, braid = 0.12) {
+  const rand = mulberry32(seed);
+  const visited: boolean[][] = Array.from({ length: cells }, () => new Array(cells).fill(false));
+  const vOpen: boolean[][] = Array.from({ length: cells - 1 }, () => new Array(cells).fill(false));
+  const hOpen: boolean[][] = Array.from({ length: cells - 1 }, () => new Array(cells).fill(false));
+
+  const stack: [number, number][] = [[0, 0]];
+  visited[0][0] = true;
+  while (stack.length > 0) {
+    const [i, j] = stack[stack.length - 1];
+    const options: Array<{ open: () => void; ni: number; nj: number }> = [];
+    if (i > 0 && !visited[i - 1][j]) options.push({ open: () => { vOpen[i - 1][j] = true; }, ni: i - 1, nj: j });
+    if (i < cells - 1 && !visited[i + 1][j]) options.push({ open: () => { vOpen[i][j] = true; }, ni: i + 1, nj: j });
+    if (j > 0 && !visited[i][j - 1]) options.push({ open: () => { hOpen[j - 1][i] = true; }, ni: i, nj: j - 1 });
+    if (j < cells - 1 && !visited[i][j + 1]) options.push({ open: () => { hOpen[j][i] = true; }, ni: i, nj: j + 1 });
+
+    if (options.length === 0) { stack.pop(); continue; }
+    const pick = options[Math.floor(rand() * options.length)];
+    pick.open();
+    visited[pick.ni][pick.nj] = true;
+    stack.push([pick.ni, pick.nj]);
+  }
+
+  for (let i = 0; i < cells - 1; i++) for (let j = 0; j < cells; j++) if (!vOpen[i][j] && rand() < braid) vOpen[i][j] = true;
+  for (let j = 0; j < cells - 1; j++) for (let i = 0; i < cells; i++) if (!hOpen[j][i] && rand() < braid) hOpen[j][i] = true;
+
+  return { vOpen, hOpen };
 }
 
 // Builds a genuine perfect maze (randomized-DFS spanning tree) over the hub's 6x6 core cell grid,

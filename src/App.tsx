@@ -21,10 +21,12 @@ export default function App() {
   const [highScore, setHighScore] = useState(0);
   const [isPointerLocked, setIsPointerLocked] = useState(false);
   const [gameResult, setGameResult] = useState<'NONE' | 'VICTORY' | 'DEFEAT'>('NONE');
+  const [activeLevel, setActiveLevel] = useState<1 | 2>(1);
   const [roomContext, setRoomContext] = useState<{ roomId: string; isHost: boolean; players: any[] } | null>(null);
 
   const engineRef = useRef<XonoticEngine | null>(null);
   const gameStateRef = useRef<XonoticGameState | null>(null);
+  const pendingLevelRef = useRef<1 | 2>(1);
   const keysRef = useRef({ w: false, s: false, a: false, d: false, space: false, arrowleft: false, arrowright: false, arrowup: false, arrowdown: false });
   const mouseDeltaRef = useRef({ dx: 0, dy: 0 });
   const lastTimeRef = useRef(0);
@@ -181,6 +183,8 @@ export default function App() {
   // Activate game renderer execution - completely re-instantiates the engine for clean isolation
   const startGame = useCallback(() => {
     let gameOverFired = false; // prevent double-fire within same game session
+    const runLevel = pendingLevelRef.current;
+    setActiveLevel(runLevel);
 
     const engine = new XonoticEngine((updatedState) => {
       gameStateRef.current = updatedState;
@@ -205,7 +209,7 @@ export default function App() {
       if (userRef.current) {
         saveStatsRef.current(updatedState.player.score, updatedState.player.deaths);
       }
-    });
+    }, runLevel);
     engineRef.current = engine;
     gameStateRef.current = engine.state;
     setGameState(engine.state);
@@ -252,7 +256,8 @@ export default function App() {
     mouseDeltaRef.current.dy += dy;
   }, []);
 
-  const handleStartGameFromLobby = useCallback((roomId: string, isHost: boolean, currentPlayers: any[]) => {
+  const handleStartGameFromLobby = useCallback((roomId: string, isHost: boolean, currentPlayers: any[], level: 1 | 2 = 1) => {
+    pendingLevelRef.current = level;
     setRoomContext({ roomId, isHost, players: currentPlayers });
     startGame();
   }, [startGame]);
@@ -324,7 +329,9 @@ export default function App() {
                     {gameResult === 'VICTORY'
                       ? <Award className="w-5 h-5" />
                       : <ShieldAlert className="w-5 h-5" />}
-                    {gameResult === 'VICTORY' ? '승리! 로비로 복귀합니다.' : '패배! 로비로 복귀합니다.'}
+                    {gameResult === 'VICTORY'
+                      ? `레벨 ${activeLevel} 탈출 성공! 로비로 복귀합니다.`
+                      : '패배! 로비로 복귀합니다.'}
                   </div>
                 </motion.div>
               )}
@@ -346,6 +353,7 @@ export default function App() {
               <XonoticCanvas
                 state={gameState}
                 gameStateRef={gameStateRef}
+                level={activeLevel}
                 onPointerLockChange={handlePointerLockChange}
                 onMouseMove={handleMouseMove}
               />
@@ -355,6 +363,7 @@ export default function App() {
                 player={gameState.player}
                 fragFeed={gameState.fragFeed}
                 matchTime={gameState.matchTime}
+                level={activeLevel}
                 monsterWarning={gameState.monsterWarning}
                 activeKeys={{
                   w: keysRef.current.w,

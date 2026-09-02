@@ -4,10 +4,12 @@
  */
 
 import { XonoticGameState, Bot, JumpPad, PickupItem, MapWall } from './xonoticTypes';
-import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS, ESCAPE_WALL_ID, ESCAPE_WALL_POS, SPAWN_POINT, WALL_H } from './xonoticMap';
+import { getLevelModule, LevelModule, chunkKey } from './levels';
 
 export class XonoticEngine {
   public state: XonoticGameState;
+  public level: 1 | 2;
+  private lvl: LevelModule;
   public roomId: string | null = null;
   public userId: string | null = null;
   public username: string | null = null;
@@ -33,9 +35,11 @@ export class XonoticEngine {
   private readonly maxBhopSpeed = 40; // hard cap on horizontal speed so chained bunny-hops can't build up
                                        // enough velocity to tunnel through a wall/ceiling in a single frame
 
-  constructor(onStateChange: (state: XonoticGameState) => void) {
+  constructor(onStateChange: (state: XonoticGameState) => void, level: 1 | 2 = 1) {
     this.onStateChange = onStateChange;
-    const map = getXonoticMap();
+    this.level = level;
+    this.lvl = getLevelModule(level);
+    const map = this.lvl.getMap();
     this.walls = map.walls;
     this.jumpPads = map.jumpPads;
     this.pickups = map.pickups;
@@ -46,7 +50,7 @@ export class XonoticEngine {
   private getInitialState(): XonoticGameState {
     return {
       player: {
-        pos: { ...SPAWN_POINT },
+        pos: { ...this.lvl.SPAWN_POINT },
         vel: { x: 0, y: 0, z: 0 },
         yaw: 0,
         pitch: 0,
@@ -62,6 +66,7 @@ export class XonoticEngine {
       pickups: JSON.parse(JSON.stringify(this.pickups)), // deep clone initial states
       fragFeed: [],
       matchTime: 0,
+      level: this.level,
       monsterWarning: false,
       escaped: false,
     };
@@ -73,7 +78,7 @@ export class XonoticEngine {
     return [{
       id: 'the_monster',
       name: '데모고르곤',
-      pos: { x: 0, y: 2, z: -70 }, // opposite side of the open outer ring from spawn — clear of every maze wall
+      pos: { ...this.lvl.MONSTER_SPAWN }, // mid-corridor / open ring, clear of every wall
       vel: { x: 0, y: 0, z: 0 },
       health: 999999,
       maxHealth: 999999,
@@ -189,27 +194,29 @@ export class XonoticEngine {
   // against a wall on a chunk boundary) never re-scans or reallocates anything.
   private updateStreamedChunks() {
     const { x, z } = this.state.player.pos;
-    const pcx = Math.floor(x / CHUNK_SIZE);
-    const pcz = Math.floor(z / CHUNK_SIZE);
+    const chunkSize = this.lvl.CHUNK_SIZE;
+    const loadRadius = this.lvl.CHUNK_LOAD_RADIUS;
+    const pcx = Math.floor(x / chunkSize);
+    const pcz = Math.floor(z / chunkSize);
     if (pcx === this.lastStreamCx && pcz === this.lastStreamCz) return;
     this.lastStreamCx = pcx;
     this.lastStreamCz = pcz;
 
-    for (let dx = -CHUNK_LOAD_RADIUS; dx <= CHUNK_LOAD_RADIUS; dx++) {
-      for (let dz = -CHUNK_LOAD_RADIUS; dz <= CHUNK_LOAD_RADIUS; dz++) {
+    for (let dx = -loadRadius; dx <= loadRadius; dx++) {
+      for (let dz = -loadRadius; dz <= loadRadius; dz++) {
         const cx = pcx + dx;
         const cz = pcz + dz;
-        if (isHubChunk(cx, cz)) continue;
+        if (this.lvl.isHubChunk(cx, cz)) continue;
         const key = chunkKey(cx, cz);
         if (this.loadedStreamChunks.has(key)) continue;
 
-        const chunkWalls = generateStreamedChunk(cx, cz);
+        const chunkWalls = this.lvl.generateChunk(cx, cz);
         this.loadedStreamChunks.set(key, chunkWalls);
         this.walls.push(...chunkWalls);
       }
     }
 
-    const unloadDist = CHUNK_LOAD_RADIUS + 1;
+    const unloadDist = loadRadius + 1;
     for (const key of Array.from(this.loadedStreamChunks.keys())) {
       const [cx, cz] = key.split('_').map(Number);
       if (Math.abs(cx - pcx) > unloadDist || Math.abs(cz - pcz) > unloadDist) {
@@ -245,8 +252,8 @@ export class XonoticEngine {
   private checkEscapeWall() {
     if (this.state.escaped) return;
     const { player } = this.state;
-    const dx = player.pos.x - ESCAPE_WALL_POS.x;
-    const dz = player.pos.z - ESCAPE_WALL_POS.z;
+    const dx = player.pos.x - this.lvl.ESCAPE_WALL_POS.x;
+    const dz = player.pos.z - this.lvl.ESCAPE_WALL_POS.z;
     if (Math.sqrt(dx * dx + dz * dz) < 2.2) {
       this.state.escaped = true;
     }
@@ -490,7 +497,7 @@ export class XonoticEngine {
     const dx = to.x - from.x;
     const dz = to.z - from.z;
     for (const wall of this.walls) {
-      if (wall.id === ESCAPE_WALL_ID || wall.emissive) continue;
+      if (wall.id === this.lvl.ESCAPE_WALL_ID || wall.emissive || wall.doorDecor) continue;
       const isPlatform =
         wall.id.startsWith('floor') ||
         wall.id.startsWith('bridge') ||
@@ -596,7 +603,8 @@ export class XonoticEngine {
   // Pure wall geometries bound checks
   private checkWallCollision(pos: { x: number; y: number; z: number }, radius: number): boolean {
     for (const wall of this.walls) {
-      if (wall.id === ESCAPE_WALL_ID) continue; // not a real wall — projectiles pass through it too
+      if (wall.id === this.lvl.ESCAPE_WALL_ID) continue; // not a real wall — projectiles pass through it too
+      if (wall.doorDecor) continue; // flush hotel door set-dressing — never collidable
       const halfSize = { x: wall.size.x / 2, y: wall.size.y / 2, z: wall.size.z / 2 };
       
       const inX = pos.x + radius > wall.pos.x - halfSize.x && pos.x - radius < wall.pos.x + halfSize.x;
@@ -621,14 +629,16 @@ export class XonoticEngine {
       // enough single-frame vertical jump (rocket/grenade splash, chained bunny-hops) can move the
       // player past the thin ceiling slab before the wall-overlap check below ever sees it, letting
       // them fly around in the void above the map. The room is never taller than WALL_H anywhere.
-      const ceilingY = WALL_H - 0.3;
+      const ceilingY = this.lvl.WALL_H - 0.3;
       if (pos.y > ceilingY) { pos.y = ceilingY; vel.y = Math.min(vel.y, 0); }
     }
 
     // Check dynamic wall objects
     for (const wall of this.walls) {
       // The escape wall is a trigger, not a wall — walk straight through it (see checkEscapeWall)
-      if (wall.id === ESCAPE_WALL_ID) continue;
+      if (wall.id === this.lvl.ESCAPE_WALL_ID) continue;
+      // Flush hotel-door set-dressing sits on a solid block face — never collide with it
+      if (wall.doorDecor) continue;
       // NPCs skip collisionOnly building walls (they can enter buildings; lab walls are not collisionOnly)
       if (skipCollisionOnly && wall.collisionOnly) continue;
 

@@ -18,12 +18,14 @@ import {
   KeyRound,
   Copy,
   Check,
+  Building2,
+  DoorOpen,
 } from 'lucide-react';
 
 interface LobbyProps {
   user: any;
   onLogout: () => void;
-  onStartGame: (roomId: string, isHost: boolean, currentPlayers: any[]) => void;
+  onStartGame: (roomId: string, isHost: boolean, currentPlayers: any[], level: 1 | 2) => void;
 }
 
 interface Room {
@@ -59,6 +61,9 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
   const [roomNameInput, setRoomNameInput] = useState('');
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [codeCopied, setCodeCopied] = useState(false);
+
+  // Which Backrooms level to run — the player just picks in the lobby, no unlock gating.
+  const [selectedLevel, setSelectedLevel] = useState<1 | 2>(1);
 
   // Real-time states
   const [onlineLobbyUsers, setOnlineLobbyUsers] = useState<any[]>([]);
@@ -133,7 +138,7 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
         setRoomPlayers(players);
       })
       .on('broadcast', { event: 'start-game' }, (payload: any) => {
-        onStartGame(activeRoom.id, isHost, payload.payload.players);
+        onStartGame(activeRoom.id, isHost, payload.payload.players, payload.payload.level === 2 ? 2 : 1);
       })
       .on('broadcast', { event: 'room-closed' }, () => {
         alert('방이 방장에 의해 해체되었습니다.');
@@ -215,11 +220,12 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
 
     // Host starts locally right away — the broadcast to other players happens in the background,
     // nothing to wait on.
-    onStartGame(activeRoom.id, true, roomPlayers);
+    const runLevel: 1 | 2 = selectedLevel;
+    onStartGame(activeRoom.id, true, roomPlayers, runLevel);
     roomChannelRef.current?.send({
       type: 'broadcast',
       event: 'start-game',
-      payload: { players: roomPlayers },
+      payload: { players: roomPlayers, level: runLevel },
     });
   };
 
@@ -370,6 +376,52 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
                 exit={{ opacity: 0, x: 20 }}
                 className="md:col-span-2 space-y-6 flex flex-col"
               >
+                {/* Level Select Panel */}
+                <div className="bg-slate-900/60 backdrop-blur-md rounded-2xl border border-white/10 p-5 shadow-xl">
+                  <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-wider mb-3">
+                    레벨 선택 (Select Level)
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLevel(1)}
+                      className={`text-left p-4 rounded-xl border transition-all cursor-pointer ${
+                        selectedLevel === 1
+                          ? 'border-cyan-500/70 bg-cyan-500/10 shadow-[0_0_18px_rgba(6,182,212,0.15)]'
+                          : 'border-white/10 bg-white/5 hover:border-white/25'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 text-yellow-400">
+                        <DoorOpen className="w-4 h-4" />
+                        <span className="font-black text-sm">LEVEL 1</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 font-bold mt-1.5">노란 미로</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                        축축한 벽지, 웅웅대는 형광등. 깜빡이는 벽을 찾아 탈출하세요.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLevel(2)}
+                      className={`text-left p-4 rounded-xl border transition-all cursor-pointer ${
+                        selectedLevel === 2
+                          ? 'border-amber-500/70 bg-amber-500/10 shadow-[0_0_18px_rgba(245,158,11,0.15)]'
+                          : 'border-white/10 bg-white/5 hover:border-white/25'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 text-amber-300">
+                        <Building2 className="w-4 h-4" />
+                        <span className="font-black text-sm">LEVEL 2</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 font-bold mt-1.5">오래된 호텔</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                        끝없는 호텔 복도. 갈색 문이 늘어선 미로 같은 통로.
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
                 {/* Room Creation Panel */}
                 <div className="bg-slate-900/60 backdrop-blur-md rounded-2xl border border-white/10 p-5 shadow-xl">
                   <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-wider mb-3">
@@ -455,6 +507,27 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
               <div className="text-center py-4">
                 <h2 className="text-2xl font-black text-white">{activeRoom.name}</h2>
                 <p className="text-xs text-slate-400 mt-1">방장: {activeRoom.host_username}</p>
+
+                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-950/70 border border-white/10 text-xs">
+                  {selectedLevel === 2
+                    ? <Building2 className="w-3.5 h-3.5 text-amber-300" />
+                    : <DoorOpen className="w-3.5 h-3.5 text-yellow-400" />}
+                  <span className="font-bold text-slate-200">
+                    {selectedLevel === 2 ? 'LEVEL 2 · 오래된 호텔' : 'LEVEL 1 · 노란 미로'}
+                  </span>
+                  {activeRoom.host_id === user.id && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLevel(l => (l === 1 ? 2 : 1))}
+                      className="ml-1 text-[10px] text-cyan-400 hover:text-cyan-300 font-mono uppercase tracking-wide cursor-pointer"
+                    >
+                      변경
+                    </button>
+                  )}
+                </div>
+                {activeRoom.host_id !== user.id && (
+                  <p className="text-[10px] text-slate-500 mt-1.5">레벨은 방장이 시작할 때 확정됩니다</p>
+                )}
 
                 <button
                   onClick={handleCopyCode}

@@ -6,7 +6,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { XonoticGameState, Bot, PickupItem } from '../game/xonoticTypes';
-import { getXonoticMap, generateStreamedChunk, isHubChunk, chunkKey, CHUNK_SIZE, CHUNK_LOAD_RADIUS, ESCAPE_WALL_ID, getPuddles, PUDDLE_COLOR, getMannequins } from '../game/xonoticMap';
+import { PUDDLE_COLOR } from '../game/xonoticMap';
+import { getLevelModule, chunkKey } from '../game/levels';
+import { BLOCK as L2_BLOCK, L2_WALL_H } from '../game/xonoticMapLevel2';
 
 // Builds a single motionless, faceless human-shaped mannequin — static set dressing meant to
 // startle whoever's flashlight lands on it and briefly reads as "is that a person?" before it's
@@ -665,6 +667,7 @@ const disposeHierarchy = (obj: THREE.Object3D) => {
 interface XonoticCanvasProps {
   state: XonoticGameState;
   gameStateRef?: React.RefObject<XonoticGameState | null>;
+  level?: 1 | 2;
   onPointerLockChange: (locked: boolean) => void;
   onMouseMove: (dx: number, dy: number) => void;
 }
@@ -672,6 +675,7 @@ interface XonoticCanvasProps {
 export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
   state,
   gameStateRef,
+  level = 1,
   onPointerLockChange,
   onMouseMove,
 }) => {
@@ -699,10 +703,16 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
   useEffect(() => {
     if (!mountRef.current) return;
 
-    // 1. Create Scene & the sickly fluorescent-lit Backrooms haze
+    const lvl = getLevelModule(level);
+    const isL2 = lvl.level === 2;
+    const ESCAPE_WALL_ID = lvl.ESCAPE_WALL_ID;
+
+    // 1. Create Scene & the sickly haze. Level 1 fades to near-black; Level 2's hotel is a touch
+    // warmer and its halls choke off into darkness sooner (denser fog) so you never see far.
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#0a0906'); // near-black — distant unlit maze must fade to dark, not a bright haze
-    scene.fog = new THREE.FogExp2('#0a0906', 0.006); // matches background so far geometry fades to black, not a glowing horizon
+    const hazeColor = isL2 ? '#0d0a06' : '#0a0906';
+    scene.background = new THREE.Color(hazeColor);
+    scene.fog = new THREE.FogExp2(hazeColor, isL2 ? 0.016 : 0.006);
     sceneRef.current = scene;
 
     // 2. Camera Setup (Generous 85-degree Quake-style Field of View)
@@ -725,7 +735,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // no light emitted; see wall.emissive material below). The flashlight the player carries
     // (flashlightSpot below) is the ONLY real light source; this rig is just a near-black ambient
     // floor so the player isn't in literal 100%-black outside the flashlight cone.
-    const ambientLight = new THREE.AmbientLight('#fef9c3', 0.02);
+    const ambientLight = new THREE.AmbientLight(isL2 ? '#fff1d0' : '#fef9c3', isL2 ? 0.07 : 0.02);
     scene.add(ambientLight);
 
     const dirLight = new THREE.DirectionalLight('#fdf6b2', 0.01); // near-negligible overhead fill, no harsh directional sun
@@ -733,8 +743,24 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     dirLight.castShadow = false; // no sun-like directional shadow — flat, unlit look
     scene.add(dirLight);
 
+    // Level 2 only: a faint warm-from-above / cool-from-below hemisphere so the hotel corridors have
+    // some vertical shape, plus a small pool of point lights that snap to whichever ceiling tubes are
+    // nearest the player each frame (see animate()) — that's what makes the fluorescents actually
+    // read as "lit" and pools of light recede down the halls. The flashlight is still the main source.
+    const hotelPointLights: THREE.PointLight[] = [];
+    if (isL2) {
+      const hemi = new THREE.HemisphereLight('#3a3120', '#100c06', 0.18);
+      scene.add(hemi);
+      for (let i = 0; i < 5; i++) {
+        const pl = new THREE.PointLight('#ffe9bd', 0, 24, 2);
+        pl.castShadow = false;
+        scene.add(pl);
+        hotelPointLights.push(pl);
+      }
+    }
+
     const floorMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#D2B48C'),
+      color: new THREE.Color(isL2 ? '#4a3120' : '#D2B48C'),
       roughness: 0.92,
       metalness: 0.0,
     });
@@ -782,15 +808,131 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       return tex;
     })();
 
-    // 5. Build static map geometry — the Backrooms: damp yellow wallpaper, popcorn ceilings, dead tubes
-    const map = getXonoticMap();
+    // ── Level 2 hotel surfaces ────────────────────────────────────────────────────────────────
+    // One wall texture does all the work: dark walnut wainscoting on the bottom third, a chair rail,
+    // yellowed-beige wallpaper above, and a painted-shut brown door dead-centre. Every room-block
+    // face repeats it 3× across, so doors march evenly down both sides of every corridor with no
+    // extra geometry. `withDoors=false` gives the plain variant used on dead-end capping panels.
+    const makeHotelWallTexture = (withDoors: boolean) => {
+      const w = 256, h = 256;
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d')!;
+      const railV = 0.4; // fraction of height where wainscot meets wallpaper
+
+      // wallpaper (upper)
+      ctx.fillStyle = '#b5a15c';
+      ctx.fillRect(0, 0, w, h * (1 - railV));
+      // faint vertical stripe
+      ctx.fillStyle = 'rgba(150,132,74,0.16)';
+      for (let x = 0; x < w; x += 16) ctx.fillRect(x, 0, 7, h * (1 - railV));
+      // wainscot (lower)
+      ctx.fillStyle = '#3a2718';
+      ctx.fillRect(0, h * (1 - railV), w, h * railV);
+      // panel grooves in the wood
+      ctx.strokeStyle = 'rgba(20,12,6,0.7)';
+      ctx.lineWidth = 2;
+      for (let x = 18; x < w; x += 40) {
+        ctx.strokeRect(x, h * (1 - railV) + 12, 26, h * railV - 26);
+      }
+      // chair rail
+      ctx.fillStyle = '#5c4126';
+      ctx.fillRect(0, h * (1 - railV) - 5, w, 8);
+
+      if (withDoors) {
+        const dw = w * 0.42, dh = h * 0.82;
+        const dx = (w - dw) / 2, dy = h - dh - 6;
+        ctx.fillStyle = '#2a1a10';
+        ctx.fillRect(dx - 5, dy - 5, dw + 10, dh + 10); // frame
+        ctx.fillStyle = '#40291a';
+        ctx.fillRect(dx, dy, dw, dh);                    // door slab
+        ctx.strokeStyle = 'rgba(20,10,4,0.8)';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(dx + 10, dy + 12, dw - 20, dh * 0.42);          // upper panel
+        ctx.strokeRect(dx + 10, dy + dh * 0.52, dw - 20, dh * 0.42);   // lower panel
+        ctx.fillStyle = '#c9a34e';
+        ctx.beginPath();
+        ctx.arc(dx + dw - 16, dy + dh * 0.5, 4, 0, Math.PI * 2);       // brass knob
+        ctx.fill();
+      }
+
+      // grain / dirt noise
+      const img = ctx.getImageData(0, 0, w, h);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const n = (Math.random() - 0.5) * 18;
+        img.data[i] += n; img.data[i + 1] += n * 0.85; img.data[i + 2] += n * 0.6;
+      }
+      ctx.putImageData(img, 0, 0);
+
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(withDoors ? 3 : 1, 1);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    };
+
+    const hotelWallTex = isL2 ? makeHotelWallTexture(true) : null;
+    const hotelPlainTex = isL2 ? makeHotelWallTexture(false) : null;
+
+    const hotelCarpetTex = (() => {
+      if (!isL2) return null;
+      const s = 128;
+      const c = document.createElement('canvas');
+      c.width = s; c.height = s;
+      const ctx = c.getContext('2d')!;
+      ctx.fillStyle = '#4a3120';
+      ctx.fillRect(0, 0, s, s);
+      // repeating diamond / trellis motif in two off-browns
+      ctx.strokeStyle = '#5c3f28';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, s / 2); ctx.lineTo(s / 2, 0); ctx.lineTo(s, s / 2); ctx.lineTo(s / 2, s); ctx.closePath();
+      ctx.stroke();
+      ctx.strokeStyle = '#37241533';
+      ctx.beginPath();
+      ctx.moveTo(0, 0); ctx.lineTo(s, s); ctx.moveTo(s, 0); ctx.lineTo(0, s);
+      ctx.stroke();
+      const img = ctx.getImageData(0, 0, s, s);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const n = (Math.random() - 0.5) * 22;
+        img.data[i] += n; img.data[i + 1] += n * 0.8; img.data[i + 2] += n * 0.6;
+      }
+      ctx.putImageData(img, 0, 0);
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(48, 48);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    })();
+    if (hotelCarpetTex) { floorMat.map = hotelCarpetTex; floorMat.color.set('#ffffff'); }
+
+    // Shared Level 2 materials (one instance each, reused by hub + every streamed chunk).
+    const hotelWallMat = isL2 ? new THREE.MeshStandardMaterial({ color: 0xffffff, map: hotelWallTex!, roughness: 0.9, metalness: 0.0 }) : null;
+    const hotelPlainMat = isL2 ? new THREE.MeshStandardMaterial({ color: 0xffffff, map: hotelPlainTex!, roughness: 0.9, metalness: 0.0 }) : null;
+    const hotelCeilingMat = isL2 ? new THREE.MeshStandardMaterial({ color: new THREE.Color('#c7bb98'), roughness: 0.95, metalness: 0.0 }) : null;
+    // Level 2 tubes actually glow (self-lit look); real illumination comes from hotelPointLights.
+    const hotelTubeMat = isL2 ? new THREE.MeshStandardMaterial({ color: '#fff3d0', emissive: new THREE.Color('#fff3d0'), emissiveIntensity: 1.4, roughness: 0.4 }) : null;
+
+    const l2MaterialFor = (wall: { id: string; color: string; emissive?: boolean; flicker?: boolean }): THREE.Material => {
+      if (wall.id === 'l2_floor_main' || wall.id.startsWith('l2_floor_')) return floorMat;
+      if (wall.id === 'l2_ceiling_main' || wall.id.endsWith('_ceiling')) return hotelCeilingMat!;
+      if (wall.emissive) return hotelTubeMat!;
+      if (wall.flicker) return new THREE.MeshStandardMaterial({ color: '#c8b98a', emissive: new THREE.Color('#fff3b0'), emissiveIntensity: 0.4, roughness: 0.6 });
+      if (wall.id.includes('_blk_')) return hotelPlainMat!;
+      return hotelWallMat!;
+    };
+
+    // 5. Build static map geometry
+    const map = lvl.getMap();
     let escapeWallMesh: THREE.Mesh | null = null;
     map.walls.forEach(wall => {
       if (wall.collisionOnly) return; // Invisible collision-only walls
       const geometry = new THREE.BoxGeometry(wall.size.x, wall.size.y, wall.size.z);
 
       let material: THREE.Material;
-      if (wall.id === 'floor_main') {
+      if (isL2) {
+        material = l2MaterialFor(wall);
+      } else if (wall.id === 'floor_main') {
         material = floorMat;
       } else if (wall.id === 'ceiling_main') {
         // Stained popcorn ceiling — its own flat tone, not the bright wall wallpaper
@@ -839,7 +981,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       transparent: true,
       opacity: 0.85,
     });
-    getPuddles().forEach(p => {
+    lvl.getPuddles().forEach(p => {
       const puddle = new THREE.Mesh(new THREE.CircleGeometry(p.radius, 16), puddleMat);
       puddle.rotation.x = -Math.PI / 2;
       puddle.position.set(p.x, 0.02, p.z);
@@ -850,7 +992,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // the flashlight is currently on it (see the peekaboo check in animate() below): light it up
     // once, look away, light it up again — the second time it's caught in the beam, it vanishes.
     const mannequinStates: { group: THREE.Group; headPos: THREE.Vector3; litCount: number; wasLit: boolean; alive: boolean }[] = [];
-    getMannequins().forEach((m, i) => {
+    lvl.getMannequins().forEach((m, i) => {
       const mannequin = buildMannequinModel(i);
       mannequin.position.set(m.x, 0, m.z);
       mannequin.rotation.y = m.rotationY;
@@ -889,13 +1031,19 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     const loadStreamedChunk = (cx: number, cz: number) => {
       const key = chunkKey(cx, cz);
       if (streamedChunkMeshes.has(key)) return;
-      const chunkWalls = generateStreamedChunk(cx, cz);
+      const chunkWalls = lvl.generateChunk(cx, cz);
       const meshes: THREE.Mesh[] = chunkWalls.map(wall => {
         const geometry = new THREE.BoxGeometry(wall.size.x, wall.size.y, wall.size.z);
-        const material = wall.id.startsWith('floor_') ? streamedFloorMat
-          : wall.emissive ? streamedLightMat
-          : wall.id.endsWith('_ceiling') ? streamedCeilingMat
-          : streamedWallMat;
+        const material = isL2
+          ? (wall.id.startsWith('l2_floor_') ? floorMat
+            : wall.emissive ? hotelTubeMat!
+            : wall.id.endsWith('_ceiling') ? hotelCeilingMat!
+            : wall.id.includes('_blk_') ? hotelPlainMat!
+            : hotelWallMat!)
+          : (wall.id.startsWith('floor_') ? streamedFloorMat
+            : wall.emissive ? streamedLightMat
+            : wall.id.endsWith('_ceiling') ? streamedCeilingMat
+            : streamedWallMat);
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.set(wall.pos.x, wall.pos.y, wall.pos.z);
         scene.add(mesh);
@@ -907,22 +1055,22 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // Loads/unloads chunks around the player's current position; cheap to call every frame since
     // it only does real work when the player has actually crossed into a new chunk.
     const updateStreamedChunks = (px: number, pz: number) => {
-      const pcx = Math.floor(px / CHUNK_SIZE);
-      const pcz = Math.floor(pz / CHUNK_SIZE);
+      const pcx = Math.floor(px / lvl.CHUNK_SIZE);
+      const pcz = Math.floor(pz / lvl.CHUNK_SIZE);
       if (pcx === lastStreamCx && pcz === lastStreamCz) return;
       lastStreamCx = pcx;
       lastStreamCz = pcz;
 
-      for (let dx = -CHUNK_LOAD_RADIUS; dx <= CHUNK_LOAD_RADIUS; dx++) {
-        for (let dz = -CHUNK_LOAD_RADIUS; dz <= CHUNK_LOAD_RADIUS; dz++) {
+      for (let dx = -lvl.CHUNK_LOAD_RADIUS; dx <= lvl.CHUNK_LOAD_RADIUS; dx++) {
+        for (let dz = -lvl.CHUNK_LOAD_RADIUS; dz <= lvl.CHUNK_LOAD_RADIUS; dz++) {
           const cx = pcx + dx;
           const cz = pcz + dz;
-          if (isHubChunk(cx, cz)) continue;
+          if (lvl.isHubChunk(cx, cz)) continue;
           loadStreamedChunk(cx, cz);
         }
       }
 
-      const unloadDist = CHUNK_LOAD_RADIUS + 1;
+      const unloadDist = lvl.CHUNK_LOAD_RADIUS + 1;
       Array.from(streamedChunkMeshes.keys()).forEach(key => {
         const [cx, cz] = key.split('_').map(Number);
         if (Math.abs(cx - pcx) > unloadDist || Math.abs(cz - pcz) > unloadDist) {
@@ -1043,6 +1191,39 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         flashlightSpot.position.copy(camera.position);
         _spotTargetPos.copy(camera.position).addScaledVector(_camDir, 15);
         flashlightTarget.position.copy(_spotTargetPos);
+
+        // B1b. Level 2 only: snap the small pool of point lights to whichever ceiling tubes are
+        // nearest the player, so the corridors read as lit and light pools recede down the halls.
+        // Tube positions are analytic (grid of corridor centrelines), so no scene search is needed.
+        if (hotelPointLights.length > 0) {
+          const B = L2_BLOCK;
+          const ly = L2_WALL_H - 0.35;
+          const iCol = Math.round(player.pos.x / B);
+          const iRow = Math.round(player.pos.z / B);
+          // best 5 candidates by squared distance
+          const bx = [0, 0, 0, 0, 0], bz = [0, 0, 0, 0, 0], bd = [Infinity, Infinity, Infinity, Infinity, Infinity];
+          const consider = (cx: number, cz: number) => {
+            const dx = cx - player.pos.x, dz = cz - player.pos.z;
+            const d2 = dx * dx + dz * dz;
+            let s = 4;
+            if (d2 >= bd[s]) return;
+            while (s > 0 && d2 < bd[s - 1]) { bd[s] = bd[s - 1]; bx[s] = bx[s - 1]; bz[s] = bz[s - 1]; s--; }
+            bd[s] = d2; bx[s] = cx; bz[s] = cz;
+          };
+          for (let di = -1; di <= 1; di++) {
+            for (let dk = -1; dk <= 1; dk++) {
+              consider((iCol + di) * B, (iRow + dk + 0.5) * B);   // tube on a N-S corridor
+              consider((iCol + di + 0.5) * B, (iRow + dk) * B);   // tube on an E-W corridor
+            }
+          }
+          for (let n = 0; n < hotelPointLights.length; n++) {
+            const pl = hotelPointLights[n];
+            pl.position.set(bx[n], ly, bz[n]);
+            const dist = Math.sqrt(bd[n]);
+            const targetI = bd[n] === Infinity ? 0 : Math.max(0, 2.7 * (1 - dist / 30));
+            pl.intensity += (targetI - pl.intensity) * 0.18;
+          }
+        }
 
         // B2. Mannequin peekaboo — catch one in the beam, look away, catch it in the beam again
         // and it's gone. A rising edge (not-lit -> lit) counts as one "catch"; two catches kills
@@ -1336,6 +1517,9 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         streamedFloorMat.dispose();
         puddleMat.dispose();
         wallpaperTexture.dispose();
+        [hotelWallTex, hotelPlainTex, hotelCarpetTex].forEach(t => t?.dispose());
+        [hotelWallMat, hotelPlainMat, hotelCeilingMat, hotelTubeMat].forEach(m => m?.dispose());
+        floorMat.dispose();
 
         renderer.dispose();
       } catch (err) {
@@ -1514,5 +1698,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
   // Prevent React re-renders on the WebGL canvas on standard position/velocity ticks — only
   // allow updates when pointerlock hooks re-bind.
   return prevProps.onPointerLockChange === nextProps.onPointerLockChange &&
-         prevProps.onMouseMove === nextProps.onMouseMove;
+         prevProps.onMouseMove === nextProps.onMouseMove &&
+         prevProps.level === nextProps.level;
 });

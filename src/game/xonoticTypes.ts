@@ -65,6 +65,8 @@ export interface MapWall {
   puddle?: boolean;  // decorative murky floor puddle — visual only, no collision
   lightDecor?: boolean; // extra tube alongside a lit cell's primary fixture — visual density only,
                          // excluded from the roaming light-pool's target list (see XonoticCanvas.tsx)
+  doorDecor?: boolean; // Level 2 hotel door — flush set-dressing on a solid block face, never
+                        // collidable and never blocks a sightline (the block behind it does that)
 }
 
 export interface FragLog {
@@ -80,6 +82,7 @@ export interface XonoticGameState {
   pickups: PickupItem[];
   fragFeed: FragLog[];
   matchTime: number;
+  level: 1 | 2;             // which Backrooms level this run is in
   monsterWarning?: boolean; // the monster is within 7m of the player right now
   escaped?: boolean;        // found and dove through the flickering wall — the run is won
 }
