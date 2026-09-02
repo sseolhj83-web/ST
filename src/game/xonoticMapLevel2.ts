@@ -36,12 +36,12 @@ const L2_HUB_HALF = 96;                   // hub spans blocks i,j in [-4, 3]  (c
 // A safe, always-open spawn at the central 4-way crossing.
 export const L2_SPAWN_POINT = { x: 0, y: 1.5, z: 0 };
 
-// The glowing EXIT — a pass-through trigger, not a solid (see xonoticEngine.ts). Sits in the -Z
-// corridor 3 blocks from spawn, so from spawn the player can see it glowing down the hall.
-// checkEscapeWall() ends the run when the player gets within 2.2 units of it. The grid is fully
-// open so nothing can ever block the way to it.
+// The glowing EXIT — a pass-through trigger, not a solid (see xonoticEngine.ts). Sits off-axis
+// (3 blocks east, 7 blocks south of spawn) so reaching it is a real trek through the grid: the
+// player follows the HUD compass, turning at intersections. checkEscapeWall() ends the run when
+// the player gets within 2.2 units of it. The grid is fully open so nothing can ever block the way.
 export const L2_ESCAPE_WALL_ID = 'l2_escape_wall';
-export const L2_ESCAPE_WALL_POS = { x: 0, y: L2_WALL_H / 2, z: -72 };
+export const L2_ESCAPE_WALL_POS = { x: 72, y: L2_WALL_H / 2, z: -168 };
 
 // The monster's lurk-start point — mid-corridor, clear of every block (it re-leashes near the
 // player within seconds anyway, so this barely matters).
@@ -107,7 +107,7 @@ export function getLevel2Map(): { walls: MapWall[]; jumpPads: JumpPad[]; pickups
     }
   }
 
-  // The glowing EXIT — a pass-through trigger spanning the -Z corridor.
+  // The glowing EXIT — a pass-through trigger spanning the x=+72 north-south corridor.
   walls.push({
     id: L2_ESCAPE_WALL_ID,
     pos: { ...L2_ESCAPE_WALL_POS },
