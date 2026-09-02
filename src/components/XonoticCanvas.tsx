@@ -707,12 +707,13 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     const isL2 = lvl.level === 2;
     const ESCAPE_WALL_ID = lvl.ESCAPE_WALL_ID;
 
-    // 1. Create Scene & the sickly haze. Level 1 fades to near-black; Level 2's hotel is a touch
-    // warmer and its halls choke off into darkness sooner (denser fog) so you never see far.
+    // 1. Create Scene & haze. Level 1 fades to near-black (flashlight-only). Level 2's hotel is
+    // fully, flatly fluorescent-lit — no flashlight — so its haze is a warm grey the lit corridor
+    // fades into slowly, not darkness.
     const scene = new THREE.Scene();
-    const hazeColor = isL2 ? '#0d0a06' : '#0a0906';
+    const hazeColor = isL2 ? '#2b2620' : '#0a0906';
     scene.background = new THREE.Color(hazeColor);
-    scene.fog = new THREE.FogExp2(hazeColor, isL2 ? 0.016 : 0.006);
+    scene.fog = new THREE.FogExp2(hazeColor, isL2 ? 0.0075 : 0.006);
     sceneRef.current = scene;
 
     // 2. Camera Setup (Generous 85-degree Quake-style Field of View)
@@ -725,34 +726,39 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Optimizing pixel ratio to 1.5 to dramatically improve performance on 4K/Retina displays
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Beautiful soft shadows
+    // Level 2 is brightly lit — filmic tone mapping rolls off the fluorescent highlights instead of
+    // clipping them to flat white. Level 1 stays untouched (its careful darkness needs linear output).
+    if (isL2) {
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.0;
+    }
     
     // Clear any leftover elements just in case, then append
     mountRef.current.innerHTML = '';
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // 4. Lighting Rig — every fluorescent fixture in the maze is switched off (dead tube meshes,
-    // no light emitted; see wall.emissive material below). The flashlight the player carries
-    // (flashlightSpot below) is the ONLY real light source; this rig is just a near-black ambient
-    // floor so the player isn't in literal 100%-black outside the flashlight cone.
-    const ambientLight = new THREE.AmbientLight(isL2 ? '#fff1d0' : '#fef9c3', isL2 ? 0.07 : 0.02);
+    // 4. Lighting Rig.
+    //  - Level 1: every fluorescent fixture is dead (see wall.emissive material below); the
+    //    flashlight is the ONLY light source and this rig is just a near-black ambient floor.
+    //  - Level 2: NO flashlight. The hotel is flatly, brightly fluorescent-lit — a strong warm
+    //    ambient does the flat "liminal fluorescent" wash, a hemisphere adds a little ceiling/
+    //    floor gradient, and the point-light pool (below, updated in animate()) puts a brighter
+    //    hotspot directly under whichever tubes are nearest the player.
+    const ambientLight = new THREE.AmbientLight(isL2 ? '#fff4d8' : '#fef9c3', isL2 ? 0.62 : 0.02);
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight('#fdf6b2', 0.01); // near-negligible overhead fill, no harsh directional sun
+    const dirLight = new THREE.DirectionalLight(isL2 ? '#fff2cf' : '#fdf6b2', isL2 ? 0.15 : 0.01);
     dirLight.position.set(30, 80, 30);
     dirLight.castShadow = false; // no sun-like directional shadow — flat, unlit look
     scene.add(dirLight);
 
-    // Level 2 only: a faint warm-from-above / cool-from-below hemisphere so the hotel corridors have
-    // some vertical shape, plus a small pool of point lights that snap to whichever ceiling tubes are
-    // nearest the player each frame (see animate()) — that's what makes the fluorescents actually
-    // read as "lit" and pools of light recede down the halls. The flashlight is still the main source.
     const hotelPointLights: THREE.PointLight[] = [];
     if (isL2) {
-      const hemi = new THREE.HemisphereLight('#3a3120', '#100c06', 0.18);
+      const hemi = new THREE.HemisphereLight('#fff2d0', '#2a2418', 0.3);
       scene.add(hemi);
       for (let i = 0; i < 5; i++) {
-        const pl = new THREE.PointLight('#ffe9bd', 0, 24, 2);
+        const pl = new THREE.PointLight('#fff0cc', 0, 26, 2);
         pl.castShadow = false;
         scene.add(pl);
         hotelPointLights.push(pl);
@@ -910,8 +916,8 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     const hotelWallMat = isL2 ? new THREE.MeshStandardMaterial({ color: 0xffffff, map: hotelWallTex!, roughness: 0.9, metalness: 0.0 }) : null;
     const hotelPlainMat = isL2 ? new THREE.MeshStandardMaterial({ color: 0xffffff, map: hotelPlainTex!, roughness: 0.9, metalness: 0.0 }) : null;
     const hotelCeilingMat = isL2 ? new THREE.MeshStandardMaterial({ color: new THREE.Color('#c7bb98'), roughness: 0.95, metalness: 0.0 }) : null;
-    // Level 2 tubes actually glow (self-lit look); real illumination comes from hotelPointLights.
-    const hotelTubeMat = isL2 ? new THREE.MeshStandardMaterial({ color: '#fff3d0', emissive: new THREE.Color('#fff3d0'), emissiveIntensity: 1.4, roughness: 0.4 }) : null;
+    // Level 2 tubes glow bright (self-lit); flat ambient + the point-light pool do the real lighting.
+    const hotelTubeMat = isL2 ? new THREE.MeshStandardMaterial({ color: '#fff8e6', emissive: new THREE.Color('#fff6dc'), emissiveIntensity: 2.6, roughness: 0.4 }) : null;
 
     const l2MaterialFor = (wall: { id: string; color: string; emissive?: boolean; flicker?: boolean }): THREE.Material => {
       if (wall.id === 'l2_floor_main' || wall.id.startsWith('l2_floor_')) return floorMat;
@@ -1109,10 +1115,11 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     flashlightGroup.add(flLens);
 
     scene.add(flashlightGroup);
+    flashlightGroup.visible = !isL2; // Level 2 is fully lit — no handheld flashlight
 
-    // Always-on flashlight SpotLight — the player's actual light source in the pitch-dark maze.
-    // No shadow casting, matching the deliberately shadow-free ambient/directional rig above.
-    const flashlightSpot = new THREE.SpotLight('#fff4d6', 35, 48, 0.68, 0.35, 2);
+    // Always-on flashlight SpotLight — the player's light source in Level 1's pitch-dark maze.
+    // Level 2 is fluorescent-lit, so its spotlight contributes nothing (intensity 0).
+    const flashlightSpot = new THREE.SpotLight('#fff4d6', isL2 ? 0 : 35, 48, 0.68, 0.35, 2);
     flashlightSpot.castShadow = false;
     scene.add(flashlightSpot);
     const flashlightTarget = new THREE.Object3D();
@@ -1172,7 +1179,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         camera.getWorldDirection(_camDir);
         _rightVec.crossVectors(_camDir, _upVec).normalize();
 
-        if (flashlightGroup) {
+        if (flashlightGroup && !isL2) {
           const rightOffset = 0.22;
           const downOffset = -0.26;
           const forwardOffset = -0.58;
@@ -1220,7 +1227,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
             const pl = hotelPointLights[n];
             pl.position.set(bx[n], ly, bz[n]);
             const dist = Math.sqrt(bd[n]);
-            const targetI = bd[n] === Infinity ? 0 : Math.max(0, 2.7 * (1 - dist / 30));
+            const targetI = bd[n] === Infinity ? 0 : Math.max(0, 2.0 * (1 - dist / 26));
             pl.intensity += (targetI - pl.intensity) * 0.18;
           }
         }
