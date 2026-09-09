@@ -77,8 +77,8 @@ function buildMannequinModel(index: number): THREE.Group {
 // Helper to build procedural low-poly Demogorgon models — the single Backrooms monster
 function buildDemogorgonModel(bot: Bot): THREE.Group {
   const group = new THREE.Group();
-  const indexStr = bot.id.replace('enemy_', '');
-  const index = parseInt(indexStr, 10) || 0;
+  const idNum = bot.id.match(/(\d+)$/);
+  const index = idNum ? parseInt(idNum[1], 10) : 0;
   const isStrong = bot.name.includes('우두머리') || bot.name.includes('강한');
 
   // Base materials helper
@@ -1304,12 +1304,15 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         stateVal.bots.filter(b => !b.isTeammate).forEach(bot => {
           let botGroup = botMeshes.get(bot.id);
           if (!botGroup) {
+            // Build the (expensive) rig lazily — a lurking, hidden stalker costs nothing until the
+            // frame it first reveals itself.
+            if (bot.isHidden) return;
             botGroup = buildDemogorgonModel(bot);
             scene.add(botGroup);
             botMeshes.set(bot.id, botGroup);
           }
 
-          // The monster is only rendered while it's actively hunting — otherwise it's lurking, unseen
+          // Hidden while lurking; visible while hunting or holding a blockade.
           botGroup.visible = !bot.isHidden;
 
           // Rotate bot group to face direction of movement

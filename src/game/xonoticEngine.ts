@@ -62,7 +62,7 @@ export class XonoticEngine {
         score: 0,
         deaths: 0,
       },
-      bots: this.createMonster(),
+      bots: this.createMonsters(),
       pickups: JSON.parse(JSON.stringify(this.pickups)), // deep clone initial states
       fragFeed: [],
       matchTime: 0,
@@ -72,26 +72,67 @@ export class XonoticEngine {
     };
   }
 
-  // The single, unkillable Backrooms entity. Starts far off and hidden — it only becomes visible
-  // once updateMonsterAI decides to ambush the player.
-  private createMonster(): Bot[] {
-    return [{
-      id: 'the_monster',
-      name: '데모고르곤',
-      pos: { ...this.lvl.MONSTER_SPAWN }, // mid-corridor / open ring, clear of every wall
-      vel: { x: 0, y: 0, z: 0 },
-      health: 999999,
-      maxHealth: 999999,
-      color: '#050505',
-      radius: 1.15, // bigger than the player's own 0.8 collision radius
-      lastMeleeTime: 0,
-      targetPos: null,
-      state: 'wandering', // lurking
-      stateTimer: 4 + Math.random() * 6,
-      isMonster: true,
-      invulnerable: true,
-      isHidden: true,
-    }];
+  // The 4 Level-2 guard posts — fixed points fanned across the approach to the exit, so the exit is
+  // always ringed by a spread-out blockade the player has to break through. `packIndex` 1-4 map to
+  // these. Kept as a method so spawn placement and the AI agree.
+  private guardPost(packIndex: number): { x: number; z: number } {
+    const exit = this.lvl.ESCAPE_WALL_POS;
+    const spawn = this.lvl.SPAWN_POINT;
+    // unit vector from the exit back toward spawn (the side the player approaches from) + its perp
+    let ax = spawn.x - exit.x, az = spawn.z - exit.z;
+    const al = Math.hypot(ax, az) || 1;
+    ax /= al; az /= al;
+    const px = az, pz = -ax; // perpendicular
+    const FWD = [15, 10, 10, 15];   // how far out along the approach
+    const LAT = [-11, -4, 4, 11];   // lateral spread
+    const s = (packIndex - 1) % 4;
+    return { x: exit.x + ax * FWD[s] + px * LAT[s], z: exit.z + az * FWD[s] + pz * LAT[s] };
+  }
+
+  // The Backrooms entities. Level 1: one lone stalker that lurks unseen and ambushes. Level 2: a
+  // pack of 5 — index 0 is that same invisible stalker, indices 1-4 are visible guards that ring the
+  // exit and try to cut off the escape (see updateMonsterAI).
+  private createMonsters(): Bot[] {
+    const count = this.level === 2 ? 5 : 1;
+    const spawn = this.lvl.SPAWN_POINT;
+
+    const monsters: Bot[] = [];
+    for (let i = 0; i < count; i++) {
+      // Level 1 keeps its lone monster's original far spawn. Level 2: index 0 = stalker near spawn,
+      // 1-4 = guards spawned straight onto their posts by the exit.
+      let px: number, pz: number;
+      if (count === 1) {
+        px = this.lvl.MONSTER_SPAWN.x;
+        pz = this.lvl.MONSTER_SPAWN.z;
+      } else if (i === 0) {
+        px = spawn.x + 5;
+        pz = spawn.z + 5;
+      } else {
+        const post = this.guardPost(i);
+        px = post.x;
+        pz = post.z;
+      }
+      monsters.push({
+        id: count === 1 ? 'the_monster' : `the_monster_${i}`,
+        name: '데모고르곤',
+        pos: { x: px, y: 2, z: pz },
+        vel: { x: 0, y: 0, z: 0 },
+        health: 999999,
+        maxHealth: 999999,
+        color: '#050505',
+        radius: 1.1 + (i % 3) * 0.07,
+        lastMeleeTime: 0,
+        targetPos: null,
+        state: 'wandering',
+        stateTimer: 3 + Math.random() * 6 + i * 1.4,
+        isMonster: true,
+        invulnerable: true,
+        // Interceptors (1-4) are a visible blockade from the start; only the stalker (0) hides.
+        isHidden: i === 0,
+        packIndex: i,
+      });
+    }
+    return monsters;
   }
 
   public updateInputs(
@@ -259,26 +300,24 @@ export class XonoticEngine {
     }
   }
 
-  // 7 minutes with no escape: the monster manifests somewhere within 5m of the player and relentlessly
-  // hunts them down. It doesn't teleport right on top of / directly in front of them, and it still has
-  // to actually close the distance and be seen (same line-of-sight + view-cone rule as any other kill)
-  // — no free damage just because the timer ran out. Only fires once; after that the normal hunting AI
-  // takes over.
+  // 7 minutes with no escape: every monster manifests within a few metres of the player and hunts
+  // relentlessly. They don't teleport right on top of / directly in front of them, and still have to
+  // close the distance and be seen (same line-of-sight + view-cone rule as any other kill) — no free
+  // damage just because the timer ran out. Only fires once; after that the normal hunting AI takes over.
   private checkTimeoutDeath() {
     const { player } = this.state;
     if (this.state.escaped || player.health <= 0 || this.state.matchTime < 420) return;
     if (this.timeoutManifested) return;
     this.timeoutManifested = true;
 
-    const monster = this.state.bots.find(b => b.isMonster);
-    if (monster) {
-      const angle = Math.random() * Math.PI * 2;
-      const dist = 2 + Math.random() * 3; // 2-5m away, in a random direction
+    this.state.bots.filter(b => b.isMonster).forEach((monster, i, arr) => {
+      const angle = (i / arr.length) * Math.PI * 2 + Math.random() * 0.6;
+      const dist = 2.5 + Math.random() * 3.5; // 2.5-6m away
       monster.pos = { x: player.pos.x + Math.cos(angle) * dist, y: player.pos.y, z: player.pos.z + Math.sin(angle) * dist };
       monster.isHidden = false;
       monster.state = 'hunting';
-      monster.stateTimer = 9999; // never gives up and goes back to lurking once manifested
-    }
+      monster.stateTimer = 9999; // never gives up once manifested
+    });
   }
 
   public connectRealtime(roomId: string, userId: string, supabaseClient: any, username: string) {
@@ -371,16 +410,24 @@ export class XonoticEngine {
 
   }
 
-  // The monster: lurks unseen somewhere loosely near the player, occasionally rolls the dice to
-  // ambush (becomes visible and beelines for a kill), and gives up and vanishes again if it can't
-  // catch them. Also still drives any real online players riding along in `bots` — those just get
-  // dead-reckoning physics, no AI.
+  // Monster AI.
+  //  - The stalker (Level 1's lone monster / Level 2 pack index 0) lurks unseen on a short leash and
+  //    rolls to ambush, then vanishes again if it can't catch the player.
+  //  - Level 2 interceptors (pack indices 1-4) are visible from the start and hold a fanned-out
+  //    formation between the player and the exit — a moving blockade on the escape route. They charge
+  //    when the player gets close or makes a break for the exit, and a separation force keeps the
+  //    pack from ever bunching into a single clump.
+  // Also drives any real online players riding along in `bots` (dead-reckoning physics, no AI).
   private updateMonsterAI(dt: number) {
     const { bots, player } = this.state;
     let nearestMonsterDist = Infinity;
 
+    const exit = this.lvl.ESCAPE_WALL_POS;
+    const playerExitDist = Math.hypot(exit.x - player.pos.x, exit.z - player.pos.z);
+    const huntingCount = bots.filter(b => b.isMonster && b.state === 'hunting').length;
+    const SEP = 5.5; // pack members repel each other within this radius — never a single clump
+
     bots.forEach(bot => {
-      // Remote online players: apply dead-reckoning physics only, no AI
       if (bot.isRemotePlayer) {
         bot.vel.y += this.gravity * dt;
         bot.pos.x += bot.vel.x * dt;
@@ -395,93 +442,148 @@ export class XonoticEngine {
       const pdz = player.pos.z - bot.pos.z;
       const distToPlayer = Math.sqrt(pdx * pdx + pdz * pdz);
       nearestMonsterDist = Math.min(nearestMonsterDist, distToPlayer);
-
       bot.stateTimer -= dt;
 
-      // The monster is always kept on a short leash around the player — it never wanders far
-      // enough to lose track of them. If something (a chase through the maze, a stream/unload
-      // hiccup) ever pushes it past the leash radius, it drops whatever it was doing and beelines
-      // back in, at a speed faster than the player's own top sprint so the gap always closes.
-      const LEASH_RADIUS = 7;
-      const isLeashPulling = distToPlayer > LEASH_RADIUS;
+      const isInterceptor = (bot.packIndex ?? 0) >= 1;
+      let goalX: number, goalZ: number, speed: number;
 
-      if (isLeashPulling) {
-        bot.targetPos = { ...player.pos };
-      } else if (bot.state !== 'hunting') {
-        // Lurking: drift to a spot within the leash, out of sight, and periodically roll for an ambush.
-        if (bot.stateTimer <= 0) {
-          bot.stateTimer = 2 + Math.random() * 3;
-          const angle = Math.random() * Math.PI * 2;
-          const dist = 3 + Math.random() * (LEASH_RADIUS - 3);
-          bot.targetPos = { x: player.pos.x + Math.cos(angle) * dist, y: 1.5, z: player.pos.z + Math.sin(angle) * dist };
+      if (isInterceptor) {
+        // Guard the exit. Off-alert it holds a post ringing the exit. As the player closes on the
+        // exit it moves to interpose just in front of them; inside the commit radius it charges.
+        const post = this.guardPost(bot.packIndex ?? 1);
+        const alerted = playerExitDist < 42;
+        const commit = playerExitDist < 24;
 
-          if (Math.random() < 0.22) {
-            bot.state = 'hunting';
-            bot.isHidden = false;
-            bot.stateTimer = 22; // gives up after this long if it can't catch the player
+        if (bot.state === 'hunting') {
+          goalX = player.pos.x; goalZ = player.pos.z;
+          speed = this.maxGroundSpeed * 0.82;
+          if (bot.stateTimer <= 0) {
+            // stay committed while the player is still near the exit; otherwise fall back to post
+            bot.state = 'wandering';
+            bot.stateTimer = commit ? 0.4 : 2.5 + Math.random() * 3;
+          }
+        } else if (alerted) {
+          // Interpose: a point ~30% of the way from the player toward the exit, offset to this
+          // guard's side so the four spread across the approach instead of stacking.
+          const s = ((bot.packIndex ?? 1) - 1) % 4;
+          const lat = [-8, -3, 3, 8][s];
+          let tx = exit.x - player.pos.x, tz = exit.z - player.pos.z;
+          const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
+          const ahead = Math.min(tl * 0.35, 13);
+          goalX = player.pos.x + tx * ahead + tz * lat;
+          goalZ = player.pos.z + tz * ahead - tx * lat;
+          const arrive = Math.hypot(bot.pos.x - goalX, bot.pos.z - goalZ);
+          speed = arrive < 1.2 ? 0 : Math.min(this.maxGroundSpeed, 6 + arrive * 0.5);
+          if (bot.stateTimer <= 0) {
+            bot.stateTimer = 0.8 + Math.random() * 1.2;
+            if (commit || (distToPlayer < 11 && huntingCount < 3)) {
+              bot.state = 'hunting';
+              bot.stateTimer = 3.5 + Math.random() * 2.5;
+            }
+          }
+        } else {
+          goalX = post.x; goalZ = post.z;
+          const arrive = Math.hypot(bot.pos.x - post.x, bot.pos.z - post.z);
+          speed = arrive < 1.5 ? 0 : (arrive > 10 ? this.maxGroundSpeed : 4);
+          if (bot.stateTimer <= 0) {
+            bot.stateTimer = 1.5 + Math.random() * 2;
+            if (distToPlayer < 8 && huntingCount < 2) {
+              bot.state = 'hunting';
+              bot.stateTimer = 3.5 + Math.random() * 2.5;
+            }
           }
         }
       } else {
-        // Hunting: relentlessly close in on the player's current position.
-        bot.targetPos = { ...player.pos };
-        if (bot.stateTimer <= 0) {
-          bot.state = 'wandering'; // back to lurking
-          bot.isHidden = true;
-          bot.stateTimer = 8 + Math.random() * 12;
+        // Stalker — lurk on a leash, occasionally ambush.
+        const LEASH = 8;
+        const leashPulling = distToPlayer > LEASH;
+        if (leashPulling) {
+          goalX = player.pos.x; goalZ = player.pos.z;
+          speed = this.maxGroundSpeed * 1.3;
+          bot.targetPos = { ...player.pos };
+        } else if (bot.state !== 'hunting') {
+          if (bot.stateTimer <= 0) {
+            bot.stateTimer = 2 + Math.random() * 3;
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 3 + Math.random() * (LEASH - 3);
+            bot.targetPos = { x: player.pos.x + Math.cos(angle) * dist, y: 1.5, z: player.pos.z + Math.sin(angle) * dist };
+            const maxHunters = this.level === 2 ? 3 : 1;
+            if (Math.random() < 0.22 && huntingCount < maxHunters) {
+              bot.state = 'hunting';
+              bot.isHidden = false;
+              bot.stateTimer = 22;
+            }
+          }
+          goalX = bot.targetPos?.x ?? player.pos.x;
+          goalZ = bot.targetPos?.z ?? player.pos.z;
+          speed = 5.5;
+        } else {
+          goalX = player.pos.x; goalZ = player.pos.z;
+          speed = this.maxGroundSpeed * 0.82;
+          bot.targetPos = { ...player.pos };
+          if (bot.stateTimer <= 0) {
+            bot.state = 'wandering';
+            bot.isHidden = true;
+            bot.stateTimer = 8 + Math.random() * 12;
+          }
         }
       }
 
-      const targetCoords = bot.targetPos || { x: player.pos.x, y: 1.5, z: player.pos.z };
-      const dx = targetCoords.x - bot.pos.x;
-      const dz = targetCoords.z - bot.pos.z;
-      const distToGoal = Math.sqrt(dx * dx + dz * dz);
-
-      // Slightly slower than the player's top sprint speed while hunting normally — outrunning it
-      // is possible, but risky. Leash-pulling overrides this with a speed above the player's max so
-      // straying past the leash radius is always temporary.
-      const monsterSpeed = isLeashPulling ? this.maxGroundSpeed * 1.3
-        : bot.state === 'hunting' ? this.maxGroundSpeed * 0.82
-        : 5.5;
-      if (distToGoal > 1.0) {
-        bot.vel.x = (dx / distToGoal) * monsterSpeed;
-        bot.vel.z = (dz / distToGoal) * monsterSpeed;
-      } else {
-        bot.vel.x = 0;
-        bot.vel.z = 0;
+      // Separation — repel from every other monster inside SEP so the pack fans out, never clumps.
+      let sepX = 0, sepZ = 0;
+      for (const other of bots) {
+        if (other === bot || !other.isMonster) continue;
+        const ox = bot.pos.x - other.pos.x, oz = bot.pos.z - other.pos.z;
+        const od = Math.hypot(ox, oz);
+        if (od > 0.001 && od < SEP) {
+          const f = (SEP - od) / SEP;
+          sepX += (ox / od) * f;
+          sepZ += (oz / od) * f;
+        }
       }
+      const sepMag = Math.hypot(sepX, sepZ);
+      if (sepMag > 1) { sepX /= sepMag; sepZ /= sepMag; }
 
-      // Apply physics
+      // Blend: a unit vector toward the goal plus a BOUNDED separation nudge, so the pack fans out
+      // without separation ever swamping the goal and flinging monsters across the map.
+      let gdx = goalX - bot.pos.x, gdz = goalZ - bot.pos.z;
+      const gdl = Math.hypot(gdx, gdz);
+      const hasGoal = gdl > 0.8 && speed > 0.01;
+      if (hasGoal) { gdx /= gdl; gdz /= gdl; } else { gdx = 0; gdz = 0; }
+
+      if (!hasGoal && sepMag < 0.05) {
+        bot.vel.x = 0; bot.vel.z = 0;               // parked on post, nobody crowding — hold still
+      } else {
+        const mvX = gdx + sepX * 0.45;
+        const mvZ = gdz + sepZ * 0.45;
+        const mvLen = Math.hypot(mvX, mvZ) || 1;
+        const mvSpeed = hasGoal ? speed : 2.5;      // creep apart at walking pace when only separating
+        bot.vel.x = (mvX / mvLen) * mvSpeed;
+        bot.vel.z = (mvZ / mvLen) * mvSpeed;
+      }
+      bot.targetPos = { x: goalX, y: 1.5, z: goalZ };
+
+      // Physics
       bot.vel.y += this.gravity * dt;
       bot.pos.x += bot.vel.x * dt;
       this.checkWallAxisBound(bot.pos, bot.vel, 'x', 1.2, 2.0);
       bot.pos.y += bot.vel.y * dt;
       let botOnGround = this.checkWallAxisBound(bot.pos, bot.vel, 'y', 1.2, 2.0);
-
-      if (bot.pos.y < 1.0) {
-        bot.pos.y = 1.0;
-        bot.vel.y = 0;
-        botOnGround = true;
-      }
-
+      if (bot.pos.y < 1.0) { bot.pos.y = 1.0; bot.vel.y = 0; botOnGround = true; }
       bot.pos.z += bot.vel.z * dt;
       this.checkWallAxisBound(bot.pos, bot.vel, 'z', 1.2, 2.0);
+      if (botOnGround) bot.vel.y = 0;
 
-      if (botOnGround) {
-        bot.vel.y = 0;
-      }
-
-      // Kill on contact while hunting — distToPlayer alone is a straight-line XZ distance that
-      // ignores geometry, so without the line-of-sight check the monster could "touch" the player
-      // through a thin wall separating two adjacent corridors, dealing damage the player never saw
-      // coming from anything. Also requires the monster to be within the player's actual view cone
-      // (not just the front 180° hemisphere, which is wider than the camera's ~85° FOV and let hits
-      // land from just outside the screen edge) — it has to be somewhere the player could actually see it.
-      if (bot.state === 'hunting' && distToPlayer < 2.2 && this.hasClearLineOfSight(bot.pos, player.pos)) {
+      // Kill on contact — needs a clear sightline (no reaching through a wall) and the monster inside
+      // the player's actual view cone (so you can sprint past one if you keep your eyes forward, not
+      // on it). A charging monster grabs from a bit further out than one just holding station.
+      const isCharging = bot.state === 'hunting';
+      const lethalRange = isCharging ? 2.1 : (isInterceptor ? 1.7 : 0);
+      if (lethalRange > 0 && distToPlayer < lethalRange && this.hasClearLineOfSight(bot.pos, player.pos)) {
         const forwardX = Math.sin(player.yaw);
         const forwardZ = -Math.cos(player.yaw);
         const facingDot = distToPlayer > 0.001 ? (-pdx / distToPlayer) * forwardX + (-pdz / distToPlayer) * forwardZ : 1;
-        const VIEW_CONE_COS = 0.5; // ~60° half-angle, inside the rendered camera frustum
-        if (facingDot > VIEW_CONE_COS) {
+        if (facingDot > 0.5) {
           this.damagePlayer(9999, bot.id);
         }
       }

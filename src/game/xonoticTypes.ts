@@ -32,9 +32,11 @@ export interface Bot {
   stateTimer: number;
   isTeammate?: boolean;
   isRemotePlayer?: boolean; // true = real online player (not AI)
-  isMonster?: boolean;      // the single, unkillable Backrooms entity
+  isMonster?: boolean;      // an unkillable Backrooms entity (Level 1 has 1, Level 2 has a pack of 5)
   invulnerable?: boolean;   // damage is ignored entirely
   isHidden?: boolean;       // true while lurking — not rendered, doesn't announce itself
+  packIndex?: number;       // Level 2 pack role: 0 = invisible stalker (ambusher), 1-4 = visible
+                            // interceptors that fan out across the player's escape route
 }
 
 export interface JumpPad {
