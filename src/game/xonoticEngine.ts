@@ -574,17 +574,36 @@ export class XonoticEngine {
       this.checkWallAxisBound(bot.pos, bot.vel, 'z', 1.2, 2.0);
       if (botOnGround) bot.vel.y = 0;
 
-      // Kill on contact — needs a clear sightline (no reaching through a wall) and the monster inside
-      // the player's actual view cone (so you can sprint past one if you keep your eyes forward, not
-      // on it). A charging monster grabs from a bit further out than one just holding station.
+      // Kill on contact. Distances are recomputed AFTER this frame's move so a fast approach can't
+      // tunnel past the check on a stale pre-move distance. Three zones:
+      //  - Overlap (< 1.3u): bodies are interpenetrating. No sightline check — the segment between
+      //    two overlapping points hugs whatever wall you're both standing against and the slab test
+      //    wrongly reports it as blocking, which is exactly why "walked into the monster but didn't
+      //    die" happened. If you're inside it, it has you.
+      //  - Grab (1.3–1.7u): needs a clear sightline (so it can't grab through a thin wall from the
+      //    next corridor) but no view-cone check — you can't fail to notice something on top of you.
+      //  - Lunge (out to lungeRange): needs sightline AND to be inside your view cone, so sprinting
+      //    past one with your eyes forward still lets you slip by.
       const isCharging = bot.state === 'hunting';
-      const lethalRange = isCharging ? 2.1 : (isInterceptor ? 1.7 : 0);
-      if (lethalRange > 0 && distToPlayer < lethalRange && this.hasClearLineOfSight(bot.pos, player.pos)) {
-        const forwardX = Math.sin(player.yaw);
-        const forwardZ = -Math.cos(player.yaw);
-        const facingDot = distToPlayer > 0.001 ? (-pdx / distToPlayer) * forwardX + (-pdz / distToPlayer) * forwardZ : 1;
-        if (facingDot > 0.5) {
+      const canGrab = isCharging || isInterceptor;
+      const kdx = player.pos.x - bot.pos.x;
+      const kdz = player.pos.z - bot.pos.z;
+      const contactDist = Math.hypot(kdx, kdz);
+      const lungeRange = isCharging ? 2.4 : (isInterceptor ? 2.0 : 0);
+      if (canGrab) {
+        if (contactDist < 1.3) {
           this.damagePlayer(9999, bot.id);
+        } else if (this.hasClearLineOfSight(bot.pos, player.pos)) {
+          if (contactDist < 1.7) {
+            this.damagePlayer(9999, bot.id);
+          } else if (lungeRange > 0 && contactDist < lungeRange) {
+            const forwardX = Math.sin(player.yaw);
+            const forwardZ = -Math.cos(player.yaw);
+            const facingDot = contactDist > 0.001 ? (-kdx / contactDist) * forwardX + (-kdz / contactDist) * forwardZ : 1;
+            if (facingDot > 0.4) {
+              this.damagePlayer(9999, bot.id);
+            }
+          }
         }
       }
     });

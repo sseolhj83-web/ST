@@ -730,7 +730,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // clipping them to flat white. Level 1 stays untouched (its careful darkness needs linear output).
     if (isL2) {
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 0.9;
+      renderer.toneMappingExposure = 1.0;
     }
     
     // Clear any leftover elements just in case, then append
@@ -745,7 +745,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     //    ambient does the flat "liminal fluorescent" wash, a hemisphere adds a little ceiling/
     //    floor gradient, and the point-light pool (below, updated in animate()) puts a brighter
     //    hotspot directly under whichever tubes are nearest the player.
-    const ambientLight = new THREE.AmbientLight(isL2 ? '#ffedc8' : '#fef9c3', isL2 ? 0.5 : 0.02);
+    const ambientLight = new THREE.AmbientLight(isL2 ? '#ffedc8' : '#fef9c3', isL2 ? 0.6 : 0.02);
     scene.add(ambientLight);
 
     const dirLight = new THREE.DirectionalLight(isL2 ? '#fff2cf' : '#fdf6b2', isL2 ? 0.12 : 0.01);
@@ -755,7 +755,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
 
     const hotelPointLights: THREE.PointLight[] = [];
     if (isL2) {
-      const hemi = new THREE.HemisphereLight('#fff2d0', '#2a2418', 0.24);
+      const hemi = new THREE.HemisphereLight('#fff2d0', '#2a2418', 0.3);
       scene.add(hemi);
       for (let i = 0; i < 5; i++) {
         const pl = new THREE.PointLight('#fff0cc', 0, 26, 2);
