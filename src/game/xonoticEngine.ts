@@ -417,6 +417,9 @@ export class XonoticEngine {
   //    formation between the player and the exit — a moving blockade on the escape route. They charge
   //    when the player gets close or makes a break for the exit, and a separation force keeps the
   //    pack from ever bunching into a single clump.
+  //  - Once hunting, a monster stays locked onto the player as long as it can see them — it only
+  //    gives up after losing line of sight for LOSE_SIGHT_GRACE seconds straight, so ducking a
+  //    corner (not just outrunning the clock) is what shakes it.
   // Also drives any real online players riding along in `bots` (dead-reckoning physics, no AI).
   private updateMonsterAI(dt: number) {
     const { bots, player } = this.state;
@@ -426,6 +429,7 @@ export class XonoticEngine {
     const playerExitDist = Math.hypot(exit.x - player.pos.x, exit.z - player.pos.z);
     const huntingCount = bots.filter(b => b.isMonster && b.state === 'hunting').length;
     const SEP = 5.5; // pack members repel each other within this radius — never a single clump
+    const LOSE_SIGHT_GRACE = 2.5; // seconds a hunting monster keeps chasing after losing sight of the player
 
     bots.forEach(bot => {
       if (bot.isRemotePlayer) {
@@ -457,8 +461,11 @@ export class XonoticEngine {
         if (bot.state === 'hunting') {
           goalX = player.pos.x; goalZ = player.pos.z;
           speed = this.maxGroundSpeed * 0.82;
+          if (this.hasClearLineOfSight(bot.pos, player.pos)) {
+            bot.stateTimer = LOSE_SIGHT_GRACE; // still sees the player — keep the leash full
+          }
           if (bot.stateTimer <= 0) {
-            // stay committed while the player is still near the exit; otherwise fall back to post
+            // lost sight of the player for too long; stay committed near the exit, otherwise fall back to post
             bot.state = 'wandering';
             bot.stateTimer = commit ? 0.4 : 2.5 + Math.random() * 3;
           }
@@ -521,6 +528,9 @@ export class XonoticEngine {
           goalX = player.pos.x; goalZ = player.pos.z;
           speed = this.maxGroundSpeed * 0.82;
           bot.targetPos = { ...player.pos };
+          if (this.hasClearLineOfSight(bot.pos, player.pos)) {
+            bot.stateTimer = LOSE_SIGHT_GRACE; // still sees the player — keep the leash full
+          }
           if (bot.stateTimer <= 0) {
             bot.state = 'wandering';
             bot.isHidden = true;
