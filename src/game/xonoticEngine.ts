@@ -417,9 +417,8 @@ export class XonoticEngine {
   //    formation between the player and the exit — a moving blockade on the escape route. They charge
   //    when the player gets close or makes a break for the exit, and a separation force keeps the
   //    pack from ever bunching into a single clump.
-  //  - Once hunting, a monster stays locked onto the player as long as it can see them — it only
-  //    gives up after losing line of sight for LOSE_SIGHT_GRACE seconds straight, so ducking a
-  //    corner (not just outrunning the clock) is what shakes it.
+  //  - Once hunting, a monster never gives up — it dead-reckons the player's exact position for the
+  //    rest of the run regardless of line of sight. Ducking a corner buys distance, not safety.
   // Also drives any real online players riding along in `bots` (dead-reckoning physics, no AI).
   private updateMonsterAI(dt: number) {
     const { bots, player } = this.state;
@@ -429,7 +428,6 @@ export class XonoticEngine {
     const playerExitDist = Math.hypot(exit.x - player.pos.x, exit.z - player.pos.z);
     const huntingCount = bots.filter(b => b.isMonster && b.state === 'hunting').length;
     const SEP = 5.5; // pack members repel each other within this radius — never a single clump
-    const LOSE_SIGHT_GRACE = 2.5; // seconds a hunting monster keeps chasing after losing sight of the player
 
     bots.forEach(bot => {
       if (bot.isRemotePlayer) {
@@ -469,16 +467,10 @@ export class XonoticEngine {
         const commit = playerExitDist < 24;
 
         if (bot.state === 'hunting') {
+          // Once locked on, a guard never gives up — dead-reckons the player's exact position for
+          // the rest of the run, seen or not. Only escaping or dying shakes it.
           goalX = player.pos.x; goalZ = player.pos.z;
           speed = this.maxGroundSpeed * 0.82;
-          if (this.hasClearLineOfSight(bot.pos, player.pos)) {
-            bot.stateTimer = LOSE_SIGHT_GRACE; // still sees the player — keep the leash full
-          }
-          if (bot.stateTimer <= 0) {
-            // lost sight of the player for too long; stay committed near the exit, otherwise fall back to post
-            bot.state = 'wandering';
-            bot.stateTimer = commit ? 0.4 : 2.5 + Math.random() * 3;
-          }
         } else if (alerted) {
           // Interpose: a point ~30% of the way from the player toward the exit, offset to this
           // guard's side so the four spread across the approach instead of stacking.
@@ -535,17 +527,11 @@ export class XonoticEngine {
           goalZ = bot.targetPos?.z ?? player.pos.z;
           speed = 5.5;
         } else {
+          // Once it has you, it never lets go — same relentless dead-reckoning as the pack, seen
+          // or not.
           goalX = player.pos.x; goalZ = player.pos.z;
           speed = this.maxGroundSpeed * 0.82;
           bot.targetPos = { ...player.pos };
-          if (this.hasClearLineOfSight(bot.pos, player.pos)) {
-            bot.stateTimer = LOSE_SIGHT_GRACE; // still sees the player — keep the leash full
-          }
-          if (bot.stateTimer <= 0) {
-            bot.state = 'wandering';
-            bot.isHidden = true;
-            bot.stateTimer = 8 + Math.random() * 12;
-          }
         }
       }
 
