@@ -78,15 +78,16 @@ export class XonoticEngine {
   private guardPost(packIndex: number): { x: number; z: number } {
     const exit = this.lvl.ESCAPE_WALL_POS;
     const spawn = this.lvl.SPAWN_POINT;
-    // unit vector from the exit back toward spawn (the side the player approaches from) + its perp
-    let ax = spawn.x - exit.x, az = spawn.z - exit.z;
-    const al = Math.hypot(ax, az) || 1;
-    ax /= al; az /= al;
-    const px = az, pz = -ax; // perpendicular
-    const FWD = [15, 10, 10, 15];   // how far out along the approach
-    const LAT = [-11, -4, 4, 11];   // lateral spread
+    // Level 2's corridors only run along the grid lines (x or z a multiple of BLOCK, ±half the
+    // corridor width) — anywhere off those lines is solid room block. The exit trigger itself
+    // spans the north-south corridor at x = exit.x, so that's the only ground guards can actually
+    // stand on near the exit. Line them up inside it, staggered back toward the spawn side, with a
+    // lateral stagger small enough (corridor is only 6 wide) to never clip into a wall.
+    const towardSpawn = spawn.z >= exit.z ? 1 : -1;
+    const FWD = [8, 8, 22, 22];    // distance back along the corridor from the exit
+    const LAT = [-1.6, 1.6, -1.6, 1.6]; // stagger within the corridor width
     const s = (packIndex - 1) % 4;
-    return { x: exit.x + ax * FWD[s] + px * LAT[s], z: exit.z + az * FWD[s] + pz * LAT[s] };
+    return { x: exit.x + LAT[s], z: exit.z + towardSpawn * FWD[s] };
   }
 
   // The Backrooms entities. Level 1: one lone stalker that lurks unseen and ambushes. Level 2: a
