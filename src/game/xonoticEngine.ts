@@ -72,9 +72,9 @@ export class XonoticEngine {
     };
   }
 
-  // The 4 Level-2 guard posts — fixed points fanned across the approach to the exit, so the exit is
-  // always ringed by a spread-out blockade the player has to break through. `packIndex` 1-4 map to
-  // these. Kept as a method so spawn placement and the AI agree.
+  // The Level-2 guard posts — fixed points packed tight right at the exit, so it's always jammed
+  // with a crowd the player has to break through. `packIndex` 1+ map to these. Kept as a method so
+  // spawn placement and the AI agree.
   // Blinks a hunting monster to a fresh spot near the player — never closer than 5 units, and
   // never inside solid geometry. Shared by the "fallen too far behind" and "stuck against a wall"
   // triggers in updateMonsterAI. Returns false (leaving the monster in place) on the rare map where
@@ -105,17 +105,24 @@ export class XonoticEngine {
     // stand on near the exit. Line them up inside it, staggered back toward the spawn side, with a
     // lateral stagger small enough (corridor is only 6 wide) to never clip into a wall.
     const towardSpawn = spawn.z >= exit.z ? 1 : -1;
-    const FWD = [8, 8, 22, 22];    // distance back along the corridor from the exit
-    const LAT = [-1.6, 1.6, -1.6, 1.6]; // stagger within the corridor width
-    const s = (packIndex - 1) % 4;
-    return { x: exit.x + LAT[s], z: exit.z + towardSpawn * FWD[s] };
+    // One guard per row, alternating sides of the corridor every 3 units. A lone guard at ±1.6
+    // covers its own side and the centre but leaves the far ~2.9u of the 6-wide corridor clear (its
+    // 1.7u grab radius doesn't reach that far), so there's always a real lane past it — just not the
+    // same lane the next row over. Packing two guards abreast in one row was tried and rejected:
+    // their grab radii fully overlapped the whole corridor width, making that row unbeatable no
+    // matter what. This zigzag reads as a dense gauntlet while keeping an actual (if tight) path
+    // through: weave side to side in time with the rows.
+    const s = packIndex - 1;
+    const fwd = 4 + s * 3;
+    const lat = s % 2 === 0 ? -1.6 : 1.6;
+    return { x: exit.x + lat, z: exit.z + towardSpawn * fwd };
   }
 
   // The Backrooms entities. Level 1: one lone stalker that lurks unseen and ambushes. Level 2: a
-  // pack of 5 — index 0 is that same invisible stalker, indices 1-4 are visible guards that ring the
-  // exit and try to cut off the escape (see updateMonsterAI).
+  // pack of 9 — index 0 is that same invisible stalker, indices 1-8 are visible guards lining the
+  // corridor right before the exit in a zigzag gauntlet (see updateMonsterAI).
   private createMonsters(): Bot[] {
-    const count = this.level === 2 ? 5 : 1;
+    const count = this.level === 2 ? 9 : 1;
     const spawn = this.lvl.SPAWN_POINT;
 
     const monsters: Bot[] = [];
@@ -149,7 +156,7 @@ export class XonoticEngine {
         stateTimer: 3 + Math.random() * 6 + i * 1.4,
         isMonster: true,
         invulnerable: true,
-        // Interceptors (1-4) are a visible blockade from the start; only the stalker (0) hides.
+        // Interceptors (1+) are a visible blockade from the start; only the stalker (0) hides.
         isHidden: i === 0,
         packIndex: i,
       });
@@ -436,10 +443,10 @@ export class XonoticEngine {
   // Monster AI.
   //  - The stalker (Level 1's lone monster / Level 2 pack index 0) lurks unseen on a short leash and
   //    rolls to ambush, then vanishes again if it can't catch the player.
-  //  - Level 2 interceptors (pack indices 1-4) are visible from the start and hold a fanned-out
-  //    formation between the player and the exit — a moving blockade on the escape route. They charge
-  //    when the player gets close or makes a break for the exit, and a separation force keeps the
-  //    pack from ever bunching into a single clump.
+  //  - Level 2 interceptors (pack indices 1+) are visible from the start and hold a formation
+  //    packed right at the exit — a crowd blocking the escape route. They charge when the player
+  //    gets close or makes a break for the exit, and a separation force keeps them from fully
+  //    overlapping while still reading as a dense pack.
   //  - Once hunting, a monster never gives up — it dead-reckons the player's exact position for the
   //    rest of the run regardless of line of sight. Ducking a corner buys distance, not safety.
   // Also drives any real online players riding along in `bots` (dead-reckoning physics, no AI).
@@ -472,6 +479,8 @@ export class XonoticEngine {
 
       const isInterceptor = (bot.packIndex ?? 0) >= 1;
       let goalX: number, goalZ: number, speed: number;
+      let holdingPost = false; // idle interceptor sitting on its own assigned formation spot —
+                                // separation would just fight the packed formation, so skip it
 
       // Line-of-sight is what actually seals off an escape: any monster that gets eyes on the
       // player — guard or stalker, near the exit or not, hunting-count caps or not — locks on
@@ -517,9 +526,15 @@ export class XonoticEngine {
             }
           }
         } else {
-          goalX = post.x; goalZ = post.z;
-          const arrive = Math.hypot(bot.pos.x - post.x, bot.pos.z - post.z);
-          speed = arrive < 1.5 ? 0 : (arrive > 10 ? this.maxGroundSpeed : 4);
+          holdingPost = true;
+          // Patrol the post instead of standing frozen — a slow sway around its spot, desynced per
+          // guard via packIndex so the line doesn't sway in lockstep. Stays on its own side of the
+          // corridor (small amplitude) so the escape lane past this row doesn't move.
+          const t = this.state.matchTime * 0.7 + (bot.packIndex ?? 1) * 2.1;
+          goalX = post.x + Math.sin(t) * 0.9;
+          goalZ = post.z + Math.cos(t * 0.6) * 1.6;
+          const arrive = Math.hypot(bot.pos.x - goalX, bot.pos.z - goalZ);
+          speed = arrive < 0.4 ? 0 : 3;
           if (bot.stateTimer <= 0) {
             bot.stateTimer = 1.5 + Math.random() * 2;
             if (distToPlayer < 8 && huntingCount < 2) {
@@ -575,16 +590,21 @@ export class XonoticEngine {
         }
       }
 
-      // Separation — repel from every other monster inside SEP so the pack fans out, never clumps.
+      // Separation — repel from every other monster inside SEP so a moving pack fans out instead of
+      // stacking on one point. Skipped for a guard holding its own assigned formation post — those
+      // posts are already distinct and packed on purpose, so separation would just fight it and drag
+      // the crowd back apart.
       let sepX = 0, sepZ = 0;
-      for (const other of bots) {
-        if (other === bot || !other.isMonster) continue;
-        const ox = bot.pos.x - other.pos.x, oz = bot.pos.z - other.pos.z;
-        const od = Math.hypot(ox, oz);
-        if (od > 0.001 && od < SEP) {
-          const f = (SEP - od) / SEP;
-          sepX += (ox / od) * f;
-          sepZ += (oz / od) * f;
+      if (!holdingPost) {
+        for (const other of bots) {
+          if (other === bot || !other.isMonster) continue;
+          const ox = bot.pos.x - other.pos.x, oz = bot.pos.z - other.pos.z;
+          const od = Math.hypot(ox, oz);
+          if (od > 0.001 && od < SEP) {
+            const f = (SEP - od) / SEP;
+            sepX += (ox / od) * f;
+            sepZ += (oz / od) * f;
+          }
         }
       }
       const sepMag = Math.hypot(sepX, sepZ);
