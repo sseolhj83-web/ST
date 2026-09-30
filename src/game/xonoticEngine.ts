@@ -318,6 +318,7 @@ export class XonoticEngine {
       monster.isHidden = false;
       monster.state = 'hunting';
       monster.stateTimer = 9999; // never gives up once manifested
+      monster.teleportCooldown = 5 + Math.random() * 3;
     });
   }
 
@@ -429,6 +430,9 @@ export class XonoticEngine {
     const playerExitDist = Math.hypot(exit.x - player.pos.x, exit.z - player.pos.z);
     const huntingCount = bots.filter(b => b.isMonster && b.state === 'hunting').length;
     const SEP = 5.5; // pack members repel each other within this radius — never a single clump
+    const TELEPORT_TRIGGER_DIST = 20; // a hunter this far behind is presumed stuck/outpaced, not just lagging
+    const TELEPORT_MIN_DIST = 5;      // never blink in closer than this — no free kill
+    const TELEPORT_MAX_DIST = 12;
 
     bots.forEach(bot => {
       if (bot.isRemotePlayer) {
@@ -458,6 +462,7 @@ export class XonoticEngine {
         bot.state = 'hunting';
         bot.isHidden = false;
         bot.stateTimer = isInterceptor ? 3.5 + Math.random() * 2.5 : 22;
+        bot.teleportCooldown = 5 + Math.random() * 3; // fair pursuit window before it's allowed to blink
       }
 
       if (isInterceptor) {
@@ -489,6 +494,7 @@ export class XonoticEngine {
             if (commit || (distToPlayer < 11 && huntingCount < 3)) {
               bot.state = 'hunting';
               bot.stateTimer = 3.5 + Math.random() * 2.5;
+              bot.teleportCooldown = 5 + Math.random() * 3;
             }
           }
         } else {
@@ -500,6 +506,7 @@ export class XonoticEngine {
             if (distToPlayer < 8 && huntingCount < 2) {
               bot.state = 'hunting';
               bot.stateTimer = 3.5 + Math.random() * 2.5;
+              bot.teleportCooldown = 5 + Math.random() * 3;
             }
           }
         }
@@ -522,6 +529,7 @@ export class XonoticEngine {
               bot.state = 'hunting';
               bot.isHidden = false;
               bot.stateTimer = 22;
+              bot.teleportCooldown = 5 + Math.random() * 3;
             }
           }
           goalX = bot.targetPos?.x ?? player.pos.x;
@@ -533,6 +541,28 @@ export class XonoticEngine {
           goalX = player.pos.x; goalZ = player.pos.z;
           speed = this.maxGroundSpeed * 0.82;
           bot.targetPos = { ...player.pos };
+        }
+      }
+
+      // Teleport: a hunter still this far behind after its grace window is presumed stuck on a
+      // room block somewhere in the grid (or just outpaced) rather than mid-chase — it blinks to a
+      // fresh spot near the player instead of trailing forever. checkWallCollision keeps the landing
+      // spot out of solid geometry; TELEPORT_MIN_DIST keeps it from ever popping in on top of you.
+      if (bot.state === 'hunting') {
+        bot.teleportCooldown = (bot.teleportCooldown ?? 5) - dt;
+        if (bot.teleportCooldown <= 0 && distToPlayer > TELEPORT_TRIGGER_DIST) {
+          for (let attempt = 0; attempt < 8; attempt++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = TELEPORT_MIN_DIST + Math.random() * (TELEPORT_MAX_DIST - TELEPORT_MIN_DIST);
+            const cx = player.pos.x + Math.cos(angle) * dist;
+            const cz = player.pos.z + Math.sin(angle) * dist;
+            if (!this.checkWallCollision({ x: cx, y: bot.pos.y, z: cz }, 1.0)) {
+              bot.pos.x = cx; bot.pos.z = cz;
+              bot.vel.x = 0; bot.vel.z = 0;
+              break;
+            }
+          }
+          bot.teleportCooldown = 6 + Math.random() * 3;
         }
       }
 
