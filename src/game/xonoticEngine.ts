@@ -451,6 +451,16 @@ export class XonoticEngine {
       const isInterceptor = (bot.packIndex ?? 0) >= 1;
       let goalX: number, goalZ: number, speed: number;
 
+      // Line-of-sight is what actually seals off an escape: any monster that gets eyes on the
+      // player — guard or stalker, near the exit or not, hunting-count caps or not — locks on
+      // immediately instead of waiting for the player to wander into its proximity/alert radius.
+      const SIGHT_DETECT_RANGE = 40;
+      if (bot.state !== 'hunting' && distToPlayer < SIGHT_DETECT_RANGE && this.hasClearLineOfSight(bot.pos, player.pos)) {
+        bot.state = 'hunting';
+        bot.isHidden = false;
+        bot.stateTimer = isInterceptor ? 3.5 + Math.random() * 2.5 : 22;
+      }
+
       if (isInterceptor) {
         // Guard the exit. Off-alert it holds a post ringing the exit. As the player closes on the
         // exit it moves to interpose just in front of them; inside the commit radius it charges.
