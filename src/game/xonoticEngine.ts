@@ -75,6 +75,27 @@ export class XonoticEngine {
   // The 4 Level-2 guard posts — fixed points fanned across the approach to the exit, so the exit is
   // always ringed by a spread-out blockade the player has to break through. `packIndex` 1-4 map to
   // these. Kept as a method so spawn placement and the AI agree.
+  // Blinks a hunting monster to a fresh spot near the player — never closer than 5 units, and
+  // never inside solid geometry. Shared by the "fallen too far behind" and "stuck against a wall"
+  // triggers in updateMonsterAI. Returns false (leaving the monster in place) on the rare map where
+  // 8 random tries all land in a wall.
+  private teleportMonsterNearPlayer(bot: Bot, playerPos: { x: number; y: number; z: number }): boolean {
+    const MIN_DIST = 5;
+    const MAX_DIST = 12;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = MIN_DIST + Math.random() * (MAX_DIST - MIN_DIST);
+      const cx = playerPos.x + Math.cos(angle) * dist;
+      const cz = playerPos.z + Math.sin(angle) * dist;
+      if (!this.checkWallCollision({ x: cx, y: bot.pos.y, z: cz }, 1.0)) {
+        bot.pos.x = cx; bot.pos.z = cz;
+        bot.vel.x = 0; bot.vel.z = 0;
+        return true;
+      }
+    }
+    return false;
+  }
+
   private guardPost(packIndex: number): { x: number; z: number } {
     const exit = this.lvl.ESCAPE_WALL_POS;
     const spawn = this.lvl.SPAWN_POINT;
@@ -431,8 +452,6 @@ export class XonoticEngine {
     const huntingCount = bots.filter(b => b.isMonster && b.state === 'hunting').length;
     const SEP = 5.5; // pack members repel each other within this radius — never a single clump
     const TELEPORT_TRIGGER_DIST = 20; // a hunter this far behind is presumed stuck/outpaced, not just lagging
-    const TELEPORT_MIN_DIST = 5;      // never blink in closer than this — no free kill
-    const TELEPORT_MAX_DIST = 12;
 
     bots.forEach(bot => {
       if (bot.isRemotePlayer) {
@@ -551,17 +570,7 @@ export class XonoticEngine {
       if (bot.state === 'hunting') {
         bot.teleportCooldown = (bot.teleportCooldown ?? 5) - dt;
         if (bot.teleportCooldown <= 0 && distToPlayer > TELEPORT_TRIGGER_DIST) {
-          for (let attempt = 0; attempt < 8; attempt++) {
-            const angle = Math.random() * Math.PI * 2;
-            const dist = TELEPORT_MIN_DIST + Math.random() * (TELEPORT_MAX_DIST - TELEPORT_MIN_DIST);
-            const cx = player.pos.x + Math.cos(angle) * dist;
-            const cz = player.pos.z + Math.sin(angle) * dist;
-            if (!this.checkWallCollision({ x: cx, y: bot.pos.y, z: cz }, 1.0)) {
-              bot.pos.x = cx; bot.pos.z = cz;
-              bot.vel.x = 0; bot.vel.z = 0;
-              break;
-            }
-          }
+          this.teleportMonsterNearPlayer(bot, player.pos);
           bot.teleportCooldown = 6 + Math.random() * 3;
         }
       }
@@ -601,6 +610,7 @@ export class XonoticEngine {
       bot.targetPos = { x: goalX, y: 1.5, z: goalZ };
 
       // Physics
+      const preMoveX = bot.pos.x, preMoveZ = bot.pos.z;
       bot.vel.y += this.gravity * dt;
       bot.pos.x += bot.vel.x * dt;
       this.checkWallAxisBound(bot.pos, bot.vel, 'x', 1.2, 2.0);
@@ -610,6 +620,24 @@ export class XonoticEngine {
       bot.pos.z += bot.vel.z * dt;
       this.checkWallAxisBound(bot.pos, bot.vel, 'z', 1.2, 2.0);
       if (botOnGround) bot.vel.y = 0;
+
+      // Stuck detection: with no real pathfinding through the corridor grid, a hunting monster
+      // aimed diagonally at the player can end up wedged against a room-block corner, sliding along
+      // the same wall face forever instead of finding the gap — exactly the "stares at a wall while
+      // you stand right next to it" bug. A sustained stall (barely moved despite wanting to) forces
+      // an immediate teleport, ignoring the normal distance/cooldown gate.
+      if (bot.state === 'hunting' && hasGoal) {
+        const expectedMove = speed * dt;
+        const actualMove = Math.hypot(bot.pos.x - preMoveX, bot.pos.z - preMoveZ);
+        bot.stuckTimer = expectedMove > 0.01 && actualMove < expectedMove * 0.2 ? (bot.stuckTimer ?? 0) + dt : 0;
+        if (bot.stuckTimer > 1.0) {
+          this.teleportMonsterNearPlayer(bot, player.pos);
+          bot.stuckTimer = 0;
+          bot.teleportCooldown = 6 + Math.random() * 3;
+        }
+      } else {
+        bot.stuckTimer = 0;
+      }
 
       // Kill on contact. Distances are recomputed AFTER this frame's move so a fast approach can't
       // tunnel past the check on a stale pre-move distance. Three zones:

@@ -38,6 +38,7 @@ export interface Bot {
   packIndex?: number;       // Level 2 pack role: 0 = invisible stalker (ambusher), 1-4 = visible
                             // interceptors that fan out across the player's escape route
   teleportCooldown?: number; // seconds until a hunting monster may blink closer to the player again
+  stuckTimer?: number;       // seconds a hunting monster has made near-zero progress toward its goal
 }
 
 export interface JumpPad {
