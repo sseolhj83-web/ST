@@ -24,7 +24,7 @@ export const L3_LIGHT_ON_SECONDS = 4.5;
 export const L3_LIGHT_OFF_SECONDS = 3.5;
 export const L3_ENTITY_STEP = 4; // metres gained per lights-on edge
 export const L3_ENTITY_CHASE_SPEED = 7; // near: slower than the 15u/s sprint — dawdlers die, runners live
-export const L3_ENTITY_FAR_SPEED = 12; // far (>30m): firm lope that holds the trail without reeling perfect sprinters in
+export const L3_ENTITY_FAR_SPEED = 10; // far (>30m): firm lope — catches dawdlers, never perfect sprinters
 export const L3_ENTITY_FAR_DIST = 30;
 export const L3_ENTITY_KILL_DIST = 1.7;
 export const L3_DARK_INPUT_FORGIVENESS = 0.35;
@@ -530,19 +530,19 @@ export class XonoticEngine {
     }
   }
 
-  // Steps the L3 entity toward the player by `step` metres, axis-separated so it slides along
-  // walls instead of entering them. Already on top of the player → hold (the kill check fires).
+  // Steps the L3 entity toward the player by `step` metres. Deliberately PHASES through walls:
+  // it fires exactly on the lights-on edge under the 0.45s fixture strobe, so the blink reads as
+  // supernatural, not buggy — and the maze can never wedge it in a dead end. Already on top of
+  // the player → hold (the kill check fires). A blink that lands inside a partition is shoved back
+  // out by the next lit chase frame's collision resolve.
   private advanceEntityToward(entity: Bot, step: number) {
     const p = this.state.player.pos;
     const dx = p.x - entity.pos.x;
     const dz = p.z - entity.pos.z;
     const l = Math.hypot(dx, dz);
     if (l < 1.0) return;
-    const zero = { x: 0, y: 0, z: 0 };
     entity.pos.x += (dx / l) * step;
-    this.checkWallAxisBound(entity.pos, zero, 'x', 0.9, 1.6);
     entity.pos.z += (dz / l) * step;
-    this.checkWallAxisBound(entity.pos, zero, 'z', 0.9, 1.6);
   }
 
   // Monster AI.
