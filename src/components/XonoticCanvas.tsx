@@ -651,75 +651,99 @@ function buildRemotePlayerModel(bot: Bot): THREE.Group {
 // so the shared procedural animation traversal in animate() just works.
 function buildL3EntityModel(): THREE.Group {
   const group = new THREE.Group();
-  const skinMat = new THREE.MeshStandardMaterial({ color: '#c9c2b4', roughness: 0.65, metalness: 0.0 });
-  const hairMat = new THREE.MeshStandardMaterial({ color: '#0b0b0e', roughness: 0.95, metalness: 0.0 });
+  // Pale, ROUGH skin (weathered, corpse-like — high roughness kills specular highlights).
+  const skinMat = new THREE.MeshStandardMaterial({ color: '#c4bcac', roughness: 0.9, metalness: 0.0 });
+  const hairMat = new THREE.MeshStandardMaterial({ color: '#08080b', roughness: 0.95, metalness: 0.0 });
+  // Eyes barely visible: pinpricks buried behind the hair curtain, almost no glow.
   const eyeMat = new THREE.MeshStandardMaterial({
-    color: '#1a0505', emissive: new THREE.Color('#7a1010'), emissiveIntensity: 1.6, roughness: 0.3,
+    color: '#0d0303', emissive: new THREE.Color('#4a0d0d'), emissiveIntensity: 0.35, roughness: 0.4,
   });
 
-  // Torso — emaciated, slightly hunched
+  // Torso — emaciated with visible ribs, hunched forward with rolled shoulders.
   const torsoGroup = new THREE.Group();
   torsoGroup.name = 'torso';
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.85, 0.2), skinMat);
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.32, 1.0, 0.19), skinMat);
   torsoGroup.add(torso);
-  const ribs = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.1, 0.22), skinMat);
-  ribs.position.y = 0.15;
-  torsoGroup.add(ribs);
-  torsoGroup.position.set(0, 1.45, 0);
-  torsoGroup.rotation.x = 0.08;
+  [0.28, 0.13, -0.02].forEach(y => {
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.045, 0.21), skinMat);
+    rib.position.y = y;
+    torsoGroup.add(rib);
+  });
+  // Hunched shoulder masses, rolled forward
+  [[-1, -0.35], [1, 0.35]].forEach(([side, tilt]) => {
+    const shoulder = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.15, 0.22), skinMat);
+    shoulder.position.set(side * 0.22, 0.52, 0.03);
+    shoulder.rotation.z = tilt;
+    shoulder.rotation.x = 0.25;
+    torsoGroup.add(shoulder);
+  });
+  torsoGroup.position.set(0, 1.72, 0);
+  torsoGroup.rotation.x = 0.22; // permanent stoop
   group.add(torsoGroup);
 
-  // Head — pale face half-buried in hanging black hair, dull red eyes
+  // Head — face ENTIRELY buried behind a full curtain of long black hair (front, sides,
+  // back, past the shoulders). Two pinprick eyes glimmer deep inside, barely visible.
   const headGroup = new THREE.Group();
   headGroup.name = 'head';
-  const skull = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.28, 0.24), skinMat);
+  const skull = new THREE.Mesh(new THREE.BoxGeometry(0.23, 0.27, 0.23), skinMat);
   headGroup.add(skull);
-  const hairBack = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.75, 0.1), hairMat);
-  hairBack.position.set(0, -0.22, -0.13);
+  const hairBack = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.0, 0.09), hairMat);
+  hairBack.position.set(0, -0.32, -0.13);
   headGroup.add(hairBack);
-  [-0.1, 0.1].forEach(x => {
-    const strand = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.55, 0.07), hairMat);
-    strand.position.set(x, -0.26, 0.1);
+  const hairFront = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.85, 0.07), hairMat);
+  hairFront.position.set(0, -0.28, 0.13);
+  headGroup.add(hairFront);
+  [-1, 1].forEach(side => {
+    const hairSide = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.8, 0.2), hairMat);
+    hairSide.position.set(side * 0.15, -0.28, 0);
+    headGroup.add(hairSide);
+    const strand = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.6, 0.06), hairMat);
+    strand.position.set(side * 0.09, -0.3, 0.16);
+    strand.rotation.x = 0.08;
     headGroup.add(strand);
   });
-  [-0.06, 0.06].forEach(x => {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 8), eyeMat);
-    eye.position.set(x, 0.02, 0.125);
+  [-0.055, 0.055].forEach(x => {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 8), eyeMat);
+    eye.position.set(x, -0.02, 0.1); // recessed behind the front curtain
     headGroup.add(eye);
   });
-  headGroup.position.set(0, 2.02, 0.03);
-  headGroup.rotation.x = 0.12; // head hung low
+  headGroup.position.set(0, 2.38, 0.05); // crown ≈ 2.5m
+  headGroup.rotation.x = 0.3; // head hung low under the hair
   group.add(headGroup);
 
-  // Arms — unnaturally long: upper + elbow + forearm group (children[2]) + dangling fingers
+  // Arms — freakishly long: upper + knobby elbow + forearm group (children[2]) with four
+  // half-metre dangling fingers. Shoulder height ≈ 2.1m; the shared animation bends the
+  // forearms forward, so the reach extends toward the player, not through the floor.
   const buildArm = (isLeft: boolean) => {
     const armGroup = new THREE.Group();
     armGroup.name = isLeft ? 'arm_left' : 'arm_right';
     const dirSign = isLeft ? -1 : 1;
-    const upper = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.65, 0.09), skinMat);
-    upper.position.y = -0.32;
+    const upper = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.85, 0.085), skinMat);
+    upper.position.y = -0.42;
     armGroup.add(upper);
-    const elbow = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), skinMat);
-    elbow.position.y = -0.65;
+    const elbow = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 6), skinMat);
+    elbow.position.y = -0.85;
     armGroup.add(elbow);
     const forearmGroup = new THREE.Group();
-    forearmGroup.position.y = -0.65;
-    const fore = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.75, 0.07), skinMat);
-    fore.position.y = -0.37;
+    forearmGroup.position.y = -0.85;
+    const fore = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.95, 0.065), skinMat);
+    fore.position.y = -0.47;
     forearmGroup.add(fore);
-    [-0.05, 0, 0.05].forEach(x => {
-      const finger = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.34, 0.03), skinMat);
-      finger.position.set(x, -0.9, 0);
+    [-0.06, -0.02, 0.02, 0.06].forEach(x => {
+      const finger = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.5, 0.028), skinMat);
+      finger.position.set(x, -1.15, 0.01);
+      finger.rotation.x = 0.1;
       forearmGroup.add(finger);
     });
     armGroup.add(forearmGroup);
-    armGroup.position.set(dirSign * 0.24, 1.8, 0);
+    armGroup.position.set(dirSign * 0.23, 2.1, 0);
     return armGroup;
   };
   group.add(buildArm(true));
   group.add(buildArm(false));
 
-  // Legs — thin, slightly knock-kneed: [hip, thighGroup[thigh, knee, calfGroup]]
+  // Legs — spindly over-long stilts with knobby knees and elongated feet:
+  // [hip, thighGroup[thigh, knee, calfGroup]] keeps the shared walk-cycle indices valid.
   const buildLeg = (isLeft: boolean) => {
     const legGroup = new THREE.Group();
     legGroup.name = isLeft ? 'leg_left' : 'leg_right';
@@ -727,20 +751,23 @@ function buildL3EntityModel(): THREE.Group {
     const hip = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 6), skinMat);
     legGroup.add(hip);
     const thighGroup = new THREE.Group();
-    const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.5, 0.11), skinMat);
-    thigh.position.y = -0.25;
+    const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.6, 0.1), skinMat);
+    thigh.position.y = -0.3;
     thighGroup.add(thigh);
-    const knee = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 6), skinMat);
-    knee.position.y = -0.5;
+    const knee = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), skinMat);
+    knee.position.y = -0.6;
     thighGroup.add(knee);
     const calfGroup = new THREE.Group();
-    calfGroup.position.y = -0.5;
-    const calf = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.48, 0.09), skinMat);
-    calf.position.y = -0.24;
+    calfGroup.position.y = -0.6;
+    const calf = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.58, 0.085), skinMat);
+    calf.position.y = -0.29;
     calfGroup.add(calf);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.06, 0.32), skinMat);
+    foot.position.set(0, -0.58, 0.08);
+    calfGroup.add(foot);
     thighGroup.add(calfGroup);
     legGroup.add(thighGroup);
-    legGroup.position.set(dirSign * 0.11, 0.98, 0);
+    legGroup.position.set(dirSign * 0.11, 1.18, 0);
     return legGroup;
   };
   group.add(buildLeg(true));
