@@ -714,10 +714,12 @@ export class XonoticEngine {
       if (wall.id === this.lvl.ESCAPE_WALL_ID || wall.emissive || wall.doorDecor) continue;
       const isPlatform =
         wall.id.startsWith('floor') ||
+        wall.id.startsWith('l2_floor') || // Lv2 floors ('l2_floor_main', 'l2_floor_l2s_..') — huge slabs, never block sight
         wall.id.startsWith('bridge') ||
         wall.id.endsWith('roof') ||
         wall.id.endsWith('ceiling') ||
-        wall.id === 'ceiling_main';
+        wall.id === 'ceiling_main' ||
+        wall.id === 'l2_ceiling_main';
       if (isPlatform) continue;
 
       const hX = wall.size.x / 2;
@@ -753,6 +755,7 @@ export class XonoticEngine {
 
   private damagePlayer(amount: number, sourceId: string) {
     const { player } = this.state;
+    if (player.health <= 0) return; // already dead — run is over, don't farm deaths/frag-feed spam
     // Shield / Armor system splits damage 70% to shield, 30% to health
     if (player.armor > 0) {
       const armorDamage = amount * 0.7;
@@ -859,8 +862,12 @@ export class XonoticEngine {
       // Skip X/Z collision for floors, bridges, roofs, and decorative neons to avoid getting stuck or teleported
       const isPlatform =
         wall.id.startsWith('floor') ||
+        wall.id.startsWith('l2_floor') || // Lv2 floors are huge slabs — without this they shove the player/monsters sideways every frame
         wall.id.startsWith('bridge') ||
         wall.id.endsWith('roof') ||
+        wall.id.endsWith('ceiling') || // streamed chunk ceilings ('*_ceiling')
+        wall.id === 'ceiling_main' ||
+        wall.id === 'l2_ceiling_main' || // Lv2 hub ceiling (jump apex can reach it: low 4.5m ceiling)
         !!wall.emissive;
       
       if ((axis === 'x' || axis === 'z') && isPlatform) {
