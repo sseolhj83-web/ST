@@ -6,6 +6,11 @@
 import { XonoticGameState, Bot, JumpPad, PickupItem, MapWall } from './xonoticTypes';
 import { getLevelModule, LevelModule, chunkKey } from './levels';
 
+// Spawn grace: monsters neither lock on nor deal damage during the first seconds of a run.
+// Lv2's stalker spawns metres from the player with a clear sightline — without this the run
+// ends ~0.3s after spawn before the player can even move.
+export const SPAWN_GRACE_SECONDS = 5;
+
 export class XonoticEngine {
   public state: XonoticGameState;
   public level: 1 | 2;
@@ -136,8 +141,10 @@ export class XonoticEngine {
         px = this.lvl.MONSTER_SPAWN.x;
         pz = this.lvl.MONSTER_SPAWN.z;
       } else if (i === 0) {
-        px = spawn.x + 5;
-        pz = spawn.z + 5;
+        // One full block diagonal (a corridor crossing 34m out) — with the open grid's long
+        // sightlines anything closer turns spawn into a ~0.3s death (see SPAWN_GRACE_SECONDS).
+        px = spawn.x + 24;
+        pz = spawn.z + 24;
       } else {
         const post = this.guardPost(i);
         px = post.x;
@@ -456,6 +463,9 @@ export class XonoticEngine {
   private updateMonsterAI(dt: number) {
     const { bots, player } = this.state;
     let nearestMonsterDist = Infinity;
+    // During spawn grace the stalker must not park on top of the player — otherwise the
+    // grace timer ends and the kill lands 0.02s later, which reads as a spawn-kill anyway.
+    const inGrace = this.state.matchTime < SPAWN_GRACE_SECONDS;
 
     const exit = this.lvl.ESCAPE_WALL_POS;
     const playerExitDist = Math.hypot(exit.x - player.pos.x, exit.z - player.pos.z);
@@ -493,6 +503,7 @@ export class XonoticEngine {
       // never matters again (hunters dead-reckon), so the max detection delay is ~50ms.
       const SIGHT_DETECT_RANGE = 40;
       if (bot.state !== 'hunting' && distToPlayer < SIGHT_DETECT_RANGE
+        && this.state.matchTime >= SPAWN_GRACE_SECONDS
         && (this.tickCount + botIndex) % 3 === 0
         && this.hasClearLineOfSight(bot.pos, player.pos)) {
         bot.state = 'hunting';
@@ -561,13 +572,21 @@ export class XonoticEngine {
           speed = this.maxGroundSpeed * 1.3;
           bot.targetPos = { ...player.pos };
         } else if (bot.state !== 'hunting') {
+          if (inGrace && distToPlayer < 10 && distToPlayer > 0.01) {
+            // Back off to a ~12m ring while grace holds — circling menace, not a point-blank wait.
+            // (pdx/pdz point from bot TOWARD the player, so negate to back away.)
+            goalX = player.pos.x - (pdx / distToPlayer) * 12;
+            goalZ = player.pos.z - (pdz / distToPlayer) * 12;
+            speed = 7;
+          } else {
           if (bot.stateTimer <= 0) {
             bot.stateTimer = 2 + Math.random() * 3;
             const angle = Math.random() * Math.PI * 2;
             const dist = 3 + Math.random() * (LEASH - 3);
             bot.targetPos = { x: player.pos.x + Math.cos(angle) * dist, y: 1.5, z: player.pos.z + Math.sin(angle) * dist };
             const maxHunters = this.level === 2 ? 3 : 1;
-            if (Math.random() < 0.22 && huntingCount < maxHunters) {
+            // No ambush rolls during grace — the opening chase must start at the ring, on sight.
+            if (Math.random() < 0.22 && huntingCount < maxHunters && !inGrace) {
               bot.state = 'hunting';
               bot.isHidden = false;
               bot.stateTimer = 22;
@@ -577,6 +596,7 @@ export class XonoticEngine {
           goalX = bot.targetPos?.x ?? player.pos.x;
           goalZ = bot.targetPos?.z ?? player.pos.z;
           speed = 5.5;
+          }
         } else {
           // Once it has you, it never lets go — same relentless dead-reckoning as the pack, seen
           // or not.
@@ -678,7 +698,9 @@ export class XonoticEngine {
       //  - Lunge (out to lungeRange): needs sightline AND to be inside your view cone, so sprinting
       //    past one with your eyes forward still lets you slip by.
       const isCharging = bot.state === 'hunting';
-      const canGrab = isCharging || isInterceptor;
+      // No kills during spawn grace (see SPAWN_GRACE_SECONDS) — the stalker opens within
+      // metres of the player, so contact in the first seconds must not be lethal.
+      const canGrab = (isCharging || isInterceptor) && this.state.matchTime >= SPAWN_GRACE_SECONDS;
       const kdx = player.pos.x - bot.pos.x;
       const kdz = player.pos.z - bot.pos.z;
       const contactDist = Math.hypot(kdx, kdz);

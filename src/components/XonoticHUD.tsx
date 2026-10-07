@@ -6,6 +6,7 @@
 import React from 'react';
 import { Player3D, FragLog } from '../game/xonoticTypes';
 import { Shield, Heart } from 'lucide-react';
+import { SPAWN_GRACE_SECONDS } from '../game/xonoticEngine';
 
 interface XonoticHUDProps {
   player: Player3D;
@@ -55,10 +56,19 @@ export const XonoticHUD: React.FC<XonoticHUDProps> = ({
     <div className="absolute inset-0 pointer-events-none z-40 flex flex-col justify-between p-6 select-none font-sans">
 
       {/* The monster is close — this is the only warning the player gets */}
-      {!!monsterWarning && (
+      {!!monsterWarning && matchTime >= SPAWN_GRACE_SECONDS && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50">
           <span className="text-4xl font-black text-red-600 tracking-[0.3em] uppercase animate-pulse drop-shadow-[0_0_18px_rgba(220,38,38,0.9)]">
             경고
+          </span>
+        </div>
+      )}
+
+      {/* Spawn protection countdown — so the quiet opening doesn't read as "monsters broken" */}
+      {matchTime < SPAWN_GRACE_SECONDS && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50">
+          <span className="text-sm font-black text-cyan-300 tracking-[0.25em] uppercase bg-cyan-950/70 border border-cyan-500/40 rounded-xl px-4 py-1.5">
+            스폰 보호 {Math.ceil(SPAWN_GRACE_SECONDS - matchTime)}초
           </span>
         </div>
       )}
