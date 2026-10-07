@@ -11,6 +11,11 @@ import { getLevelModule, LevelModule, chunkKey } from './levels';
 // ends ~0.3s after spawn before the player can even move.
 export const SPAWN_GRACE_SECONDS = 5;
 
+// Lv2 guards give up the chase this many seconds after losing the sightline and drift back to
+// their exit posts. Sight-based pursuit (see → chase, lose → shake) is what keeps the gauntlet
+// escapable: 3.5s at guard speed (12.3u/s) is ~43m of leash before they break off.
+export const GIVE_UP_AFTER_LOST_SIGHT = 3.5;
+
 export class XonoticEngine {
   public state: XonoticGameState;
   public level: 1 | 2;
@@ -124,27 +129,21 @@ export class XonoticEngine {
     return { x: exit.x + lat, z: exit.z + towardSpawn * fwd };
   }
 
-  // The Backrooms entities. Level 1: one lone stalker that lurks unseen and ambushes. Level 2: a
-  // pack of 5 — index 0 is that same invisible stalker, indices 1-4 are visible guards lining the
-  // corridor right before the exit in a zigzag gauntlet (see updateMonsterAI).
-  // Was 9 (9x140-mesh Demogorgons ≈ 1200 draw calls + 9x AI/LOS per frame → Lv2 stutter).
+  // The Backrooms entities. Level 1: one lone stalker that roams and ambushes (relentless once
+  // it locks on). Level 2: all 5 hold the exit — index 0 is a hidden ambusher sitting almost on
+  // the exit pad, indices 1-4 are visible guards in a zigzag gauntlet up the corridor. Nobody
+  // roams the map: they chase only what they can see (see updateMonsterAI).
   private createMonsters(): Bot[] {
     const count = this.level === 2 ? 5 : 1;
-    const spawn = this.lvl.SPAWN_POINT;
 
     const monsters: Bot[] = [];
     for (let i = 0; i < count; i++) {
-      // Level 1 keeps its lone monster's original far spawn. Level 2: index 0 = stalker near spawn,
-      // 1-4 = guards spawned straight onto their posts by the exit.
+      // Level 1 keeps its lone monster's original far spawn. Level 2: everyone — stalker
+      // included — opens on a post by the exit (guardPost(0) is the pad itself).
       let px: number, pz: number;
       if (count === 1) {
         px = this.lvl.MONSTER_SPAWN.x;
         pz = this.lvl.MONSTER_SPAWN.z;
-      } else if (i === 0) {
-        // One full block diagonal (a corridor crossing 34m out) — with the open grid's long
-        // sightlines anything closer turns spawn into a ~0.3s death (see SPAWN_GRACE_SECONDS).
-        px = spawn.x + 24;
-        pz = spawn.z + 24;
       } else {
         const post = this.guardPost(i);
         px = post.x;
@@ -490,7 +489,9 @@ export class XonoticEngine {
       nearestMonsterDist = Math.min(nearestMonsterDist, distToPlayer);
       bot.stateTimer -= dt;
 
-      const isInterceptor = (bot.packIndex ?? 0) >= 1;
+      // Lv2: every monster holds the exit (index 0 is the hidden pad ambusher). Lv1's lone
+      // monster keeps the roaming stalker brain.
+      const isInterceptor = this.level === 2 ? true : (bot.packIndex ?? 0) >= 1;
       let goalX: number, goalZ: number, speed: number;
       let holdingPost = false; // idle interceptor sitting on its own assigned formation spot —
                                 // separation would just fight the packed formation, so skip it
@@ -502,7 +503,11 @@ export class XonoticEngine {
       // (1/3 of monsters per frame) instead of every monster every frame. Once hunting it
       // never matters again (hunters dead-reckon), so the max detection delay is ~50ms.
       const SIGHT_DETECT_RANGE = 40;
+      // Fairness cap: at most 3 guards chase at once (the hidden pad ambusher is exempt — it's
+      // the surprise). Without this all 5 collapse on the player the instant anyone gets seen.
+      const underHunterCap = !isInterceptor || bot.packIndex === 0 || huntingCount < 3;
       if (bot.state !== 'hunting' && distToPlayer < SIGHT_DETECT_RANGE
+        && underHunterCap
         && this.state.matchTime >= SPAWN_GRACE_SECONDS
         && (this.tickCount + botIndex) % 3 === 0
         && this.hasClearLineOfSight(bot.pos, player.pos)) {
@@ -520,10 +525,30 @@ export class XonoticEngine {
         const commit = playerExitDist < 24;
 
         if (bot.state === 'hunting') {
-          // Once locked on, a guard never gives up — dead-reckons the player's exact position for
-          // the rest of the run, seen or not. Only escaping or dying shakes it.
-          goalX = player.pos.x; goalZ = player.pos.z;
-          speed = this.maxGroundSpeed * 0.82;
+          // Sight-tracked pursuit: chase the last confirmed position, and break off back to post
+          // if there's no sightline for a few seconds — so breaking line of sight (ducking around
+          // a block) shakes them. This is what keeps the exit gauntlet escapable.
+          const trackingTick = (this.tickCount + botIndex) % 3 === 0;
+          if (trackingTick) {
+            if (distToPlayer < SIGHT_DETECT_RANGE + 10 && this.hasClearLineOfSight(bot.pos, player.pos)) {
+              bot.targetPos = { ...player.pos };
+              bot.loseSightTimer = 0;
+            } else {
+              bot.loseSightTimer = (bot.loseSightTimer ?? 0) + dt * 3;
+            }
+          }
+          if ((bot.loseSightTimer ?? 0) > GIVE_UP_AFTER_LOST_SIGHT) {
+            bot.state = 'wandering';
+            bot.stateTimer = 2 + Math.random() * 2;
+            bot.loseSightTimer = 0;
+            holdingPost = false; // re-evaluated next frame by the wandering branch below
+            goalX = bot.pos.x; goalZ = bot.pos.z;
+            speed = 0;
+          } else {
+            goalX = bot.targetPos?.x ?? player.pos.x;
+            goalZ = bot.targetPos?.z ?? player.pos.z;
+            speed = this.maxGroundSpeed * 0.82;
+          }
         } else if (alerted) {
           // Interpose: a point ~30% of the way from the player toward the exit, offset to this
           // guard's side so the four spread across the approach instead of stacking.
@@ -606,11 +631,11 @@ export class XonoticEngine {
         }
       }
 
-      // Teleport: a hunter still this far behind after its grace window is presumed stuck on a
-      // room block somewhere in the grid (or just outpaced) rather than mid-chase — it blinks to a
-      // fresh spot near the player instead of trailing forever. checkWallCollision keeps the landing
-      // spot out of solid geometry; TELEPORT_MIN_DIST keeps it from ever popping in on top of you.
-      if (bot.state === 'hunting') {
+      // Teleport: Lv1 stalker only. A hunter still this far behind after its grace window is
+      // presumed stuck on a maze wall (or just outpaced) — it blinks near the player instead of
+      // trailing forever. Lv2 guards never blink: with sight-tracked pursuit + give-up, falling
+      // behind means the player earned the escape, not a bug.
+      if (bot.state === 'hunting' && !isInterceptor) {
         bot.teleportCooldown = (bot.teleportCooldown ?? 5) - dt;
         if (bot.teleportCooldown <= 0 && distToPlayer > TELEPORT_TRIGGER_DIST) {
           this.teleportMonsterNearPlayer(bot, player.pos);
@@ -679,7 +704,22 @@ export class XonoticEngine {
         const actualMove = Math.hypot(bot.pos.x - preMoveX, bot.pos.z - preMoveZ);
         bot.stuckTimer = expectedMove > 0.01 && actualMove < expectedMove * 0.2 ? (bot.stuckTimer ?? 0) + dt : 0;
         if (bot.stuckTimer > 1.0) {
-          this.teleportMonsterNearPlayer(bot, player.pos);
+          if (isInterceptor) {
+            if ((bot.loseSightTimer ?? 0) === 0) {
+              // Wedged while looking at the player — flank blink (it sees you, so no pop-in).
+              this.teleportMonsterNearPlayer(bot, player.pos);
+            } else {
+              // Wedged and blind — snap back to post instead of popping in next to a hiding player.
+              const post = this.guardPost(bot.packIndex ?? 1);
+              bot.pos.x = post.x; bot.pos.z = post.z;
+              bot.vel.x = 0; bot.vel.z = 0;
+              bot.state = 'wandering';
+              bot.stateTimer = 2 + Math.random() * 2;
+              bot.loseSightTimer = 0;
+            }
+          } else {
+            this.teleportMonsterNearPlayer(bot, player.pos);
+          }
           bot.stuckTimer = 0;
           bot.teleportCooldown = 6 + Math.random() * 3;
         }
