@@ -16,9 +16,22 @@ export const SPAWN_GRACE_SECONDS = 5;
 // escapable: 3.5s at guard speed (12.3u/s) is ~43m of leash before they break off.
 export const GIVE_UP_AFTER_LOST_SIGHT = 3.5;
 
+// ── LEVEL 3 ("THE LAB") red-light-green-light rules ──────────────────────────────────────────
+// The fluorescents run ON 4.5s / OFF 3.5s. Moving (WASD/space) while dark kills. Every OFF→ON
+// edge the entity steps closer; while lit it also creeps.Input at the exact lights-out edge is
+// forgiven for DARK_INPUT_FORGIVENESS so a frame-perfect transition never feels like a bug.
+export const L3_LIGHT_ON_SECONDS = 4.5;
+export const L3_LIGHT_OFF_SECONDS = 3.5;
+export const L3_ENTITY_STEP = 4; // metres gained per lights-on edge
+export const L3_ENTITY_CHASE_SPEED = 7; // near: slower than the 15u/s sprint — dawdlers die, runners live
+export const L3_ENTITY_FAR_SPEED = 12; // far (>30m): firm lope that holds the trail without reeling perfect sprinters in
+export const L3_ENTITY_FAR_DIST = 30;
+export const L3_ENTITY_KILL_DIST = 1.7;
+export const L3_DARK_INPUT_FORGIVENESS = 0.35;
+
 export class XonoticEngine {
   public state: XonoticGameState;
-  public level: 1 | 2;
+  public level: 1 | 2 | 3;
   private lvl: LevelModule;
   public roomId: string | null = null;
   public userId: string | null = null;
@@ -33,6 +46,8 @@ export class XonoticEngine {
   private lastStreamCz: number = Number.NaN;
   private timeoutManifested: boolean = false;
   private tickCount: number = 0; // frame counter for staggering expensive LOS checks
+  private lastMoveInput: boolean = false; // WASD/space held on the latest input frame (L3 dark rule)
+  private darkElapsed: number = 0; // seconds since the L3 lights went out (input forgiveness window)
   private onStateChange: (state: XonoticGameState) => void;
 
   // Arena Physics parameters (highly responsive like standard Quake/Xonotic engines)
@@ -46,7 +61,7 @@ export class XonoticEngine {
   private readonly maxBhopSpeed = 40; // hard cap on horizontal speed so chained bunny-hops can't build up
                                        // enough velocity to tunnel through a wall/ceiling in a single frame
 
-  constructor(onStateChange: (state: XonoticGameState) => void, level: 1 | 2 = 1) {
+  constructor(onStateChange: (state: XonoticGameState) => void, level: 1 | 2 | 3 = 1) {
     this.onStateChange = onStateChange;
     this.level = level;
     this.lvl = getLevelModule(level);
@@ -80,6 +95,9 @@ export class XonoticEngine {
       level: this.level,
       monsterWarning: false,
       escaped: false,
+      lightsOn: true,
+      lightTimer: 0,
+      entityDist: -1,
     };
   }
 
@@ -151,7 +169,7 @@ export class XonoticEngine {
       }
       monsters.push({
         id: count === 1 ? 'the_monster' : `the_monster_${i}`,
-        name: '데모고르곤',
+        name: this.level === 3 ? '긴팔' : '데모고르곤',
         pos: { x: px, y: 2, z: pz },
         vel: { x: 0, y: 0, z: 0 },
         health: 999999,
@@ -164,8 +182,9 @@ export class XonoticEngine {
         stateTimer: 3 + Math.random() * 6 + i * 1.4,
         isMonster: true,
         invulnerable: true,
+        // Level 3's entity is always visible — seeing it approach is the horror.
         // Interceptors (1+) are a visible blockade from the start; only the stalker (0) hides.
-        isHidden: i === 0,
+        isHidden: this.level === 3 ? false : i === 0,
         packIndex: i,
       });
     }
@@ -200,6 +219,9 @@ export class XonoticEngine {
     // Apply camera rotation bounds (Inversion fixed: changed '-' to '+' for yawDelta to align standard mouse look)
     player.yaw = (player.yaw + yawDelta + keyboardYaw) % (Math.PI * 2);
     player.pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, player.pitch - pitchDelta + keyboardPitch));
+
+    // L3 dark rule reads this: any WASD/space held counts as moving (mouse-look is free).
+    this.lastMoveInput = !!(moveKeys.w || moveKeys.s || moveKeys.a || moveKeys.d || moveKeys.space);
 
     // Process Movement friction + acceleration (GoldSrc/Quake strafe dynamic sliding)
     let moveX = 0;
@@ -313,7 +335,9 @@ export class XonoticEngine {
     this.state.matchTime += dt;
 
     this.updatePlayerPhysics(dt);
-    this.updateMonsterAI(dt);
+    // Level 3 runs its own red-light-green-light brain instead of the Backrooms pack AI.
+    if (this.level === 3) this.updateLevel3(dt);
+    else this.updateMonsterAI(dt);
     this.updatePickups(dt);
     this.checkEscapeWall();
     this.checkTimeoutDeath();
@@ -447,6 +471,78 @@ export class XonoticEngine {
     player.pos.z += player.vel.z * dt;
     this.checkWallAxisBound(player.pos, player.vel, 'z', 0.8, 1.6);
 
+  }
+
+  // ── LEVEL 3 brain: red-light-green-light ─────────────────────────────────────────────
+  // Lights run ON/OFF on a fixed cycle. Moving while dark kills (with a short forgiveness
+  // window at the exact lights-out edge). Every OFF→ON edge the entity steps closer; while
+  // lit it also creeps. It never moves in the dark — the dread is not knowing how close the
+  // next flicker will reveal it to be.
+  private updateLevel3(dt: number) {
+    const s = this.state;
+    const entity = s.bots.find(b => b.isMonster);
+
+    const wasOn = s.lightsOn;
+    s.lightTimer += dt;
+    const cycle = L3_LIGHT_ON_SECONDS + L3_LIGHT_OFF_SECONDS;
+    s.lightsOn = (s.lightTimer % cycle) < L3_LIGHT_ON_SECONDS;
+    if (!wasOn && s.lightsOn && entity && s.matchTime >= SPAWN_GRACE_SECONDS) {
+      this.advanceEntityToward(entity, L3_ENTITY_STEP);
+    }
+    if (s.lightsOn) this.darkElapsed = 0;
+    else this.darkElapsed += dt;
+
+    if (entity) {
+      // Creep while lit — near-sprint lope at range (it looms behind you the whole run), dropping
+      // to a slower stalk inside 30m so steady movers pull away and only mistakes get punished.
+      // Same acceleration ramp as the player: instant velocity would steal metres every edge.
+      if (s.lightsOn && s.matchTime >= SPAWN_GRACE_SECONDS) {
+        const dx = s.player.pos.x - entity.pos.x;
+        const dz = s.player.pos.z - entity.pos.z;
+        const l = Math.hypot(dx, dz) || 1;
+        const chaseSpeed = l > L3_ENTITY_FAR_DIST ? L3_ENTITY_FAR_SPEED : L3_ENTITY_CHASE_SPEED;
+        const ramp = Math.min(1, 8 * dt);
+        entity.vel.x += ((dx / l) * chaseSpeed - entity.vel.x) * ramp;
+        entity.vel.z += ((dz / l) * chaseSpeed - entity.vel.z) * ramp;
+        entity.vel.y += this.gravity * dt;
+        entity.pos.x += entity.vel.x * dt;
+        this.checkWallAxisBound(entity.pos, entity.vel, 'x', 0.9, 1.6);
+        entity.pos.y += entity.vel.y * dt;
+        if (entity.pos.y < 1.0) { entity.pos.y = 1.0; entity.vel.y = 0; }
+        entity.pos.z += entity.vel.z * dt;
+        this.checkWallAxisBound(entity.pos, entity.vel, 'z', 0.9, 1.6);
+      }
+
+      const dist = Math.hypot(s.player.pos.x - entity.pos.x, s.player.pos.z - entity.pos.z);
+      s.entityDist = dist;
+      s.monsterWarning = dist < 6;
+
+      // Deaths: moved in the dark, or it reached you (either phase).
+      if (s.matchTime >= SPAWN_GRACE_SECONDS && !s.escaped && s.player.health > 0) {
+        if (!s.lightsOn && this.darkElapsed > L3_DARK_INPUT_FORGIVENESS && this.lastMoveInput) {
+          this.damagePlayer(9999, entity.id);
+        } else if (dist < L3_ENTITY_KILL_DIST) {
+          this.damagePlayer(9999, entity.id);
+        }
+      }
+    } else {
+      s.entityDist = -1;
+    }
+  }
+
+  // Steps the L3 entity toward the player by `step` metres, axis-separated so it slides along
+  // walls instead of entering them. Already on top of the player → hold (the kill check fires).
+  private advanceEntityToward(entity: Bot, step: number) {
+    const p = this.state.player.pos;
+    const dx = p.x - entity.pos.x;
+    const dz = p.z - entity.pos.z;
+    const l = Math.hypot(dx, dz);
+    if (l < 1.0) return;
+    const zero = { x: 0, y: 0, z: 0 };
+    entity.pos.x += (dx / l) * step;
+    this.checkWallAxisBound(entity.pos, zero, 'x', 0.9, 1.6);
+    entity.pos.z += (dz / l) * step;
+    this.checkWallAxisBound(entity.pos, zero, 'z', 0.9, 1.6);
   }
 
   // Monster AI.
@@ -777,11 +873,13 @@ export class XonoticEngine {
       const isPlatform =
         wall.id.startsWith('floor') ||
         wall.id.startsWith('l2_floor') || // Lv2 floors ('l2_floor_main', 'l2_floor_l2s_..') — huge slabs, never block sight
+        wall.id.startsWith('l3_floor') || // Lv3 facility floor slab
         wall.id.startsWith('bridge') ||
         wall.id.endsWith('roof') ||
         wall.id.endsWith('ceiling') ||
         wall.id === 'ceiling_main' ||
-        wall.id === 'l2_ceiling_main';
+        wall.id === 'l2_ceiling_main' ||
+        wall.id === 'l3_ceiling_main';
       if (isPlatform) continue;
 
       const hX = wall.size.x / 2;
@@ -925,11 +1023,13 @@ export class XonoticEngine {
       const isPlatform =
         wall.id.startsWith('floor') ||
         wall.id.startsWith('l2_floor') || // Lv2 floors are huge slabs — without this they shove the player/monsters sideways every frame
+        wall.id.startsWith('l3_floor') || // Lv3 facility floor slab (same trap)
         wall.id.startsWith('bridge') ||
         wall.id.endsWith('roof') ||
         wall.id.endsWith('ceiling') || // streamed chunk ceilings ('*_ceiling')
         wall.id === 'ceiling_main' ||
         wall.id === 'l2_ceiling_main' || // Lv2 hub ceiling (jump apex can reach it: low 4.5m ceiling)
+        wall.id === 'l3_ceiling_main' || // Lv3 hub ceiling (very low 3.2m — jumpers touch it)
         !!wall.emissive;
       
       if ((axis === 'x' || axis === 'z') && isPlatform) {

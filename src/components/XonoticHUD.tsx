@@ -7,15 +7,17 @@ import React from 'react';
 import { Player3D, FragLog } from '../game/xonoticTypes';
 import { Shield, Heart } from 'lucide-react';
 import { SPAWN_GRACE_SECONDS } from '../game/xonoticEngine';
+import { L3_LIGHT_ON_SECONDS, L3_LIGHT_OFF_SECONDS } from '../game/xonoticEngine';
 
 interface XonoticHUDProps {
   player: Player3D;
   fragFeed: FragLog[];
   matchTime: number;
-  level?: 1 | 2;
+  level?: 1 | 2 | 3;
   exitPos?: { x: number; y: number; z: number } | null;
   activeKeys?: { w: boolean; a: boolean; s: boolean; d: boolean; space: boolean };
   monsterWarning?: boolean;
+  entityDist?: number; // Level 3: metres to the entity
 }
 
 export const XonoticHUD: React.FC<XonoticHUDProps> = ({
@@ -26,6 +28,7 @@ export const XonoticHUD: React.FC<XonoticHUDProps> = ({
   exitPos,
   activeKeys,
   monsterWarning,
+  entityDist = -1,
 }) => {
   // Exit compass — in Level 2's endless identical grid you need a heading. Arrow rotates so "up" =
   // straight ahead. Forward = (sin yaw, -cos yaw); right = (cos yaw, sin yaw) — matches the engine.
@@ -64,6 +67,30 @@ export const XonoticHUD: React.FC<XonoticHUDProps> = ({
         </div>
       )}
 
+      {/* Level 3: the light-phase banner IS the game — green means walk, red means freeze */}
+      {level === 3 && matchTime >= SPAWN_GRACE_SECONDS && (() => {
+        const cycle = L3_LIGHT_ON_SECONDS + L3_LIGHT_OFF_SECONDS;
+        const phase = matchTime % cycle;
+        const on = phase < L3_LIGHT_ON_SECONDS;
+        const remain = on ? L3_LIGHT_ON_SECONDS - phase : cycle - phase;
+        return (
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-1.5">
+            <span className={`text-lg font-black tracking-[0.25em] uppercase px-5 py-1.5 rounded-xl border backdrop-blur-md ${
+              on
+                ? 'text-emerald-300 border-emerald-500/50 bg-emerald-950/70'
+                : 'text-red-400 border-red-500/60 bg-red-950/70 animate-pulse'
+            }`}>
+              {on ? `불 켜짐 · 이동 가능 ${remain.toFixed(1)}` : `불 꺼짐 · 정지! ${remain.toFixed(1)}`}
+            </span>
+            {entityDist >= 0 && (
+              <span className="text-[11px] font-mono text-slate-300/90 tracking-widest bg-black/60 border border-white/10 rounded-lg px-3 py-1">
+                그것까지 {entityDist.toFixed(0)}m
+              </span>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Spawn protection countdown — so the quiet opening doesn't read as "monsters broken" */}
       {matchTime < SPAWN_GRACE_SECONDS && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50">
@@ -83,7 +110,7 @@ export const XonoticHUD: React.FC<XonoticHUDProps> = ({
         <div className="text-center font-mono pointer-events-auto flex flex-col gap-2 items-center">
           <div className="bg-slate-900/80 backdrop-blur-md px-6 py-2.5 rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center">
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-              남은 시간 · {level === 2 ? 'LV.2 호텔' : 'LV.1 미로'}
+              남은 시간 · {level === 3 ? 'LV.3 연구시설' : level === 2 ? 'LV.2 호텔' : 'LV.1 미로'}
             </span>
             <span className="text-2xl font-black text-rose-500 glow-rose">{formatTime(matchTime)}</span>
           </div>

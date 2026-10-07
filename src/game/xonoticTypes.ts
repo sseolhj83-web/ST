@@ -88,7 +88,10 @@ export interface XonoticGameState {
   pickups: PickupItem[];
   fragFeed: FragLog[];
   matchTime: number;
-  level: 1 | 2;             // which Backrooms level this run is in
+  level: 1 | 2 | 3;           // which level this run is in
   monsterWarning?: boolean; // the monster is within 7m of the player right now
   escaped?: boolean;        // found and dove through the flickering wall — the run is won
+  lightsOn: boolean;        // Level 3 facility fluorescents — moving while dark is lethal
+  lightTimer: number;       // seconds since run start on the light cycle clock
+  entityDist: number;       // Level 3: metres to the long-armed entity (-1 when N/A)
 }

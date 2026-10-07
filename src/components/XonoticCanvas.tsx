@@ -9,6 +9,7 @@ import { XonoticGameState, Bot, PickupItem } from '../game/xonoticTypes';
 import { PUDDLE_COLOR } from '../game/xonoticMap';
 import { getLevelModule, chunkKey } from '../game/levels';
 import { BLOCK as L2_BLOCK, L2_WALL_H, L2_ESCAPE_WALL_POS } from '../game/xonoticMapLevel2';
+import { L3_WALL_H, L3_ESCAPE_WALL_POS } from '../game/xonoticMapLevel3';
 
 // Builds a single motionless, faceless human-shaped mannequin — static set dressing meant to
 // startle whoever's flashlight lands on it and briefly reads as "is that a person?" before it's
@@ -645,6 +646,123 @@ function buildRemotePlayerModel(bot: Bot): THREE.Group {
   return group;
 }
 
+// Builds the Level 3 entity — a gaunt long-armed humanoid with hanging black hair.
+// Named groups (torso/head/arm_left/arm_right/leg_left/leg_right) match the Demogorgon rig
+// so the shared procedural animation traversal in animate() just works.
+function buildL3EntityModel(): THREE.Group {
+  const group = new THREE.Group();
+  const skinMat = new THREE.MeshStandardMaterial({ color: '#c9c2b4', roughness: 0.65, metalness: 0.0 });
+  const hairMat = new THREE.MeshStandardMaterial({ color: '#0b0b0e', roughness: 0.95, metalness: 0.0 });
+  const eyeMat = new THREE.MeshStandardMaterial({
+    color: '#1a0505', emissive: new THREE.Color('#7a1010'), emissiveIntensity: 1.6, roughness: 0.3,
+  });
+
+  // Torso — emaciated, slightly hunched
+  const torsoGroup = new THREE.Group();
+  torsoGroup.name = 'torso';
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.85, 0.2), skinMat);
+  torsoGroup.add(torso);
+  const ribs = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.1, 0.22), skinMat);
+  ribs.position.y = 0.15;
+  torsoGroup.add(ribs);
+  torsoGroup.position.set(0, 1.45, 0);
+  torsoGroup.rotation.x = 0.08;
+  group.add(torsoGroup);
+
+  // Head — pale face half-buried in hanging black hair, dull red eyes
+  const headGroup = new THREE.Group();
+  headGroup.name = 'head';
+  const skull = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.28, 0.24), skinMat);
+  headGroup.add(skull);
+  const hairBack = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.75, 0.1), hairMat);
+  hairBack.position.set(0, -0.22, -0.13);
+  headGroup.add(hairBack);
+  [-0.1, 0.1].forEach(x => {
+    const strand = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.55, 0.07), hairMat);
+    strand.position.set(x, -0.26, 0.1);
+    headGroup.add(strand);
+  });
+  [-0.06, 0.06].forEach(x => {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 8), eyeMat);
+    eye.position.set(x, 0.02, 0.125);
+    headGroup.add(eye);
+  });
+  headGroup.position.set(0, 2.02, 0.03);
+  headGroup.rotation.x = 0.12; // head hung low
+  group.add(headGroup);
+
+  // Arms — unnaturally long: upper + elbow + forearm group (children[2]) + dangling fingers
+  const buildArm = (isLeft: boolean) => {
+    const armGroup = new THREE.Group();
+    armGroup.name = isLeft ? 'arm_left' : 'arm_right';
+    const dirSign = isLeft ? -1 : 1;
+    const upper = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.65, 0.09), skinMat);
+    upper.position.y = -0.32;
+    armGroup.add(upper);
+    const elbow = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), skinMat);
+    elbow.position.y = -0.65;
+    armGroup.add(elbow);
+    const forearmGroup = new THREE.Group();
+    forearmGroup.position.y = -0.65;
+    const fore = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.75, 0.07), skinMat);
+    fore.position.y = -0.37;
+    forearmGroup.add(fore);
+    [-0.05, 0, 0.05].forEach(x => {
+      const finger = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.34, 0.03), skinMat);
+      finger.position.set(x, -0.9, 0);
+      forearmGroup.add(finger);
+    });
+    armGroup.add(forearmGroup);
+    armGroup.position.set(dirSign * 0.24, 1.8, 0);
+    return armGroup;
+  };
+  group.add(buildArm(true));
+  group.add(buildArm(false));
+
+  // Legs — thin, slightly knock-kneed: [hip, thighGroup[thigh, knee, calfGroup]]
+  const buildLeg = (isLeft: boolean) => {
+    const legGroup = new THREE.Group();
+    legGroup.name = isLeft ? 'leg_left' : 'leg_right';
+    const dirSign = isLeft ? -1 : 1;
+    const hip = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 6), skinMat);
+    legGroup.add(hip);
+    const thighGroup = new THREE.Group();
+    const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.5, 0.11), skinMat);
+    thigh.position.y = -0.25;
+    thighGroup.add(thigh);
+    const knee = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 6), skinMat);
+    knee.position.y = -0.5;
+    thighGroup.add(knee);
+    const calfGroup = new THREE.Group();
+    calfGroup.position.y = -0.5;
+    const calf = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.48, 0.09), skinMat);
+    calf.position.y = -0.24;
+    calfGroup.add(calf);
+    thighGroup.add(calfGroup);
+    legGroup.add(thighGroup);
+    legGroup.position.set(dirSign * 0.11, 0.98, 0);
+    return legGroup;
+  };
+  group.add(buildLeg(true));
+  group.add(buildLeg(false));
+
+  group.userData = {
+    headBaseY: headGroup.position.y,
+    armLBaseRotX: 0, armRBaseRotX: 0,
+    armLBaseRotY: 0, armRBaseRotY: 0,
+    armLBaseRotZ: -0.12, armRBaseRotZ: 0.12,
+    legLBaseRotZ: -0.06, legRBaseRotZ: 0.06,
+    bodyBaseY: 0,
+  };
+  group.traverse(obj => {
+    if ((obj as THREE.Mesh).isMesh) {
+      obj.castShadow = false;
+      obj.receiveShadow = false;
+    }
+  });
+  return group;
+}
+
 // Deep recursive disposal helper to prevent WebGL memory leaks on dynamic bot/projectile spawns
 const disposeHierarchy = (obj: THREE.Object3D) => {
   obj.traverse((child) => {
@@ -667,7 +785,7 @@ const disposeHierarchy = (obj: THREE.Object3D) => {
 interface XonoticCanvasProps {
   state: XonoticGameState;
   gameStateRef?: React.RefObject<XonoticGameState | null>;
-  level?: 1 | 2;
+  level?: 1 | 2 | 3;
   onPointerLockChange: (locked: boolean) => void;
   onMouseMove: (dx: number, dy: number) => void;
 }
@@ -705,15 +823,17 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
 
     const lvl = getLevelModule(level);
     const isL2 = lvl.level === 2;
+    const isL3 = lvl.level === 3;
+    const isLean = isL2 || isL3; // lean forward-renderer path (no AA/oversampling)
     const ESCAPE_WALL_ID = lvl.ESCAPE_WALL_ID;
 
     // 1. Create Scene & haze. Level 1 fades to near-black (flashlight-only). Level 2's hotel is
     // fully, flatly fluorescent-lit — no flashlight — so its haze is a warm grey the lit corridor
-    // fades into slowly, not darkness.
+    // fades into slowly, not darkness. Level 3 is a sealed concrete lab — cold near-black haze.
     const scene = new THREE.Scene();
-    const hazeColor = isL2 ? '#221e18' : '#0a0906';
+    const hazeColor = isL3 ? '#040607' : isL2 ? '#221e18' : '#0a0906';
     scene.background = new THREE.Color(hazeColor);
-    scene.fog = new THREE.FogExp2(hazeColor, isL2 ? 0.0085 : 0.006);
+    scene.fog = new THREE.FogExp2(hazeColor, isL3 ? 0.016 : isL2 ? 0.0085 : 0.006);
     sceneRef.current = scene;
 
     // 2. Camera Setup (Generous 85-degree Quake-style Field of View)
@@ -724,9 +844,9 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // Lv2 was stuttering: 900+ static meshes + 9 lights + up to 9x140-mesh monsters in a
     // forward renderer. AA + 1.5x pixel ratio + shadowmap (no shadow-casting light exists)
     // + ACES tone mapping was pure overhead, so Lv2 runs lean.
-    const renderer = new THREE.WebGLRenderer({ antialias: !isL2, alpha: false, powerPreference: 'high-performance' });
+    const renderer = new THREE.WebGLRenderer({ antialias: !isLean, alpha: false, powerPreference: 'high-performance' });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(isL2 ? Math.min(window.devicePixelRatio, 1) : Math.min(window.devicePixelRatio, 1.5));
+    renderer.setPixelRatio(isLean ? Math.min(window.devicePixelRatio, 1) : Math.min(window.devicePixelRatio, 1.5));
     renderer.shadowMap.enabled = false; // no light casts shadows (all castShadow=false) — was wasted pass
     // Level 2 skips ACES filmic tone mapping (per-fragment cost on every lit material).
     // The flat ambient wash looks near-identical without it. Level 1 stays linear anyway.
@@ -743,7 +863,10 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     //    ambient does the flat "liminal fluorescent" wash, a hemisphere adds a little ceiling/
     //    floor gradient, and the point-light pool (below, updated in animate()) puts a brighter
     //    hotspot directly under whichever tubes are nearest the player.
-    const ambientLight = new THREE.AmbientLight(isL2 ? '#ffedc8' : '#fef9c3', isL2 ? 0.6 : 0.02);
+    const ambientLight = new THREE.AmbientLight(
+      isL3 ? '#cfe0d6' : isL2 ? '#ffedc8' : '#fef9c3',
+      isL3 ? 0.03 : isL2 ? 0.6 : 0.02,
+    );
     scene.add(ambientLight);
 
     const dirLight = new THREE.DirectionalLight(isL2 ? '#fff2cf' : '#fdf6b2', isL2 ? 0.12 : 0.01);
@@ -770,11 +893,88 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       scene.add(exitLight);
     }
 
+    // Level 3 rig: cold fluorescents driven by the engine light state every frame (see
+    // animate()). Three player-relative pools (no analytic grid — the lab is hand-built) plus a
+    // static red beacon over the exit door.
+    let l3Hemi: THREE.HemisphereLight | null = null;
+    const labPointLights: THREE.PointLight[] = [];
+    if (isL3) {
+      l3Hemi = new THREE.HemisphereLight('#b8cec4', '#0a0c0c', 0.2);
+      scene.add(l3Hemi);
+      const offsets: Array<[number, number]> = [[7, 0], [-6, 4], [0, -6]];
+      offsets.forEach(([ox, oz]) => {
+        const pl = new THREE.PointLight('#dff5e8', 0, 22, 2);
+        pl.castShadow = false;
+        pl.userData = { ox, oz };
+        scene.add(pl);
+        labPointLights.push(pl);
+      });
+      const exitLight3 = new THREE.PointLight('#ff2d2d', 2.0, 30, 2);
+      exitLight3.castShadow = false;
+      exitLight3.position.set(L3_ESCAPE_WALL_POS.x, L3_ESCAPE_WALL_POS.y + 0.6, L3_ESCAPE_WALL_POS.z);
+      scene.add(exitLight3);
+    }
+
     const floorMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(isL2 ? '#4a3120' : '#D2B48C'),
+      color: new THREE.Color(isL3 ? '#33363a' : isL2 ? '#4a3120' : '#D2B48C'),
       roughness: 0.92,
       metalness: 0.0,
     });
+
+    // ── Level 3 concrete surfaces ───────────────────────────────────────────────────────────
+    // Stained poured-concrete texture (one shared 128px canvas, like the wallpaper above).
+    const concreteTexture = (() => {
+      if (!isL3) return null;
+      const size = 128;
+      const c = document.createElement('canvas');
+      c.width = size; c.height = size;
+      const ctx = c.getContext('2d')!;
+      ctx.fillStyle = '#7a7e7d';
+      ctx.fillRect(0, 0, size, size);
+      const img = ctx.getImageData(0, 0, size, size);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const n = (Math.random() - 0.5) * 22;
+        img.data[i] += n; img.data[i + 1] += n; img.data[i + 2] += n * 1.05;
+      }
+      ctx.putImageData(img, 0, 0);
+      // damp streaks running down
+      for (let i = 0; i < 10; i++) {
+        const sx = Math.random() * size;
+        ctx.fillStyle = 'rgba(30,34,33,0.12)';
+        ctx.fillRect(sx, Math.random() * size * 0.5, 2 + Math.random() * 3, 20 + Math.random() * 40);
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(2, 2);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    })();
+
+    // Shared Level 3 materials. l3TubeMat is THE facility light — animate() drives its
+    // emissiveIntensity from the engine light state, so every fixture blinks as one.
+    const l3WallMat = isL3 ? new THREE.MeshStandardMaterial({ color: 0xffffff, map: concreteTexture!, roughness: 0.9, metalness: 0.05 }) : null;
+    const l3FloorMat = isL3 ? new THREE.MeshStandardMaterial({ color: new THREE.Color('#33363a'), roughness: 0.95, metalness: 0.0 }) : null;
+    const l3CeilMat = isL3 ? new THREE.MeshStandardMaterial({ color: new THREE.Color('#242627'), roughness: 0.95, metalness: 0.0 }) : null;
+    const l3TubeMat = isL3 ? new THREE.MeshStandardMaterial({ color: '#e8f4ec', emissive: new THREE.Color('#dff5e8'), emissiveIntensity: 2.2, roughness: 0.4 }) : null;
+    const l3MetalMat = isL3 ? new THREE.MeshStandardMaterial({ color: new THREE.Color('#3d4a43'), roughness: 0.55, metalness: 0.45 }) : null;
+    const l3ScreenMat = isL3 ? new THREE.MeshStandardMaterial({ color: '#0c1412', emissive: new THREE.Color('#9fd8cb'), emissiveIntensity: 0.7, roughness: 0.4 }) : null;
+    const l3LedMat = isL3 ? new THREE.MeshStandardMaterial({ color: '#140505', emissive: new THREE.Color('#ff2222'), emissiveIntensity: 2.0, roughness: 0.4 }) : null;
+    const l3ExitMat = isL3 ? new THREE.MeshStandardMaterial({ color: '#1c0808', emissive: new THREE.Color('#ff2d2d'), emissiveIntensity: 1.6, roughness: 0.5 }) : null;
+    const l3SignMat = isL3 ? new THREE.MeshStandardMaterial({ color: '#04120a', emissive: new THREE.Color('#39ff88'), emissiveIntensity: 2.2, roughness: 0.5 }) : null;
+    const l3DarkMat = isL3 ? new THREE.MeshStandardMaterial({ color: new THREE.Color('#151617'), roughness: 0.8, metalness: 0.2 }) : null;
+
+    const l3MaterialFor = (wall: { id: string; color: string; emissive?: boolean; doorDecor?: boolean }): THREE.Material => {
+      if (wall.id === 'l3_floor_main') return l3FloorMat!;
+      if (wall.id === 'l3_ceiling_main') return l3CeilMat!;
+      if (wall.id === 'l3_exitsign') return l3SignMat!;
+      if (wall.id === 'l3_exitdoor') return l3ExitMat!;
+      if (wall.id.startsWith('l3_screen_')) return l3ScreenMat!;
+      if (wall.id.includes('_led')) return l3LedMat!;
+      if (wall.id.startsWith('l3_cam_') || wall.id.startsWith('l3_sec_console') || wall.id.startsWith('l3_lab_eq') || wall.id === 'l3_start_cabinet') return l3MetalMat!;
+      if (wall.emissive) return l3TubeMat!;
+      if (wall.doorDecor) return l3DarkMat!;
+      return l3WallMat!;
+    };
 
     // Procedural damp-wallpaper texture — a flat single color read as dull/lifeless across long
     // corridors, so this breaks it up with fine grain + blotchy stains. One shared texture reused
@@ -942,7 +1142,9 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       const geometry = new THREE.BoxGeometry(wall.size.x, wall.size.y, wall.size.z);
 
       let material: THREE.Material;
-      if (isL2) {
+      if (isL3) {
+        material = l3MaterialFor(wall);
+      } else if (isL2) {
         material = l2MaterialFor(wall);
       } else if (wall.id === 'floor_main') {
         material = floorMat;
@@ -1124,8 +1326,9 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     flashlightGroup.visible = !isL2; // Level 2 is fully lit — no handheld flashlight
 
     // Always-on flashlight SpotLight — the player's light source in Level 1's pitch-dark maze.
-    // Level 2 is fluorescent-lit, so its spotlight contributes nothing (intensity 0).
-    const flashlightSpot = new THREE.SpotLight('#fff4d6', isL2 ? 0 : 35, 48, 0.68, 0.35, 2);
+    // Level 2 is fluorescent-lit, so its spotlight contributes nothing (intensity 0). Level 3
+    // gets a weak beam: the dark phases must stay nearly blind, but not literally sightless.
+    const flashlightSpot = new THREE.SpotLight('#fff4d6', isL2 ? 0 : isL3 ? 7 : 35, 48, 0.68, 0.35, 2);
     flashlightSpot.castShadow = false;
     scene.add(flashlightSpot);
     const flashlightTarget = new THREE.Object3D();
@@ -1149,6 +1352,9 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
 
     let lastTime = performance.now();
     let botAnimTime = 0;
+    // Level 3 light driver: tracks the engine light state, strobes fixtures briefly on edges.
+    let l3PrevLightsOn = true;
+    let l3Strobe = 0;
 
     // Continuous Frame Loop
     let animationId: number;
@@ -1239,6 +1445,43 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           }
         }
 
+        // B1c. Level 3 only: drive the whole facility from the engine light state. Edges strobe
+        // the tubes briefly (failing-ballast feel); steady phases lerp to lit/dark washes.
+        if (isL3) {
+          const lit = stateVal.lightsOn ?? true;
+          if (lit !== l3PrevLightsOn) {
+            l3PrevLightsOn = lit;
+            l3Strobe = 0.45;
+          }
+          if (l3Strobe > 0) l3Strobe -= frameDelta;
+          const strobing = l3Strobe > 0;
+          const effectiveOn = strobing ? Math.random() > 0.5 : lit;
+          const k = Math.min(1, frameDelta * (strobing ? 30 : 7));
+          const ambTarget = effectiveOn ? 0.55 : 0.02;
+          ambientLight.intensity += (ambTarget - ambientLight.intensity) * k;
+          if (l3Hemi) {
+            const hemiTarget = effectiveOn ? 0.25 : 0.015;
+            l3Hemi.intensity += (hemiTarget - l3Hemi.intensity) * k;
+          }
+          if (l3TubeMat) {
+            l3TubeMat.emissiveIntensity = effectiveOn ? 2.2 : 0.02;
+          }
+          for (let n = 0; n < labPointLights.length; n++) {
+            const pl = labPointLights[n];
+            pl.position.set(
+              player.pos.x + (pl.userData.ox as number),
+              L3_WALL_H - 0.4,
+              player.pos.z + (pl.userData.oz as number),
+            );
+            const ptTarget = effectiveOn ? 1.5 : 0;
+            pl.intensity += (ptTarget - pl.intensity) * k;
+          }
+          // Recording LEDs breathe slowly regardless of phase — something is always watching.
+          if (l3LedMat) {
+            l3LedMat.emissiveIntensity = 1.4 + Math.sin(botAnimTime * 2.2) * 0.9;
+          }
+        }
+
         // B2. Mannequin peekaboo — catch one in the beam, look away, catch it in the beam again
         // and it's gone. A rising edge (not-lit -> lit) counts as one "catch"; two catches kills
         // it. Deliberately strict (tight cone, short range) so it only fires when the player has
@@ -1308,7 +1551,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
             // Build the (expensive) rig lazily — a lurking, hidden stalker costs nothing until the
             // frame it first reveals itself.
             if (bot.isHidden) return;
-            botGroup = buildDemogorgonModel(bot);
+            botGroup = isL3 ? buildL3EntityModel() : buildDemogorgonModel(bot);
             scene.add(botGroup);
             botMeshes.set(bot.id, botGroup);
           }
@@ -1504,7 +1747,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         //  - Level 1: a severe chaotic strobe so it reads as "wrong" once the flashlight lands on it.
         //  - Level 2: a steady green glow — a friendly beacon you head toward, not an anomaly.
         if (escapeWallMesh) {
-          (escapeWallMesh as THREE.Mesh).visible = isL2 ? true : Math.random() > 0.35;
+          (escapeWallMesh as THREE.Mesh).visible = isL2 || isL3 ? true : Math.random() > 0.35;
         }
 
         // H. Call Render
@@ -1549,6 +1792,8 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         wallpaperTexture.dispose();
         [hotelWallTex, hotelPlainTex, hotelCarpetTex].forEach(t => t?.dispose());
         [hotelWallMat, hotelPlainMat, hotelCeilingMat, hotelTubeMat].forEach(m => m?.dispose());
+        concreteTexture?.dispose();
+        [l3WallMat, l3FloorMat, l3CeilMat, l3TubeMat, l3MetalMat, l3ScreenMat, l3LedMat, l3ExitMat, l3SignMat, l3DarkMat].forEach(m => m?.dispose());
         floorMat.dispose();
 
         renderer.dispose();
