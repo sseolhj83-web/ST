@@ -721,17 +721,15 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     cameraRef.current = camera;
 
     // 3. WebGL Renderer Setup - use high-performance power preference for discrete GPU priority
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+    // Lv2 was stuttering: 900+ static meshes + 9 lights + up to 9x140-mesh monsters in a
+    // forward renderer. AA + 1.5x pixel ratio + shadowmap (no shadow-casting light exists)
+    // + ACES tone mapping was pure overhead, so Lv2 runs lean.
+    const renderer = new THREE.WebGLRenderer({ antialias: !isL2, alpha: false, powerPreference: 'high-performance' });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Optimizing pixel ratio to 1.5 to dramatically improve performance on 4K/Retina displays
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Beautiful soft shadows
-    // Level 2 is brightly lit — filmic tone mapping rolls off the fluorescent highlights instead of
-    // clipping them to flat white. Level 1 stays untouched (its careful darkness needs linear output).
-    if (isL2) {
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.0;
-    }
+    renderer.setPixelRatio(isL2 ? Math.min(window.devicePixelRatio, 1) : Math.min(window.devicePixelRatio, 1.5));
+    renderer.shadowMap.enabled = false; // no light casts shadows (all castShadow=false) — was wasted pass
+    // Level 2 skips ACES filmic tone mapping (per-fragment cost on every lit material).
+    // The flat ambient wash looks near-identical without it. Level 1 stays linear anyway.
     
     // Clear any leftover elements just in case, then append
     mountRef.current.innerHTML = '';
@@ -757,7 +755,9 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     if (isL2) {
       const hemi = new THREE.HemisphereLight('#fff2d0', '#2a2418', 0.3);
       scene.add(hemi);
-      for (let i = 0; i < 5; i++) {
+      // Was 5 — each forward-rendered point light adds per-fragment cost on all ~900
+      // hotel meshes. 3 still gives a light pool around the player (see animate() below).
+      for (let i = 0; i < 3; i++) {
         const pl = new THREE.PointLight('#fff0cc', 0, 26, 2);
         pl.castShadow = false;
         scene.add(pl);
@@ -1213,12 +1213,13 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           const ly = L2_WALL_H - 0.35;
           const iCol = Math.round(player.pos.x / B);
           const iRow = Math.round(player.pos.z / B);
-          // best 5 candidates by squared distance
-          const bx = [0, 0, 0, 0, 0], bz = [0, 0, 0, 0, 0], bd = [Infinity, Infinity, Infinity, Infinity, Infinity];
+          // best N candidates by squared distance (N = light pool size)
+          const NL = hotelPointLights.length;
+          const bx = new Array(NL).fill(0), bz = new Array(NL).fill(0), bd = new Array(NL).fill(Infinity);
           const consider = (cx: number, cz: number) => {
             const dx = cx - player.pos.x, dz = cz - player.pos.z;
             const d2 = dx * dx + dz * dz;
-            let s = 4;
+            let s = NL - 1;
             if (d2 >= bd[s]) return;
             while (s > 0 && d2 < bd[s - 1]) { bd[s] = bd[s - 1]; bx[s] = bx[s - 1]; bz[s] = bz[s - 1]; s--; }
             bd[s] = d2; bx[s] = cx; bz[s] = cz;
@@ -1331,6 +1332,18 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           // Bob entire bot y-pos slightly in motion or resting breath
           const targetY = bot.pos.y - 1.0 + (isMoving ? Math.abs(Math.sin(time * 2.0)) * 0.04 : Math.sin(time * 0.25) * 0.01);
           botGroup.position.y = targetY;
+
+          // PERF (Lv2): 140-mesh rig x N monsters — full limb/petal traversal every frame
+          // stutters. Beyond ~35m (fog + darkness) it's a silhouette: skip the detail pass.
+          const pdxA = bot.pos.x - player.pos.x, pdzA = bot.pos.z - player.pos.z;
+          const distSqA = pdxA * pdxA + pdzA * pdzA;
+          const detailedAnim = distSqA < 35 * 35;
+          if (!detailedAnim) {
+            // Update actual coordinates
+            botGroup.position.x = bot.pos.x;
+            botGroup.position.z = bot.pos.z;
+            return;
+          }
 
           // Search named children vectors to apply high-fidelity limb rotations
           botGroup.children.forEach(child => {

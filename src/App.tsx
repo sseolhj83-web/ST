@@ -184,12 +184,19 @@ export default function App() {
   // Activate game renderer execution - completely re-instantiates the engine for clean isolation
   const startGame = useCallback(() => {
     let gameOverFired = false; // prevent double-fire within same game session
+    let lastHudPush = 0; // HUD React state is throttled — canvas reads gameStateRef at 60Hz
     const runLevel = pendingLevelRef.current;
     setActiveLevel(runLevel);
 
     const engine = new XonoticEngine((updatedState) => {
       gameStateRef.current = updatedState;
-      setGameState({ ...updatedState });
+      // Throttle React re-render to ~15Hz. Lv2 state is large (bots) and HUD has
+      // backdrop-blur/shadows — pushing it at 60fps caused visible stutter.
+      const now = performance.now();
+      if (now - lastHudPush >= 66 || updatedState.escaped || updatedState.player.health <= 0) {
+        lastHudPush = now;
+        setGameState({ ...updatedState });
+      }
 
       // Game-over detection runs synchronously every frame — no React batching delay
       if (gameOverFired || appStateRef.current !== 'PLAYING') return;

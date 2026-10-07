@@ -22,6 +22,7 @@ export class XonoticEngine {
   private lastStreamCx: number = Number.NaN;
   private lastStreamCz: number = Number.NaN;
   private timeoutManifested: boolean = false;
+  private tickCount: number = 0; // frame counter for staggering expensive LOS checks
   private onStateChange: (state: XonoticGameState) => void;
 
   // Arena Physics parameters (highly responsive like standard Quake/Xonotic engines)
@@ -119,10 +120,11 @@ export class XonoticEngine {
   }
 
   // The Backrooms entities. Level 1: one lone stalker that lurks unseen and ambushes. Level 2: a
-  // pack of 9 — index 0 is that same invisible stalker, indices 1-8 are visible guards lining the
+  // pack of 5 — index 0 is that same invisible stalker, indices 1-4 are visible guards lining the
   // corridor right before the exit in a zigzag gauntlet (see updateMonsterAI).
+  // Was 9 (9x140-mesh Demogorgons ≈ 1200 draw calls + 9x AI/LOS per frame → Lv2 stutter).
   private createMonsters(): Bot[] {
-    const count = this.level === 2 ? 9 : 1;
+    const count = this.level === 2 ? 5 : 1;
     const spawn = this.lvl.SPAWN_POINT;
 
     const monsters: Bot[] = [];
@@ -299,6 +301,7 @@ export class XonoticEngine {
   }
 
   public stepSimulator(dt: number) {
+    this.tickCount++;
     this.updateStreamedChunks();
 
     this.state.matchTime += dt;
@@ -460,7 +463,7 @@ export class XonoticEngine {
     const SEP = 5.5; // pack members repel each other within this radius — never a single clump
     const TELEPORT_TRIGGER_DIST = 20; // a hunter this far behind is presumed stuck/outpaced, not just lagging
 
-    bots.forEach(bot => {
+    bots.forEach((bot, botIndex) => {
       if (bot.isRemotePlayer) {
         bot.vel.y += this.gravity * dt;
         bot.pos.x += bot.vel.x * dt;
@@ -485,8 +488,13 @@ export class XonoticEngine {
       // Line-of-sight is what actually seals off an escape: any monster that gets eyes on the
       // player — guard or stalker, near the exit or not, hunting-count caps or not — locks on
       // immediately instead of waiting for the player to wander into its proximity/alert radius.
+      // PERF: hasClearLineOfSight() scans all ~400 walls — stagger it across frames
+      // (1/3 of monsters per frame) instead of every monster every frame. Once hunting it
+      // never matters again (hunters dead-reckon), so the max detection delay is ~50ms.
       const SIGHT_DETECT_RANGE = 40;
-      if (bot.state !== 'hunting' && distToPlayer < SIGHT_DETECT_RANGE && this.hasClearLineOfSight(bot.pos, player.pos)) {
+      if (bot.state !== 'hunting' && distToPlayer < SIGHT_DETECT_RANGE
+        && (this.tickCount + botIndex) % 3 === 0
+        && this.hasClearLineOfSight(bot.pos, player.pos)) {
         bot.state = 'hunting';
         bot.isHidden = false;
         bot.stateTimer = isInterceptor ? 3.5 + Math.random() * 2.5 : 22;

@@ -30,7 +30,9 @@ export const CORRIDOR_W = 6;    // walkable hallway width
 const ROOM = BLOCK - CORRIDOR_W; // 18 — the solid, non-enterable room block between corridors
 
 export const L2_CHUNK_SIZE = BLOCK * 2;   // one streamed chunk = a 2x2 block of the corridor grid
-export const L2_CHUNK_LOAD_RADIUS = 3;
+// Was 3 (7x7=49 chunks ≈ 700 static meshes + 700 physics walls → Lv2 stutter on
+// chunk cross + per-frame collision loops). 2 (5x5=25) halves both; fog hides the rest.
+export const L2_CHUNK_LOAD_RADIUS = 2;
 const L2_HUB_HALF = 96;                   // hub spans blocks i,j in [-4, 3]  (crossings [-4, 4])
 
 // A safe, always-open spawn at the central 4-way crossing.
