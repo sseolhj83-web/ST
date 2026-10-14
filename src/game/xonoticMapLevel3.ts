@@ -24,29 +24,30 @@ export const L3_EXIT_COLOR = '#ff2d2d';    // exit door warning red
 export const L3_CHUNK_SIZE = 48; // same grid as L2 (only matters for hub-chunk math)
 export const L3_CHUNK_LOAD_RADIUS = 2; // streamed chunks are empty — radius is irrelevant
 
-// Maze grid: COLSxROWS cells of CELL metres. Deterministic seed → same maze every run.
+// Maze grid: COLSxROWS cells of CELL metres. Narrow 8m corridors (not 12m halls) — tight,
+// winding, claustrophobic. Deterministic seed → same maze every run.
 // (Exported: headless tests BFS the same grid the map is built from.)
-export const L3_COLS = 8;
-export const L3_ROWS = 15;
-export const L3_CELL = 12;
+export const L3_COLS = 12;
+export const L3_ROWS = 22;
+export const L3_CELL = 8;
 const L3_T = 1; // partition thickness
 export const L3_X0 = -48; // west grid line
 export const L3_Z0 = 12;  // north grid line (rows grow south, -Z)
 
 // Landmark rooms (cell rects, inclusive). Interiors are knocked clear; the maze stays connected
 // because knockout only ever removes walls.
-const L3_START = { i0: 3, i1: 4, j0: 0, j1: 1 }; // start room (spawn)
-const L3_LAB = { i0: 2, i1: 4, j0: 6, j1: 7 };   // main lab (equipment)
-const L3_SEC = { i0: 5, i1: 6, j0: 10, j1: 10 }; // security room (CCTV wall)
-const L3_EXIT_CELL = { i: 1, j: 14 };            // exit alcove cell (south wall = the door)
+export const L3_START = { i0: 5, i1: 6, j0: 0, j1: 1 }; // start room (spawn)
+const L3_LAB = { i0: 4, i1: 6, j0: 9, j1: 10 };   // main lab (equipment)
+const L3_SEC = { i0: 8, i1: 9, j0: 14, j1: 14 }; // security room (CCTV consoles)
+const L3_EXIT_CELL = { i: 2, j: 21 };            // exit alcove cell (south wall = the door)
 
 // Player opens facing into the maze (-Z, yaw 0). The entity starts behind, same room.
-export const L3_SPAWN_POINT = { x: 0, y: 1.5, z: 6 };
-export const L3_MONSTER_SPAWN = { x: -11, y: 2, z: 11 };
+export const L3_SPAWN_POINT = { x: 0, y: 1.5, z: 2 };
+export const L3_MONSTER_SPAWN = { x: -7, y: 2, z: 10 };
 
 export const L3_ESCAPE_WALL_ID = 'l3_exit_door_trigger';
 // South grid line of the exit cell, narrowed to a 4m doorway (see below).
-export const L3_ESCAPE_WALL_POS = { x: -30, y: L3_WALL_H / 2, z: -168 };
+export const L3_ESCAPE_WALL_POS = { x: -28, y: L3_WALL_H / 2, z: -164 };
 
 // ── deterministic RNG (mulberry32) ───────────────────────────────────────────────────────────
 
@@ -106,8 +107,8 @@ export function buildLevel3MazeGrid(): { vWall: boolean[][]; hWall: boolean[][] 
   const vWall: boolean[][] = Array.from({ length: L3_COLS + 1 }, () => new Array(L3_ROWS).fill(true));
   const hWall: boolean[][] = Array.from({ length: L3_COLS }, () => new Array(L3_ROWS + 1).fill(true));
   const visited: boolean[][] = Array.from({ length: L3_COLS }, () => new Array(L3_ROWS).fill(false));
-  const stack: Array<[number, number]> = [[3, 0]];
-  visited[3][0] = true;
+  const stack: Array<[number, number]> = [[5, 0]];
+  visited[5][0] = true;
   while (stack.length > 0) {
     const [ci, cj] = stack[stack.length - 1];
     const options: Array<[number, number, 'v' | 'h', number, number]> = [];
@@ -156,8 +157,8 @@ export function getLevel3Map(): { walls: MapWall[]; jumpPads: JumpPad[]; pickups
   const { vWall, hWall } = buildLevel3MazeGrid();
 
   // Floor + single unbroken ceiling slab over the whole footprint.
-  walls.push({ id: 'l3_floor_main', pos: { x: 0, y: -0.5, z: -79 }, size: { x: 104, y: 1, z: 188 }, color: L3_FLOOR_COLOR });
-  walls.push({ id: 'l3_ceiling_main', pos: { x: 0, y: L3_WALL_H + 0.15, z: -79 }, size: { x: 104, y: 0.3, z: 188 }, color: L3_CEILING_COLOR });
+  walls.push({ id: 'l3_floor_main', pos: { x: 0, y: -0.5, z: -77 }, size: { x: 104, y: 1, z: 184 }, color: L3_FLOOR_COLOR });
+  walls.push({ id: 'l3_ceiling_main', pos: { x: 0, y: L3_WALL_H + 0.15, z: -77 }, size: { x: 104, y: 0.3, z: 184 }, color: L3_CEILING_COLOR });
 
   const gx = (i: number) => L3_X0 + i * L3_CELL;
   const gz = (j: number) => L3_Z0 - j * L3_CELL;
@@ -180,8 +181,8 @@ export function getLevel3Map(): { walls: MapWall[]; jumpPads: JumpPad[]; pickups
   }
 
   // — Exit doorway: the exit cell's south side narrowed to a 4m gap with side segments.
-  pushBox(walls, 'l3_exit_s_l', exitCx - 4, gz(L3_ROWS), 8, 1);
-  pushBox(walls, 'l3_exit_s_r', exitCx + 4, gz(L3_ROWS), 8, 1);
+  pushBox(walls, 'l3_exit_s_l', exitCx - 6, gz(L3_ROWS), 8, 1);
+  pushBox(walls, 'l3_exit_s_r', exitCx + 6, gz(L3_ROWS), 8, 1);
   // The red exit door itself — glow only, walk straight through into the trigger behind it.
   pushBox(walls, 'l3_exitdoor', exitCx, gz(L3_ROWS) - 0.2, 4, 0.25, 2.6, { color: L3_EXIT_COLOR, emissive: true, doorDecor: true });
   pushBox(walls, 'l3_exitsign', exitCx, gz(L3_ROWS) - 0.35, 1.6, 0.2, 0.5, { color: '#39ff88', emissive: true, doorDecor: true });
@@ -195,24 +196,26 @@ export function getLevel3Map(): { walls: MapWall[]; jumpPads: JumpPad[]; pickups
 
   // — Landmark dressing.
   // Start room: fallen cabinet (off the door lane).
-  pushBox(walls, 'l3_start_cabinet', -9, 2, 2.5, 1.5, 1.6, { color: L3_METAL_COLOR });
-  // Main lab (cells 2..4 x 6..7 → x -24..12, z -60..-84): experiment rigs.
-  pushBox(walls, 'l3_lab_eq1', -16, -66, 4, 3, 1.6, { color: L3_METAL_COLOR });
-  pushBox(walls, 'l3_lab_eq2', 2, -76, 5, 2.5, 1.6, { color: L3_METAL_COLOR });
-  pushBox(walls, 'l3_lab_eq3', -14, -79, 4, 2, 1.1, { color: L3_METAL_COLOR });
-  // Security room (cells 5..6 x row 10 → x 12..36, z -108..-120): consoles with monitors
+  pushBox(walls, 'l3_start_cabinet', 5, 10, 2.5, 1.5, 1.6, { color: L3_METAL_COLOR });
+  // Main lab (cells 4..6 x 9..10 → x -16..8, z -60..-76): experiment rigs.
+  pushBox(walls, 'l3_lab_eq1', -10, -64, 4, 3, 1.6, { color: L3_METAL_COLOR });
+  pushBox(walls, 'l3_lab_eq2', 0, -72, 5, 2.5, 1.6, { color: L3_METAL_COLOR });
+  pushBox(walls, 'l3_lab_eq3', -8, -74, 3.5, 2, 1.1, { color: L3_METAL_COLOR });
+  // Security room (cells 8..9 x row 14 → x 16..32, z -100..-108): consoles with monitors
   // riding their back edge (no wall needed — maze luck never buries them).
-  pushBox(walls, 'l3_sec_console_l', 18, -115, 3, 1.5, 1.1, { color: L3_METAL_COLOR });
-  pushBox(walls, 'l3_sec_console_r', 28, -115, 3, 1.5, 1.1, { color: L3_METAL_COLOR });
-  pushBox(walls, 'l3_screen_1', 18, -116.2, 2.6, 0.15, 1.4, { color: L3_SCREEN_COLOR, emissive: true, doorDecor: true });
-  pushBox(walls, 'l3_screen_2', 28, -116.2, 2.6, 0.15, 1.4, { color: L3_SCREEN_COLOR, emissive: true, doorDecor: true });
+  pushBox(walls, 'l3_sec_console_l', 22, -104, 3, 1.5, 1.1, { color: L3_METAL_COLOR });
+  pushBox(walls, 'l3_sec_console_r', 28, -104, 3, 1.5, 1.1, { color: L3_METAL_COLOR });
+  pushBox(walls, 'l3_screen_1', 22, -105.2, 2.6, 0.15, 1.4, { color: L3_SCREEN_COLOR, emissive: true, doorDecor: true });
+  pushBox(walls, 'l3_screen_2', 28, -105.2, 2.6, 0.15, 1.4, { color: L3_SCREEN_COLOR, emissive: true, doorDecor: true });
   walls[walls.length - 2].pos.y = 1.6;
   walls[walls.length - 1].pos.y = 1.6;
 
-  // — Fluorescent tubes: one per cell (shared flicker material), alternating orientation.
+  // — Fluorescent tubes: checkerboard (every other cell) — full coverage would be ~260
+  // fixtures; half still reads as continuous facility lighting via the shared flicker material.
   for (let i = 0; i < L3_COLS; i++) {
     for (let j = 0; j < L3_ROWS; j++) {
-      pushTube(walls, `l3_lt_${i}_${j}`, gx(i) + L3_CELL / 2, (gz(j) + gz(j + 1)) / 2, (i + j) % 2 === 0);
+      if ((i + j) % 2 !== 0) continue;
+      pushTube(walls, `l3_lt_${i}_${j}`, gx(i) + L3_CELL / 2, (gz(j) + gz(j + 1)) / 2, (i + j) % 4 === 0);
     }
   }
 
@@ -223,7 +226,7 @@ export function getLevel3Map(): { walls: MapWall[]; jumpPads: JumpPad[]; pickups
     [-47.4, -20, 0.2, 0], // west wall, eye east
     [47.4, -60, -0.2, 0], // east wall, eye west
     [10, 11.4, 0, -0.2],  // north wall, eye south
-    [-20, -167.4, 0, 0.2], // south wall (clear of the exit gap), eye north
+    [-20, -163.4, 0, 0.2], // south wall (clear of the exit gap), eye north
   ];
   cams.forEach(([x, z, ldx, ldz], k) => {
     pushBox(walls, `l3_cam_${k}`, x, z, 0.3, 0.5, 0.3, { color: '#151617', doorDecor: true });
