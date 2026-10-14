@@ -28,6 +28,8 @@ export const L3_ENTITY_FAR_SPEED = 10; // far (>30m): firm lope — catches dawd
 export const L3_ENTITY_FAR_DIST = 30;
 export const L3_ENTITY_KILL_DIST = 1.7;
 export const L3_DARK_INPUT_FORGIVENESS = 0.35;
+// Seconds after an edge-blink during which the contact kill is suppressed (see advanceEntityToward).
+export const L3_EDGE_KILL_SUPPRESS = 0.7;
 
 export class XonoticEngine {
   public state: XonoticGameState;
@@ -179,7 +181,8 @@ export class XonoticEngine {
         lastMeleeTime: 0,
         targetPos: null,
         state: 'wandering',
-        stateTimer: 3 + Math.random() * 6 + i * 1.4,
+        // L3 opens unsuppressed (edges arm the timer themselves); others keep a rollout delay.
+        stateTimer: this.level === 3 ? 0 : 3 + Math.random() * 6 + i * 1.4,
         isMonster: true,
         invulnerable: true,
         // Level 3's entity is always visible — seeing it approach is the horror.
@@ -496,21 +499,30 @@ export class XonoticEngine {
       // Creep while lit — near-sprint lope at range (it looms behind you the whole run), dropping
       // to a slower stalk inside 30m so steady movers pull away and only mistakes get punished.
       // Same acceleration ramp as the player: instant velocity would steal metres every edge.
+      // Wall-follow sidestep: wedged in a concave corner for >1.5s → strafe 90° for a second
+      // instead of grinding (with sliding + edge steps, no teleport is ever needed).
       if (s.lightsOn && s.matchTime >= SPAWN_GRACE_SECONDS) {
         const dx = s.player.pos.x - entity.pos.x;
         const dz = s.player.pos.z - entity.pos.z;
         const l = Math.hypot(dx, dz) || 1;
+        let dirX = dx / l, dirZ = dz / l;
+        const stuck = entity.stuckTimer ?? 0;
+        if (stuck > 1.5 && stuck < 2.5) { const t = dirX; dirX = -dirZ; dirZ = t; }
         const chaseSpeed = l > L3_ENTITY_FAR_DIST ? L3_ENTITY_FAR_SPEED : L3_ENTITY_CHASE_SPEED;
         const ramp = Math.min(1, 8 * dt);
-        entity.vel.x += ((dx / l) * chaseSpeed - entity.vel.x) * ramp;
-        entity.vel.z += ((dz / l) * chaseSpeed - entity.vel.z) * ramp;
+        entity.vel.x += (dirX * chaseSpeed - entity.vel.x) * ramp;
+        entity.vel.z += (dirZ * chaseSpeed - entity.vel.z) * ramp;
         entity.vel.y += this.gravity * dt;
+        const preX = entity.pos.x, preZ = entity.pos.z;
         entity.pos.x += entity.vel.x * dt;
         this.checkWallAxisBound(entity.pos, entity.vel, 'x', 0.9, 1.6);
         entity.pos.y += entity.vel.y * dt;
         if (entity.pos.y < 1.0) { entity.pos.y = 1.0; entity.vel.y = 0; }
         entity.pos.z += entity.vel.z * dt;
         this.checkWallAxisBound(entity.pos, entity.vel, 'z', 0.9, 1.6);
+        const moved = Math.hypot(entity.pos.x - preX, entity.pos.z - preZ);
+        const expected = Math.hypot(entity.vel.x, entity.vel.z) * dt;
+        entity.stuckTimer = expected > 0.005 && moved < expected * 0.25 ? stuck + dt : 0;
       }
 
       const dist = Math.hypot(s.player.pos.x - entity.pos.x, s.player.pos.z - entity.pos.z);
@@ -518,10 +530,11 @@ export class XonoticEngine {
       s.monsterWarning = dist < 6;
 
       // Deaths: moved in the dark, or it reached you (either phase).
+      if (entity.stateTimer > 0) entity.stateTimer -= dt;
       if (s.matchTime >= SPAWN_GRACE_SECONDS && !s.escaped && s.player.health > 0) {
         if (!s.lightsOn && this.darkElapsed > L3_DARK_INPUT_FORGIVENESS && this.lastMoveInput) {
           this.damagePlayer(9999, entity.id);
-        } else if (dist < L3_ENTITY_KILL_DIST) {
+        } else if (entity.stateTimer <= 0 && dist < L3_ENTITY_KILL_DIST) {
           this.damagePlayer(9999, entity.id);
         }
       }
@@ -530,19 +543,26 @@ export class XonoticEngine {
     }
   }
 
-  // Steps the L3 entity toward the player by `step` metres. Deliberately PHASES through walls:
-  // it fires exactly on the lights-on edge under the 0.45s fixture strobe, so the blink reads as
-  // supernatural, not buggy — and the maze can never wedge it in a dead end. Already on top of
-  // the player → hold (the kill check fires). A blink that lands inside a partition is shoved back
-  // out by the next lit chase frame's collision resolve.
+  // Steps the L3 entity toward the player by `step` metres, axis-separated so it slides along
+  // walls instead of entering them — NEVER phases (popping through walls reads as a bug, not
+  // horror). Stops 2.5m short rather than lunging onto the player, and suppresses the contact
+  // kill briefly afterwards: the blink threatens, but the kill must be earned by the chase —
+  // otherwise every lights-on edge with a nearby entity is an unavoidable death sentence for a
+  // player who correctly froze through the dark. Dead-end wedging is handled by the chase's
+  // wall-follow sidestep, so no teleport is ever needed.
   private advanceEntityToward(entity: Bot, step: number) {
     const p = this.state.player.pos;
     const dx = p.x - entity.pos.x;
     const dz = p.z - entity.pos.z;
     const l = Math.hypot(dx, dz);
     if (l < 1.0) return;
-    entity.pos.x += (dx / l) * step;
-    entity.pos.z += (dz / l) * step;
+    const s = Math.min(step, Math.max(0, l - 2.5));
+    const zero = { x: 0, y: 0, z: 0 };
+    entity.pos.x += (dx / l) * s;
+    this.checkWallAxisBound(entity.pos, zero, 'x', 0.9, 1.6);
+    entity.pos.z += (dz / l) * s;
+    this.checkWallAxisBound(entity.pos, zero, 'z', 0.9, 1.6);
+    entity.stateTimer = L3_EDGE_KILL_SUPPRESS; // materializing — chase, don't insta-kill
   }
 
   // Monster AI.
