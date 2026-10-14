@@ -27,7 +27,7 @@ export const L3_ENTITY_CHASE_SPEED = 7; // near: slower than the 15u/s sprint �
 export const L3_ENTITY_FAR_SPEED = 10; // far (>30m): firm lope — catches dawdlers, never perfect sprinters
 export const L3_ENTITY_FAR_DIST = 30;
 export const L3_ENTITY_KILL_DIST = 1.7;
-export const L3_DARK_INPUT_FORGIVENESS = 0.35;
+export const L3_DARK_INPUT_FORGIVENESS = 0.9; // lights-out edge reaction + input latency budget
 // Seconds after an edge-blink during which the contact kill is suppressed (see advanceEntityToward).
 export const L3_EDGE_KILL_SUPPRESS = 0.7;
 
@@ -529,12 +529,18 @@ export class XonoticEngine {
       s.entityDist = dist;
       s.monsterWarning = dist < 6;
 
-      // Deaths: moved in the dark, or it reached you (either phase).
+      // Deaths: moved in the dark (blamed on the dark itself in the feed, so it never
+      // reads as "the monster killed me through a wall"), or it reached you in the open —
+      // contact kills need a clear sightline, so maze-corner grazes never count.
       if (entity.stateTimer > 0) entity.stateTimer -= dt;
       if (s.matchTime >= SPAWN_GRACE_SECONDS && !s.escaped && s.player.health > 0) {
         if (!s.lightsOn && this.darkElapsed > L3_DARK_INPUT_FORGIVENESS && this.lastMoveInput) {
-          this.damagePlayer(9999, entity.id);
-        } else if (entity.stateTimer <= 0 && dist < L3_ENTITY_KILL_DIST) {
+          this.damagePlayer(9999, entity.id, '어둠');
+        } else if (
+          entity.stateTimer <= 0 &&
+          dist < L3_ENTITY_KILL_DIST &&
+          this.hasClearLineOfSight(entity.pos, s.player.pos)
+        ) {
           this.damagePlayer(9999, entity.id);
         }
       }
@@ -933,7 +939,7 @@ export class XonoticEngine {
     return true;
   }
 
-  private damagePlayer(amount: number, sourceId: string) {
+  private damagePlayer(amount: number, sourceId: string, killerDisplay?: string) {
     const { player } = this.state;
     if (player.health <= 0) return; // already dead — run is over, don't farm deaths/frag-feed spam
     // Shield / Armor system splits damage 70% to shield, 30% to health
@@ -948,7 +954,8 @@ export class XonoticEngine {
     if (player.health <= 0) {
       player.health = 0;
       player.deaths++;
-      const killerName = sourceId === 'self' ? 'Yourself' : (this.state.bots.find(b => b.id === sourceId)?.name || 'An enemy');
+      const killerName = killerDisplay
+        ?? (sourceId === 'self' ? 'Yourself' : (this.state.bots.find(b => b.id === sourceId)?.name || 'An enemy'));
       this.pushFrag(killerName, 'You');
       
       // Permanent Death: No respawn
