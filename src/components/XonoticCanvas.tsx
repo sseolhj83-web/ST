@@ -790,6 +790,10 @@ export function buildL3EntityModel(): THREE.Group {
     legLBaseRotZ: -0.05, legRBaseRotZ: 0.05,
     bodyBaseY: 0,
   };
+  // Presence: 1.35x scale for a ~2.7m hunched mass (origin at the feet, so the soles stay
+  // planted; fingertips end a hair under the floor, hidden by the walk bob). Physics radii
+  // stay generous, so the bigger shell never clips partitions.
+  group.scale.setScalar(1.35);
   group.traverse(obj => {
     if ((obj as THREE.Mesh).isMesh) {
       obj.castShadow = false;
