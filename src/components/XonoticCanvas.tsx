@@ -1355,7 +1355,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // Always-on flashlight SpotLight — the player's light source in Level 1's pitch-dark maze.
     // Level 2 is fluorescent-lit, so its spotlight contributes nothing (intensity 0). Level 3
     // gets a real beam too: dark phases stay deadly to MOVE in, but you can at least watch it coming.
-    const flashlightSpot = new THREE.SpotLight('#fff4d6', isL2 ? 0 : isL3 ? 22 : 80, isL3 ? 40 : 80, 0.75, 0.5, 2);
+    const flashlightSpot = new THREE.SpotLight('#fff4d6', isL2 ? 0 : isL3 ? 60 : 150, isL3 ? 90 : 150, 0.75, 0.5, 2);
     flashlightSpot.castShadow = false;
     scene.add(flashlightSpot);
     const flashlightTarget = new THREE.Object3D();
