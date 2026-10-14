@@ -5,6 +5,7 @@
 
 import { XonoticGameState, Bot, JumpPad, PickupItem, MapWall } from './xonoticTypes';
 import { getLevelModule, LevelModule, chunkKey } from './levels';
+import { L4_FLOORS, L4_POSTS } from './xonoticMapLevel4';
 
 // Spawn grace: monsters neither lock on nor deal damage during the first seconds of a run.
 // Lv2's stalker spawns metres from the player with a clear sightline — without this the run
@@ -31,9 +32,24 @@ export const L3_DARK_INPUT_FORGIVENESS = 0.9; // lights-out edge reaction + inpu
 // Seconds after an edge-blink during which the contact kill is suppressed (see advanceEntityToward).
 export const L3_EDGE_KILL_SUPPRESS = 0.7;
 
+// ── LEVEL 4 ("THE ROOF") stealth rules ─────────────────────────────────────────────────────
+// Noise 0..100: normal movement is LOUD, sneak (Shift) creeps, standing still vents. Jump lands
+// loud. At 100 every guard pinpoints the player (hunting, exact target) and the gauge drops
+// back to 60. Roof edges are open: leave all floor rects and gravity takes you — below the
+// kill plane it's over.
+export const L4_NOISE_RUN = 30;   // per second while moving upright
+export const L4_NOISE_SNEAK = 6;  // per second while sneaking
+export const L4_NOISE_VENT = -25; // per second while still
+export const L4_NOISE_JUMP = 10;  // instant bump on jump take-off
+export const L4_NOISE_PIN = 100;  // pinpoint threshold
+export const L4_NOISE_AFTER_PIN = 60;
+export const L4_SNEAK_MAX_SPEED = 6;
+export const L4_FALL_KILL_Y = -8;
+export const L4_FLOOR_MARGIN = 0.3; // forgiving roof edge
+
 export class XonoticEngine {
   public state: XonoticGameState;
-  public level: 1 | 2 | 3;
+  public level: 1 | 2 | 3 | 4;
   private lvl: LevelModule;
   public roomId: string | null = null;
   public userId: string | null = null;
@@ -49,6 +65,8 @@ export class XonoticEngine {
   private timeoutManifested: boolean = false;
   private tickCount: number = 0; // frame counter for staggering expensive LOS checks
   private lastMoveInput: boolean = false; // WASD/space held on the latest input frame (L3 dark rule)
+  private lastSneakInput: boolean = false; // Shift held — L4 quiet movement
+  private prevSpaceKey: boolean = false; // rising-edge jump detection (L4 noise bump)
   private darkElapsed: number = 0; // seconds since the L3 lights went out (input forgiveness window)
   private onStateChange: (state: XonoticGameState) => void;
 
@@ -63,7 +81,7 @@ export class XonoticEngine {
   private readonly maxBhopSpeed = 40; // hard cap on horizontal speed so chained bunny-hops can't build up
                                        // enough velocity to tunnel through a wall/ceiling in a single frame
 
-  constructor(onStateChange: (state: XonoticGameState) => void, level: 1 | 2 | 3 = 1) {
+  constructor(onStateChange: (state: XonoticGameState) => void, level: 1 | 2 | 3 | 4 = 1) {
     this.onStateChange = onStateChange;
     this.level = level;
     this.lvl = getLevelModule(level);
@@ -100,6 +118,8 @@ export class XonoticEngine {
       lightsOn: true,
       lightTimer: 0,
       entityDist: -1,
+      noise: 0,
+      noiseFlash: 0,
     };
   }
 
@@ -128,6 +148,11 @@ export class XonoticEngine {
   }
 
   private guardPost(packIndex: number): { x: number; z: number } {
+    // Level 4 posts are fixed roof stations (see L4_POSTS) — no zigzag math.
+    if (this.level === 4) {
+      const post = L4_POSTS[packIndex] ?? L4_POSTS[0];
+      return { x: post.x, z: post.z };
+    }
     const exit = this.lvl.ESCAPE_WALL_POS;
     const spawn = this.lvl.SPAWN_POINT;
     // Level 2's corridors only run along the grid lines (x or z a multiple of BLOCK, ±half the
@@ -149,21 +174,41 @@ export class XonoticEngine {
     return { x: exit.x + lat, z: exit.z + towardSpawn * fwd };
   }
 
+  // Level 4 roof zones — guards never chase across the void between slabs.
+  private zoneOf(x: number, z: number): 'A' | 'bridge' | 'B' | 'void' {
+    for (const f of L4_FLOORS) {
+      if (x >= f.x0 && x <= f.x1 && z >= f.z0 && z <= f.z1) return f.zone;
+    }
+    return 'void';
+  }
+
+  private isOverFloor(x: number, z: number): boolean {
+    const m = L4_FLOOR_MARGIN;
+    return L4_FLOORS.some(f => x >= f.x0 - m && x <= f.x1 + m && z >= f.z0 - m && z <= f.z1 + m);
+  }
+
+  // Floor clamp is skipped for a Level 4 player over the void — they fall.
+  private floorClampActive(pos: { x: number; y: number; z: number }): boolean {
+    return this.level !== 4 || this.isOverFloor(pos.x, pos.z);
+  }
+
   // The Backrooms entities. Level 1: one lone stalker that roams and ambushes (relentless once
   // it locks on). Level 2: all 5 hold the exit — index 0 is a hidden ambusher sitting almost on
   // the exit pad, indices 1-4 are visible guards in a zigzag gauntlet up the corridor. Nobody
   // roams the map: they chase only what they can see (see updateMonsterAI).
   private createMonsters(): Bot[] {
-    const count = this.level === 2 ? 5 : 1;
+    const count = this.level === 2 ? 5 : this.level === 4 ? 4 : 1;
 
     const monsters: Bot[] = [];
     for (let i = 0; i < count; i++) {
-      // Level 1 keeps its lone monster's original far spawn. Level 2: everyone — stalker
-      // included — opens on a post by the exit (guardPost(0) is the pad itself).
+      // Level 1/3 keep the lone far spawn. Level 2/4 open on posts (exit gauntlet / roof posts).
       let px: number, pz: number;
       if (count === 1) {
         px = this.lvl.MONSTER_SPAWN.x;
         pz = this.lvl.MONSTER_SPAWN.z;
+      } else if (this.level === 4) {
+        px = L4_POSTS[i].x;
+        pz = L4_POSTS[i].z;
       } else {
         const post = this.guardPost(i);
         px = post.x;
@@ -187,7 +232,8 @@ export class XonoticEngine {
         invulnerable: true,
         // Level 3's entity is always visible — seeing it approach is the horror.
         // Interceptors (1+) are a visible blockade from the start; only the stalker (0) hides.
-        isHidden: this.level === 3 ? false : i === 0,
+        // Level 4's roof guards are all visible.
+        isHidden: this.level === 3 || this.level === 4 ? false : i === 0,
         packIndex: i,
       });
     }
@@ -195,7 +241,7 @@ export class XonoticEngine {
   }
 
   public updateInputs(
-    moveKeys: { w: boolean; s: boolean; a: boolean; d: boolean; space: boolean; arrowleft?: boolean; arrowright?: boolean; arrowup?: boolean; arrowdown?: boolean },
+    moveKeys: { w: boolean; s: boolean; a: boolean; d: boolean; space: boolean; arrowleft?: boolean; arrowright?: boolean; arrowup?: boolean; arrowdown?: boolean; sneak?: boolean },
     yawDelta: number,
     pitchDelta: number,
     dt: number
@@ -225,6 +271,12 @@ export class XonoticEngine {
 
     // L3 dark rule reads this: any WASD/space held counts as moving (mouse-look is free).
     this.lastMoveInput = !!(moveKeys.w || moveKeys.s || moveKeys.a || moveKeys.d || moveKeys.space);
+    // L4 stealth reads these: sneak caps speed, jump take-off lands loud.
+    this.lastSneakInput = !!moveKeys.sneak;
+    if (moveKeys.space && !this.prevSpaceKey && this.level === 4 && this.state.matchTime >= SPAWN_GRACE_SECONDS) {
+      this.state.noise = Math.min(L4_NOISE_PIN, this.state.noise + L4_NOISE_JUMP);
+    }
+    this.prevSpaceKey = !!moveKeys.space;
 
     // Process Movement friction + acceleration (GoldSrc/Quake strafe dynamic sliding)
     let moveX = 0;
@@ -263,9 +315,13 @@ export class XonoticEngine {
       }
     }
 
-    // Acceleration physics (ground speed limits differ from air controls)
+    // Acceleration physics (ground speed limits differ from air controls).
+    // Level 4 sneak (Shift) caps the whole envelope at a quiet crouch-walk.
+    const sneaking = this.level === 4 && !!moveKeys.sneak;
     const currentAccel = player.onGround ? this.groundAccel : this.airAccel;
-    const currentMaxSpeed = player.onGround ? this.maxGroundSpeed : this.maxAirSpeed;
+    const currentMaxSpeed = sneaking
+      ? L4_SNEAK_MAX_SPEED
+      : player.onGround ? this.maxGroundSpeed : this.maxAirSpeed;
 
     const projVel = player.vel.x * wishDir.x + player.vel.z * wishDir.z;
     const addSpeed = currentMaxSpeed - projVel;
@@ -280,9 +336,11 @@ export class XonoticEngine {
     // airborne — collision below is a discrete per-frame AABB check, not swept/continuous, so a
     // fast enough single-frame move can skip clean through a wall before ever registering as
     // overlapping it. This is what let running-and-jumping at a wall phase through it.
+    // (Sneaking caps the envelope too — no 40u/s ninja slides.)
+    const hopCap = sneaking ? L4_SNEAK_MAX_SPEED : this.maxBhopSpeed;
     const horizSpeed = Math.sqrt(player.vel.x * player.vel.x + player.vel.z * player.vel.z);
-    if (horizSpeed > this.maxBhopSpeed) {
-      const scale = this.maxBhopSpeed / horizSpeed;
+    if (horizSpeed > hopCap) {
+      const scale = hopCap / horizSpeed;
       player.vel.x *= scale;
       player.vel.z *= scale;
     }
@@ -341,6 +399,8 @@ export class XonoticEngine {
     // Level 3 runs its own red-light-green-light brain instead of the Backrooms pack AI.
     if (this.level === 3) this.updateLevel3(dt);
     else this.updateMonsterAI(dt);
+    // Level 4 stealth gauge + falling resolve after physics/AI.
+    if (this.level === 4) this.updateLevel4(dt);
     this.updatePickups(dt);
     this.checkEscapeWall();
     this.checkTimeoutDeath();
@@ -465,7 +525,8 @@ export class XonoticEngine {
     player.onGround = this.checkWallAxisBound(player.pos, player.vel, 'y', 0.8, 1.6);
 
     // Absolute fail-safe: Prevent falling below the floor (Y >= 1.0) under any circumstance
-    if (player.pos.y < 1.0) {
+    // — except a Level 4 walk off the roof edge, where falling IS the death.
+    if (player.pos.y < 1.0 && this.floorClampActive(player.pos)) {
       player.pos.y = 1.0;
       player.vel.y = 0;
       player.onGround = true;
@@ -571,6 +632,38 @@ export class XonoticEngine {
     entity.stateTimer = L3_EDGE_KILL_SUPPRESS; // materializing — chase, don't insta-kill
   }
 
+  // ── LEVEL 4 brain: sound gauge + falling ─────────────────────────────────────────────
+  // Noise fills on loud movement, vents on stillness; full gauge pinpoints the player to every
+  // guard (then drops back so a pin is an event, not a permanent lock). Off every slab, gravity
+  // takes the player — past the kill plane it's recorded as a fall.
+  private updateLevel4(dt: number) {
+    const s = this.state;
+    if (s.noiseFlash > 0) s.noiseFlash -= dt;
+    if (s.matchTime < SPAWN_GRACE_SECONDS || s.escaped || s.player.health <= 0) return;
+
+    const moving = this.lastMoveInput;
+    const rate = !moving ? L4_NOISE_VENT : this.lastSneakInput ? L4_NOISE_SNEAK : L4_NOISE_RUN;
+    s.noise = Math.max(0, Math.min(L4_NOISE_PIN, s.noise + rate * dt));
+    if (s.noise >= L4_NOISE_PIN) {
+      for (const b of s.bots) {
+        if (b.isMonster && !b.isRemotePlayer) {
+          b.state = 'hunting';
+          b.isHidden = false;
+          b.targetPos = { ...s.player.pos };
+          b.stateTimer = 8;
+          b.teleportCooldown = 5 + Math.random() * 3;
+          b.loseSightTimer = 0;
+        }
+      }
+      s.noise = L4_NOISE_AFTER_PIN;
+      s.noiseFlash = 2.5;
+    }
+
+    if (s.player.pos.y < L4_FALL_KILL_Y) {
+      this.damagePlayer(9999, 'self', '낙사');
+    }
+  }
+
   // Monster AI.
   //  - The stalker (Level 1's lone monster / Level 2 pack index 0) lurks unseen on a short leash and
   //    rolls to ambush, then vanishes again if it can't catch the player.
@@ -612,8 +705,8 @@ export class XonoticEngine {
       bot.stateTimer -= dt;
 
       // Lv2: every monster holds the exit (index 0 is the hidden pad ambusher). Lv1's lone
-      // monster keeps the roaming stalker brain.
-      const isInterceptor = this.level === 2 ? true : (bot.packIndex ?? 0) >= 1;
+      // monster keeps the roaming stalker brain. Lv4: every guard holds a roof post.
+      const isInterceptor = this.level === 2 || this.level === 4 ? true : (bot.packIndex ?? 0) >= 1;
       let goalX: number, goalZ: number, speed: number;
       let holdingPost = false; // idle interceptor sitting on its own assigned formation spot —
                                 // separation would just fight the packed formation, so skip it
@@ -625,11 +718,16 @@ export class XonoticEngine {
       // (1/3 of monsters per frame) instead of every monster every frame. Once hunting it
       // never matters again (hunters dead-reckon), so the max detection delay is ~50ms.
       const SIGHT_DETECT_RANGE = 40;
-      // Fairness cap: at most 3 guards chase at once (the hidden pad ambusher is exempt — it's
-      // the surprise). Without this all 5 collapse on the player the instant anyone gets seen.
-      const underHunterCap = !isInterceptor || bot.packIndex === 0 || huntingCount < 3;
+      // Fairness cap: at most 3 guards chase at once (Lv2's hidden pad ambusher is exempt —
+      // it's the surprise). Without this all 5 collapse on the player the instant anyone gets seen.
+      // Level 4 slabs are split by deadly void: locks only fire on the same slab, or edge
+      // flicker (hunt→give-up→hunt) would jitter a guard forever at a zone joint.
+      const underHunterCap = !isInterceptor || (this.level === 2 && bot.packIndex === 0) || huntingCount < 3;
+      const sameSlab = this.level !== 4 ||
+        this.zoneOf(bot.pos.x, bot.pos.z) === this.zoneOf(player.pos.x, player.pos.z);
       if (bot.state !== 'hunting' && distToPlayer < SIGHT_DETECT_RANGE
         && underHunterCap
+        && sameSlab
         && this.state.matchTime >= SPAWN_GRACE_SECONDS
         && (this.tickCount + botIndex) % 3 === 0
         && this.hasClearLineOfSight(bot.pos, player.pos)) {
@@ -650,6 +748,16 @@ export class XonoticEngine {
           // Sight-tracked pursuit: chase the last confirmed position, and break off back to post
           // if there's no sightline for a few seconds — so breaking line of sight (ducking around
           // a block) shakes them. This is what keeps the exit gauntlet escapable.
+          // Level 4: a hunter that loses its slab (player crossed the void) also breaks off —
+          // guards walk roofs, never air.
+          if (this.level === 4 && !sameSlab) {
+            bot.state = 'wandering';
+            bot.stateTimer = 2 + Math.random() * 2;
+            bot.loseSightTimer = 0;
+            holdingPost = false;
+            goalX = bot.pos.x; goalZ = bot.pos.z;
+            speed = 0;
+          } else {
           const trackingTick = (this.tickCount + botIndex) % 3 === 0;
           if (trackingTick) {
             if (distToPlayer < SIGHT_DETECT_RANGE + 10 && this.hasClearLineOfSight(bot.pos, player.pos)) {
@@ -671,6 +779,7 @@ export class XonoticEngine {
             goalZ = bot.targetPos?.z ?? player.pos.z;
             speed = this.maxGroundSpeed * 0.82;
           }
+          }
         } else if (alerted) {
           // Interpose: a point ~30% of the way from the player toward the exit, offset to this
           // guard's side so the four spread across the approach instead of stacking.
@@ -685,7 +794,7 @@ export class XonoticEngine {
           speed = arrive < 1.2 ? 0 : Math.min(this.maxGroundSpeed, 6 + arrive * 0.5);
           if (bot.stateTimer <= 0) {
             bot.stateTimer = 0.8 + Math.random() * 1.2;
-            if (commit || (distToPlayer < 11 && huntingCount < 3)) {
+            if ((commit || (distToPlayer < 11 && huntingCount < 3)) && sameSlab) {
               bot.state = 'hunting';
               bot.stateTimer = 3.5 + Math.random() * 2.5;
               bot.teleportCooldown = 5 + Math.random() * 3;
@@ -703,7 +812,7 @@ export class XonoticEngine {
           speed = arrive < 0.4 ? 0 : 3;
           if (bot.stateTimer <= 0) {
             bot.stateTimer = 1.5 + Math.random() * 2;
-            if (distToPlayer < 8 && huntingCount < 2) {
+            if (distToPlayer < 8 && huntingCount < 2 && sameSlab) {
               bot.state = 'hunting';
               bot.stateTimer = 3.5 + Math.random() * 2.5;
               bot.teleportCooldown = 5 + Math.random() * 3;
@@ -862,7 +971,9 @@ export class XonoticEngine {
       const isCharging = bot.state === 'hunting';
       // No kills during spawn grace (see SPAWN_GRACE_SECONDS) — the stalker opens within
       // metres of the player, so contact in the first seconds must not be lethal.
-      const canGrab = (isCharging || isInterceptor) && this.state.matchTime >= SPAWN_GRACE_SECONDS;
+      // Y-gate: no grabbing a player on another storey (notably: falling past a guard).
+      const sameHeight = Math.abs(player.pos.y - bot.pos.y) < 2.5;
+      const canGrab = (isCharging || isInterceptor) && this.state.matchTime >= SPAWN_GRACE_SECONDS && sameHeight;
       const kdx = player.pos.x - bot.pos.x;
       const kdz = player.pos.z - bot.pos.z;
       const contactDist = Math.hypot(kdx, kdz);
@@ -900,6 +1011,7 @@ export class XonoticEngine {
         wall.id.startsWith('floor') ||
         wall.id.startsWith('l2_floor') || // Lv2 floors ('l2_floor_main', 'l2_floor_l2s_..') — huge slabs, never block sight
         wall.id.startsWith('l3_floor') || // Lv3 facility floor slab
+        wall.id.startsWith('l4_floor') || // Lv4 roof slabs (also the fall-through test volume)
         wall.id.startsWith('bridge') ||
         wall.id.endsWith('roof') ||
         wall.id.endsWith('ceiling') ||
@@ -1028,7 +1140,9 @@ export class XonoticEngine {
     // No horizontal boundary clamp — the maze streams outward forever (see updateStreamedChunks),
     // so there is no edge of the map to bound the player against.
     if (axis === 'y') {
-      if (pos.y < 1.0) { pos.y = 1.0; vel.y = 0; touchedFloor = true; } // ground floor
+      // Ground floor clamp is skipped for a Level 4 player over the void — they fall.
+      // (Monsters keep their own unconditional clamp in updateMonsterAI, so they never fall.)
+      if (pos.y < 1.0 && this.floorClampActive(pos)) { pos.y = 1.0; vel.y = 0; touchedFloor = true; } // ground floor
       // Absolute fail-safe ceiling clamp — mirrors the floor clamp above. Without this, a big
       // enough single-frame vertical jump (rocket/grenade splash, chained bunny-hops) can move the
       // player past the thin ceiling slab before the wall-overlap check below ever sees it, letting
@@ -1051,6 +1165,7 @@ export class XonoticEngine {
         wall.id.startsWith('floor') ||
         wall.id.startsWith('l2_floor') || // Lv2 floors are huge slabs — without this they shove the player/monsters sideways every frame
         wall.id.startsWith('l3_floor') || // Lv3 facility floor slab (same trap)
+        wall.id.startsWith('l4_floor') || // Lv4 roof slabs (same trap — and falling past them)
         wall.id.startsWith('bridge') ||
         wall.id.endsWith('roof') ||
         wall.id.endsWith('ceiling') || // streamed chunk ceilings ('*_ceiling')

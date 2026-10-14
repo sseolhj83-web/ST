@@ -21,12 +21,13 @@ import {
   Building2,
   DoorOpen,
   FlaskConical,
+  CloudRain,
 } from 'lucide-react';
 
 interface LobbyProps {
   user: any;
   onLogout: () => void;
-  onStartGame: (roomId: string, isHost: boolean, currentPlayers: any[], level: 1 | 2 | 3) => void;
+  onStartGame: (roomId: string, isHost: boolean, currentPlayers: any[], level: 1 | 2 | 3 | 4) => void;
 }
 
 interface Room {
@@ -64,7 +65,7 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
   const [codeCopied, setCodeCopied] = useState(false);
 
   // Which Backrooms level to run — the player just picks in the lobby, no unlock gating.
-  const [selectedLevel, setSelectedLevel] = useState<1 | 2 | 3>(1);
+  const [selectedLevel, setSelectedLevel] = useState<1 | 2 | 3 | 4>(1);
 
   // Real-time states
   const [onlineLobbyUsers, setOnlineLobbyUsers] = useState<any[]>([]);
@@ -140,7 +141,7 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
       })
       .on('broadcast', { event: 'start-game' }, (payload: any) => {
         const lv = payload.payload.level;
-        onStartGame(activeRoom.id, isHost, payload.payload.players, lv === 3 ? 3 : lv === 2 ? 2 : 1);
+        onStartGame(activeRoom.id, isHost, payload.payload.players, lv === 4 ? 4 : lv === 3 ? 3 : lv === 2 ? 2 : 1);
       })
       .on('broadcast', { event: 'room-closed' }, () => {
         alert('방이 방장에 의해 해체되었습니다.');
@@ -222,7 +223,7 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
 
     // Host starts locally right away — the broadcast to other players happens in the background,
     // nothing to wait on.
-    const runLevel: 1 | 2 | 3 = selectedLevel;
+    const runLevel: 1 | 2 | 3 | 4 = selectedLevel;
     onStartGame(activeRoom.id, true, roomPlayers, runLevel);
     roomChannelRef.current?.send({
       type: 'broadcast',
@@ -383,7 +384,7 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
                   <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-wider mb-3">
                     레벨 선택 (Select Level)
                   </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <button
                       type="button"
                       onClick={() => setSelectedLevel(1)}
@@ -438,6 +439,25 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
                       <p className="text-[11px] text-slate-300 font-bold mt-1.5">지하 연구시설</p>
                       <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
                         불 켜질 때만 이동. 꺼지면 정지. 그것이 다가온다.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLevel(4)}
+                      className={`text-left p-4 rounded-xl border transition-all cursor-pointer ${
+                        selectedLevel === 4
+                          ? 'border-sky-500/70 bg-sky-500/10 shadow-[0_0_18px_rgba(14,165,233,0.15)]'
+                          : 'border-white/10 bg-white/5 hover:border-white/25'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 text-sky-300">
+                        <CloudRain className="w-4 h-4" />
+                        <span className="font-black text-sm">LEVEL 4</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 font-bold mt-1.5">폭우의 옥상</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                        뛰면 들킨다. Shift로 숨어라. 끝엔 헬리패드.
                       </p>
                     </button>
                   </div>
@@ -530,18 +550,20 @@ export const Lobby = ({ user, onLogout, onStartGame }: LobbyProps) => {
                 <p className="text-xs text-slate-400 mt-1">방장: {activeRoom.host_username}</p>
 
                 <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-950/70 border border-white/10 text-xs">
-                  {selectedLevel === 3
+                  {selectedLevel === 4
+                    ? <CloudRain className="w-3.5 h-3.5 text-sky-300" />
+                    : selectedLevel === 3
                     ? <FlaskConical className="w-3.5 h-3.5 text-red-300" />
                     : selectedLevel === 2
                     ? <Building2 className="w-3.5 h-3.5 text-amber-300" />
                     : <DoorOpen className="w-3.5 h-3.5 text-yellow-400" />}
                   <span className="font-bold text-slate-200">
-                    {selectedLevel === 3 ? 'LEVEL 3 · 지하 연구시설' : selectedLevel === 2 ? 'LEVEL 2 · 오래된 호텔' : 'LEVEL 1 · 노란 미로'}
+                    {selectedLevel === 4 ? 'LEVEL 4 · 폭우의 옥상' : selectedLevel === 3 ? 'LEVEL 3 · 지하 연구시설' : selectedLevel === 2 ? 'LEVEL 2 · 오래된 호텔' : 'LEVEL 1 · 노란 미로'}
                   </span>
                   {activeRoom.host_id === user.id && (
                     <button
                       type="button"
-                      onClick={() => setSelectedLevel(l => (l === 1 ? 2 : l === 2 ? 3 : 1))}
+                      onClick={() => setSelectedLevel(l => (l === 1 ? 2 : l === 2 ? 3 : l === 3 ? 4 : 1))}
                       className="ml-1 text-[10px] text-cyan-400 hover:text-cyan-300 font-mono uppercase tracking-wide cursor-pointer"
                     >
                       변경
