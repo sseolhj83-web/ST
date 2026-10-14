@@ -19,7 +19,7 @@ export const L4_ROOF_Y = 0;   // roof walking surface height
 export interface L4FloorRect { x0: number; x1: number; z0: number; z1: number; zone: 'A' | 'bridge' | 'B' }
 export const L4_FLOORS: L4FloorRect[] = [
   { x0: -30, x1: 30, z0: -10, z1: 50, zone: 'A' },       // main roof (spawn south)
-  { x0: -3, x1: 3, z0: -34, z1: -10, zone: 'bridge' },   // skybridge (open sides!)
+  { x0: -4, x1: 4, z0: -34, z1: -10, zone: 'bridge' },   // skybridge, open sides, centre duct
   { x0: -30, x1: 30, z0: -70, z1: -34, zone: 'B' },       // far roof (helipad)
 ];
 
@@ -29,12 +29,14 @@ export const L4_CHUNK_LOAD_RADIUS = 2; // streamed chunks are empty city void
 // Player opens on Roof A facing the bridge (-Z, yaw 0).
 export const L4_SPAWN_POINT = { x: 0, y: 1.5, z: 42 };
 
-// Guard posts: bridge chokepoint, helipad flanks, roof-A patrol.
+// Guard posts: two helipad flanks, one Roof-B roamer, one Roof-A east patrol (west stays
+// readable as the stealth approach). The bridge itself is unguarded — open edges + fall risk
+// are the threat there.
 export const L4_POSTS = [
-  { x: 0, z: -22 },   // 0: mid-bridge blocker
-  { x: -8, z: -58 },  // 1: helipad west
-  { x: 8, z: -58 },   // 2: helipad east
-  { x: 10, z: 20 },   // 3: roof-A patrol
+  { x: 6, z: -44 },   // 0: Roof-B roamer (also watches the bridge landing)
+  { x: -10, z: -58 }, // 1: helipad west
+  { x: 10, z: -58 },  // 2: helipad east
+  { x: 18, z: 16 },   // 3: Roof-A east patrol
 ];
 
 export const L4_ESCAPE_WALL_ID = 'l4_helipad_trigger';
@@ -81,18 +83,30 @@ export function getLevel4Map(): { walls: MapWall[]; jumpPads: JumpPad[]; pickups
 
   // Floor slabs — exactly the playable rects, nothing more (step off = void).
   pushBox(walls, 'l4_floor_A', 0, -0.5, 20, 60, 1, 60, { color: '#2e3134' });
-  pushBox(walls, 'l4_floor_bridge', 0, -0.5, -22, 6, 1, 24, { color: '#232629' });
+  pushBox(walls, 'l4_floor_bridge', 0, -0.5, -22, 8, 1, 24, { color: '#232629' });
   pushBox(walls, 'l4_floor_B', 0, -0.5, -52, 60, 1, 36, { color: '#2e3134' });
   // No ceiling — open night sky.
 
   // — Roof A cover: AC units + vent ducts + penthouse hut (two doors).
-  const acUnits: Array<[number, number]> = [[-14, 28], [-10, 28], [14, 10], [18, 10], [-18, -2], [8, 32]];
-  acUnits.forEach(([x, z], i) => {
-    pushBox(walls, `l4_ac_${i}`, x, 1.0, z, 3, 2, 2.2, { color: '#4a5054' });
+  // Dense enough to break the patrol's sightlines every ~15m (stealth needs cover to shake
+  // pursuit via the 2.5s give-up). Lanes stay ≥3m; spawn disc (x -6..6, z 36..50) stays clear.
+  const acUnits: Array<[number, number, number, number, number]> = [
+    // x, z, sx, sz, sy
+    [-14, 28, 3, 2, 2], [-10, 28, 3, 2, 2], [14, 10, 3, 2, 2], [18, 10, 3, 2, 2],
+    [-18, -2, 3, 2, 2], [8, 32, 3, 2, 2],
+    [-14, 38, 3, 2, 2], [-3.5, 34, 3, 2, 2], [10, 34, 3, 2, 2], [-20, 24, 2.5, 2, 1.8],
+    [-4, 26, 3, 2, 2], [8, 18, 3, 2, 2], [20, 18, 3, 2, 2], [-12, 8, 3, 2, 2],
+    [12, 2, 2.5, 2, 1.8], [-20, -2, 3, 2, 2],
+  ];
+  acUnits.forEach(([x, z, sx, sz, sy], i) => {
+    pushBox(walls, `l4_ac_${i}`, x, sy / 2, z, sx, sy, sz, { color: '#4a5054' });
   });
   pushBox(walls, 'l4_duct_A1', -4, 0.6, 18, 8, 1.2, 2, { color: '#3f4448' });
   pushBox(walls, 'l4_duct_A2', 12, 0.5, -4, 10, 1.0, 1.6, { color: '#3f4448' });
-  // Penthouse hut (interior x -21..-11, z 20..28): walls with north + south door gaps.
+  // Bridge cover: a central duct splits the 6m span into two lanes and breaks sightlines
+  // for anything chasing onto the span.
+  pushBox(walls, 'l4_duct_bridge', 0, 0.7, -22, 1.2, 1.4, 8, { color: '#3f4448' });
+  // Penthouse hut (interior x -23..-9, z 20..28): walls with north + south door gaps.
   pushBox(walls, 'l4_hut_n_l', -20.25, 1.6, 28.5, 5.5, 3.2, 1);
   pushBox(walls, 'l4_hut_n_r', -11.75, 1.6, 28.5, 5.5, 3.2, 1);
   pushBox(walls, 'l4_hut_s_l', -20.25, 1.6, 19.5, 5.5, 3.2, 1);
@@ -106,8 +120,34 @@ export function getLevel4Map(): { walls: MapWall[]; jumpPads: JumpPad[]; pickups
   pushBox(walls, 'l4_duct_B2', 16, 0.6, -46, 8, 1.2, 2, { color: '#3f4448' });
   pushBox(walls, 'l4_ac_B1', -20, 1.0, -60, 3, 2, 2.2, { color: '#4a5054' });
   pushBox(walls, 'l4_ac_B2', 20, 1.0, -60, 3, 2, 2.2, { color: '#4a5054' });
+  pushBox(walls, 'l4_ac_B3', -12, 0.9, -41, 3, 1.8, 2, { color: '#4a5054' });
+  pushBox(walls, 'l4_ac_B4', 12, 0.9, -41, 3, 1.8, 2, { color: '#4a5054' });
+  pushBox(walls, 'l4_ac_B5', -8, 0.9, -52, 2.5, 1.8, 2, { color: '#4a5054' });
 
-  // — Helipad: green glow ring + trigger. The pad marking is the exit beacon.
+  // — Edge hazard paint: emissive yellow strips along every open drop (doorDecor paint,
+  // walkable over). Roofs end in black void at night — without these the edge is unreadable.
+  const edge = (id: string, cx: number, cz: number, sx: number, sz: number) => {
+    walls.push({
+      id: `l4_edge_${id}`,
+      pos: { x: cx, y: 0.05, z: cz },
+      size: { x: sx, y: 0.06, z: sz },
+      color: '#ffd21f',
+      emissive: true,
+      doorDecor: true,
+    });
+  };
+  edge('A_w', -29.6, 20, 0.5, 60);
+  edge('A_e', 29.6, 20, 0.5, 60);
+  edge('A_n', 0, 49.6, 60, 0.5);
+  edge('A_s_l', -17, -10, 26, 0.5);
+  edge('A_s_r', 17, -10, 26, 0.5);
+  edge('bridge_w', -3.75, -22, 0.5, 24);
+  edge('bridge_e', 3.75, -22, 0.5, 24);
+  edge('B_w', -29.6, -52, 0.5, 36);
+  edge('B_e', 29.6, -52, 0.5, 36);
+  edge('B_n_l', -17, -34, 26, 0.5);
+  edge('B_n_r', 17, -34, 26, 0.5);
+  edge('B_s', 0, -69.6, 60, 0.5);
   walls.push({
     id: 'l4_pad_ring',
     pos: { x: 0, y: 0.06, z: -62 },

@@ -37,7 +37,7 @@ export const L3_EDGE_KILL_SUPPRESS = 0.7;
 // loud. At 100 every guard pinpoints the player (hunting, exact target) and the gauge drops
 // back to 60. Roof edges are open: leave all floor rects and gravity takes you — below the
 // kill plane it's over.
-export const L4_NOISE_RUN = 30;   // per second while moving upright
+export const L4_NOISE_RUN = 24;   // per second while moving upright (~4s to pin)
 export const L4_NOISE_SNEAK = 6;  // per second while sneaking
 export const L4_NOISE_VENT = -25; // per second while still
 export const L4_NOISE_JUMP = 10;  // instant bump on jump take-off
@@ -664,6 +664,14 @@ export class XonoticEngine {
     }
   }
 
+  // Shared lock-on: reveal + arm pursuit timers. Level 4 callers pre-qualify sustained sight.
+  private lockGuardOnto(bot: Bot, isInterceptor: boolean) {
+    bot.state = 'hunting';
+    bot.isHidden = false;
+    bot.stateTimer = isInterceptor ? 3.5 + Math.random() * 2.5 : 22;
+    bot.teleportCooldown = 5 + Math.random() * 3; // fair pursuit window before it's allowed to blink
+  }
+
   // Monster AI.
   //  - The stalker (Level 1's lone monster / Level 2 pack index 0) lurks unseen on a short leash and
   //    rolls to ambush, then vanishes again if it can't catch the player.
@@ -717,7 +725,8 @@ export class XonoticEngine {
       // PERF: hasClearLineOfSight() scans all ~400 walls — stagger it across frames
       // (1/3 of monsters per frame) instead of every monster every frame. Once hunting it
       // never matters again (hunters dead-reckon), so the max detection delay is ~50ms.
-      const SIGHT_DETECT_RANGE = 40;
+      // Level 4 storm cuts vision: 30m (also the single biggest difficulty lever on the roofs).
+      const SIGHT_DETECT_RANGE = this.level === 4 ? 30 : 40;
       // Fairness cap: at most 3 guards chase at once (Lv2's hidden pad ambusher is exempt —
       // it's the surprise). Without this all 5 collapse on the player the instant anyone gets seen.
       // Level 4 slabs are split by deadly void: locks only fire on the same slab, or edge
@@ -725,16 +734,26 @@ export class XonoticEngine {
       const underHunterCap = !isInterceptor || (this.level === 2 && bot.packIndex === 0) || huntingCount < 3;
       const sameSlab = this.level !== 4 ||
         this.zoneOf(bot.pos.x, bot.pos.z) === this.zoneOf(player.pos.x, player.pos.z);
-      if (bot.state !== 'hunting' && distToPlayer < SIGHT_DETECT_RANGE
-        && underHunterCap
-        && sameSlab
-        && this.state.matchTime >= SPAWN_GRACE_SECONDS
-        && (this.tickCount + botIndex) % 3 === 0
-        && this.hasClearLineOfSight(bot.pos, player.pos)) {
-        bot.state = 'hunting';
-        bot.isHidden = false;
-        bot.stateTimer = isInterceptor ? 3.5 + Math.random() * 2.5 : 22;
-        bot.teleportCooldown = 5 + Math.random() * 3; // fair pursuit window before it's allowed to blink
+      // Level 4 storm grace: a lock needs 0.8s of sustained sight (staggered ticks accrue 3dt
+      // each) — a glimpse across the roof doesn't instantly commit a guard, and breaking sight
+      // in time resets the timer. Lv1/2 lock the instant they see.
+      const trackingTick = (this.tickCount + botIndex) % 3 === 0;
+      const seenNow = underHunterCap && sameSlab && distToPlayer < SIGHT_DETECT_RANGE &&
+        trackingTick && this.hasClearLineOfSight(bot.pos, player.pos);
+      if (bot.state !== 'hunting' && this.state.matchTime >= SPAWN_GRACE_SECONDS) {
+        if (seenNow) {
+          if (this.level === 4) {
+            bot.sightLockTimer = (bot.sightLockTimer ?? 0) + dt * 3;
+            if (bot.sightLockTimer >= 0.8) {
+              bot.sightLockTimer = 0;
+              this.lockGuardOnto(bot, isInterceptor);
+            }
+          } else {
+            this.lockGuardOnto(bot, isInterceptor);
+          }
+        } else if (this.level === 4 && trackingTick) {
+          bot.sightLockTimer = 0; // looked away in time — the guard stays unsure
+        }
       }
 
       if (isInterceptor) {
@@ -742,7 +761,8 @@ export class XonoticEngine {
         // exit it moves to interpose just in front of them; inside the commit radius it charges.
         const post = this.guardPost(bot.packIndex ?? 1);
         const alerted = playerExitDist < 42;
-        const commit = playerExitDist < 24;
+        // Level 4 charges later (18m) — the pad finale needs real dodge room in the open.
+        const commit = playerExitDist < (this.level === 4 ? 18 : 24);
 
         if (bot.state === 'hunting') {
           // Sight-tracked pursuit: chase the last confirmed position, and break off back to post
@@ -767,7 +787,7 @@ export class XonoticEngine {
               bot.loseSightTimer = (bot.loseSightTimer ?? 0) + dt * 3;
             }
           }
-          if ((bot.loseSightTimer ?? 0) > GIVE_UP_AFTER_LOST_SIGHT) {
+          if ((bot.loseSightTimer ?? 0) > (this.level === 4 ? 2.5 : GIVE_UP_AFTER_LOST_SIGHT)) {
             bot.state = 'wandering';
             bot.stateTimer = 2 + Math.random() * 2;
             bot.loseSightTimer = 0;
@@ -783,7 +803,9 @@ export class XonoticEngine {
         } else if (alerted) {
           // Interpose: a point ~30% of the way from the player toward the exit, offset to this
           // guard's side so the four spread across the approach instead of stacking.
-          const s = ((bot.packIndex ?? 1) - 1) % 4;
+          // (Proper modulo — packIndex 0 gives -1 % 4 = -1 in JS, which would index undefined
+          // and NaN the whole pack through the shared separation force. That exact bug shipped.)
+          const s = (((bot.packIndex ?? 1) - 1) % 4 + 4) % 4;
           const lat = [-8, -3, 3, 8][s];
           let tx = exit.x - player.pos.x, tz = exit.z - player.pos.z;
           const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
@@ -996,7 +1018,10 @@ export class XonoticEngine {
       }
     });
 
-    this.state.monsterWarning = nearestMonsterDist < 3;
+    // Level 4: any committed hunter raises the alarm (on these open roofs "close" alone
+    // would warn far too late to matter).
+    this.state.monsterWarning = nearestMonsterDist < 3 ||
+      (this.level === 4 && bots.some(b => b.isMonster && b.state === 'hunting'));
   }
 
   // 2D (XZ) segment-vs-wall visibility check via the slab method — used to stop the monster from

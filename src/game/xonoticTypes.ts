@@ -41,6 +41,7 @@ export interface Bot {
   stuckTimer?: number;       // seconds a hunting monster has made near-zero progress toward its goal
   loseSightTimer?: number;   // Lv2 guards: seconds since last confirmed sightline while hunting —
                              // past GIVE_UP_AFTER_LOST_SIGHT they break off back to their post
+  sightLockTimer?: number;   // Lv4: sustained-sight seconds before a lock commits (storm grace)
 }
 
 export interface JumpPad {

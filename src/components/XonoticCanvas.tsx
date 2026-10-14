@@ -1062,6 +1062,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     const l4SignMat = isL4 ? new THREE.MeshStandardMaterial({ color: '#04120a', emissive: new THREE.Color('#39ff88'), emissiveIntensity: 2.2, roughness: 0.5 }) : null;
     const l4BlinkerMat = isL4 ? new THREE.MeshStandardMaterial({ color: '#140505', emissive: new THREE.Color('#ff2222'), emissiveIntensity: 0.3, roughness: 0.4 }) : null;
     const l4PoleMat = isL4 ? new THREE.MeshStandardMaterial({ color: new THREE.Color('#1c1e20'), roughness: 0.7, metalness: 0.3 }) : null;
+    const l4EdgeMat = isL4 ? new THREE.MeshStandardMaterial({ color: '#3a2f08', emissive: new THREE.Color('#ffd21f'), emissiveIntensity: 1.1, roughness: 0.6 }) : null;
 
     const l4MaterialFor = (wall: { id: string; color: string; emissive?: boolean; doorDecor?: boolean }): THREE.Material => {
       // The trigger itself renders as a green glow volume (collision-skipped by id) — walk in.
@@ -1072,6 +1073,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       if (wall.id === 'l4_exitsign') return l4SignMat!;
       if (wall.id.includes('_lamp')) return l4BlinkerMat!;
       if (wall.id.includes('_pole')) return l4PoleMat!;
+      if (wall.id.startsWith('l4_edge_')) return l4EdgeMat!;
       if (wall.id.startsWith('l4_ac_')) return l4AcMat!;
       if (wall.id.startsWith('l4_duct_')) return l4DuctMat!;
       if (wall.id === 'l4_hut_roof') return l4HutRoofMat!;
@@ -1979,7 +1981,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         [l3WallMat, l3FloorMat, l3CeilMat, l3TubeMat, l3MetalMat, l3ScreenMat, l3LedMat, l3ExitMat, l3SignMat, l3DarkMat].forEach(m => m?.dispose());
         if (rainGeo) rainGeo.dispose();
         if (rainMat) rainMat.dispose();
-        [l4RoofMat, l4BridgeMat, l4AcMat, l4DuctMat, l4HutMat, l4HutRoofMat, l4PadMat, l4SignMat, l4BlinkerMat, l4PoleMat].forEach(m => m?.dispose());
+        [l4RoofMat, l4BridgeMat, l4AcMat, l4DuctMat, l4HutMat, l4HutRoofMat, l4PadMat, l4SignMat, l4BlinkerMat, l4PoleMat, l4EdgeMat].forEach(m => m?.dispose());
         floorMat.dispose();
 
         renderer.dispose();
