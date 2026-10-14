@@ -797,7 +797,8 @@ export class XonoticEngine {
           } else {
             goalX = bot.targetPos?.x ?? player.pos.x;
             goalZ = bot.targetPos?.z ?? player.pos.z;
-            speed = this.maxGroundSpeed * 0.82;
+            // Level 4 guards run 0.72x — the pad finale must stay outrunnable on open ground.
+            speed = this.maxGroundSpeed * (this.level === 4 ? 0.72 : 0.82);
           }
           }
         } else if (alerted) {
@@ -813,7 +814,7 @@ export class XonoticEngine {
           goalX = player.pos.x + tx * ahead + tz * lat;
           goalZ = player.pos.z + tz * ahead - tx * lat;
           const arrive = Math.hypot(bot.pos.x - goalX, bot.pos.z - goalZ);
-          speed = arrive < 1.2 ? 0 : Math.min(this.maxGroundSpeed, 6 + arrive * 0.5);
+          speed = arrive < 1.2 ? 0 : Math.min(this.maxGroundSpeed * (this.level === 4 ? 0.8 : 1), 6 + arrive * 0.5);
           if (bot.stateTimer <= 0) {
             bot.stateTimer = 0.8 + Math.random() * 1.2;
             if ((commit || (distToPlayer < 11 && huntingCount < 3)) && sameSlab) {

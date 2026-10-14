@@ -33,9 +33,9 @@ export const L4_SPAWN_POINT = { x: 0, y: 1.5, z: 42 };
 // readable as the stealth approach). The bridge itself is unguarded — open edges + fall risk
 // are the threat there.
 export const L4_POSTS = [
-  { x: 6, z: -44 },   // 0: Roof-B roamer (also watches the bridge landing)
-  { x: -10, z: -58 }, // 1: helipad west
-  { x: 10, z: -58 },  // 2: helipad east
+  { x: 14, z: -50 },  // 0: Roof-B roamer (off the landing corridor — meets you at the pad, not the door)
+  { x: -13, z: -58 }, // 1: helipad west
+  { x: 13, z: -58 },  // 2: helipad east
   { x: 18, z: 16 },   // 3: Roof-A east patrol
 ];
 
