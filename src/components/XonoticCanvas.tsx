@@ -646,30 +646,32 @@ function buildRemotePlayerModel(bot: Bot): THREE.Group {
   return group;
 }
 
-// Builds the Level 3 entity — a gaunt long-armed humanoid with hanging black hair.
-// Named groups (torso/head/arm_left/arm_right/leg_left/leg_right) match the Demogorgon rig
-// so the shared procedural animation traversal in animate() just works.
-function buildL3EntityModel(): THREE.Group {
+// Builds the Level 3 entity — a gaunt knuckle-walking horror folded double, long black hair
+// mass with a black void maw, ground-scraping arms. (Exported for headless smoke tests.)
+export function buildL3EntityModel(): THREE.Group {
   const group = new THREE.Group();
-  // Pale, ROUGH skin (weathered, corpse-like — high roughness kills specular highlights).
-  const skinMat = new THREE.MeshStandardMaterial({ color: '#c4bcac', roughness: 0.9, metalness: 0.0 });
-  const hairMat = new THREE.MeshStandardMaterial({ color: '#08080b', roughness: 0.95, metalness: 0.0 });
-  // Eyes barely visible: pinpricks buried behind the hair curtain, almost no glow.
-  const eyeMat = new THREE.MeshStandardMaterial({
-    color: '#0d0303', emissive: new THREE.Color('#4a0d0d'), emissiveIntensity: 0.35, roughness: 0.4,
-  });
+  // Corpse-pale grey skin, fully matte. The face is not a face — a black void in the hair.
+  const skinMat = new THREE.MeshStandardMaterial({ color: '#b5aea1', roughness: 0.85, metalness: 0.0 });
+  const hairMat = new THREE.MeshStandardMaterial({ color: '#060608', roughness: 0.95, metalness: 0.0 });
+  const voidMat = new THREE.MeshStandardMaterial({ color: '#000000', roughness: 1.0, metalness: 0.0 });
+  const rimMat = new THREE.MeshStandardMaterial({ color: '#241611', roughness: 0.7, metalness: 0.0 });
 
-  // Torso — emaciated with visible ribs, hunched forward with rolled shoulders.
+  // Torso — starved, folded almost horizontal. Shoulders end up forward-down, arms hang from there.
   const torsoGroup = new THREE.Group();
   torsoGroup.name = 'torso';
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.32, 1.0, 0.19), skinMat);
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.34, 1.0, 0.2), skinMat);
   torsoGroup.add(torso);
-  [0.28, 0.13, -0.02].forEach(y => {
-    const rib = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.045, 0.21), skinMat);
+  [0.3, 0.15, 0.0].forEach(y => {
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(0.37, 0.045, 0.22), skinMat);
     rib.position.y = y;
     torsoGroup.add(rib);
   });
-  // Hunched shoulder masses, rolled forward
+  // Knuckled spine ridge down the hunched back
+  for (let s = 0; s < 5; s++) {
+    const vertebra = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.07), skinMat);
+    vertebra.position.set(0, -0.35 + s * 0.2, -0.12);
+    torsoGroup.add(vertebra);
+  }
   [[-1, -0.35], [1, 0.35]].forEach(([side, tilt]) => {
     const shoulder = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.15, 0.22), skinMat);
     shoulder.position.set(side * 0.22, 0.52, 0.03);
@@ -677,73 +679,79 @@ function buildL3EntityModel(): THREE.Group {
     shoulder.rotation.x = 0.25;
     torsoGroup.add(shoulder);
   });
-  torsoGroup.position.set(0, 1.72, 0);
-  torsoGroup.rotation.x = 0.22; // permanent stoop
+  torsoGroup.position.set(0, 1.55, 0.1);
+  torsoGroup.rotation.x = 0.9; // folded double — knuckle-walker stoop
   group.add(torsoGroup);
 
-  // Head — face ENTIRELY buried behind a full curtain of long black hair (front, sides,
-  // back, past the shoulders). Two pinprick eyes glimmer deep inside, barely visible.
+  // Head — hangs low and forward, face entirely gone behind hair except the void: a black
+  // oval maw parted open in the curtain, rimmed with raw flesh. No eyes. No mouth. Just the hole.
   const headGroup = new THREE.Group();
   headGroup.name = 'head';
-  const skull = new THREE.Mesh(new THREE.BoxGeometry(0.23, 0.27, 0.23), skinMat);
+  const skull = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.26, 0.22), skinMat);
   headGroup.add(skull);
-  const hairBack = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.0, 0.09), hairMat);
-  hairBack.position.set(0, -0.32, -0.13);
+  const hairTop = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.22, 0.3), hairMat);
+  hairTop.position.set(0, 0.16, -0.02);
+  headGroup.add(hairTop);
+  const hairBack = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.95, 0.09), hairMat);
+  hairBack.position.set(0, -0.3, -0.13);
   headGroup.add(hairBack);
-  const hairFront = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.85, 0.07), hairMat);
-  hairFront.position.set(0, -0.28, 0.13);
-  headGroup.add(hairFront);
   [-1, 1].forEach(side => {
-    const hairSide = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.8, 0.2), hairMat);
-    hairSide.position.set(side * 0.15, -0.28, 0);
-    headGroup.add(hairSide);
+    const curtain = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.8, 0.2), hairMat);
+    curtain.position.set(side * 0.115, -0.28, 0.02);
+    headGroup.add(curtain);
     const strand = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.6, 0.06), hairMat);
-    strand.position.set(side * 0.09, -0.3, 0.16);
+    strand.position.set(side * 0.07, -0.32, 0.16);
     strand.rotation.x = 0.08;
     headGroup.add(strand);
   });
-  [-0.055, 0.055].forEach(x => {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 8), eyeMat);
-    eye.position.set(x, -0.02, 0.1); // recessed behind the front curtain
-    headGroup.add(eye);
-  });
-  headGroup.position.set(0, 2.38, 0.05); // crown ≈ 2.5m
-  headGroup.rotation.x = 0.3; // head hung low under the hair
+  // The void: black flattened orb sunk in the curtain parting + fleshy rim.
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.028, 8, 20), rimMat);
+  rim.position.set(0, -0.06, 0.15);
+  headGroup.add(rim);
+  const holeGeo = new THREE.SphereGeometry(1, 12, 10);
+  const hole = new THREE.Mesh(holeGeo, voidMat);
+  hole.scale.set(0.08, 0.115, 0.05);
+  hole.position.set(0, -0.06, 0.145);
+  headGroup.add(hole);
+  headGroup.position.set(0, 1.32, 0.78);
+  headGroup.rotation.x = 0.5; // face-down-forward dangle
   group.add(headGroup);
 
-  // Arms — freakishly long: upper + knobby elbow + forearm group (children[2]) with four
-  // half-metre dangling fingers. Shoulder height ≈ 2.1m; the shared animation bends the
-  // forearms forward, so the reach extends toward the player, not through the floor.
+  // Arms — ground-scraping: shoulder (≈1.86 high after the stoop) to knuckles on the floor.
+  // Upper + knobby elbow + forearm group (children[2]) + splayed palm + four claw fingers.
+  // Kept near-straight by the dedicated L3 animation below (NOT the Demogorgon bent-elbow rig).
   const buildArm = (isLeft: boolean) => {
     const armGroup = new THREE.Group();
     armGroup.name = isLeft ? 'arm_left' : 'arm_right';
     const dirSign = isLeft ? -1 : 1;
-    const upper = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.85, 0.085), skinMat);
-    upper.position.y = -0.42;
+    const upper = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.8, 0.09), skinMat);
+    upper.position.y = -0.4;
     armGroup.add(upper);
     const elbow = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 6), skinMat);
-    elbow.position.y = -0.85;
+    elbow.position.y = -0.8;
     armGroup.add(elbow);
     const forearmGroup = new THREE.Group();
-    forearmGroup.position.y = -0.85;
-    const fore = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.95, 0.065), skinMat);
-    fore.position.y = -0.47;
+    forearmGroup.position.y = -0.8;
+    const fore = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.75, 0.07), skinMat);
+    fore.position.y = -0.375;
     forearmGroup.add(fore);
-    [-0.06, -0.02, 0.02, 0.06].forEach(x => {
-      const finger = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.5, 0.028), skinMat);
-      finger.position.set(x, -1.15, 0.01);
-      finger.rotation.x = 0.1;
+    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.07, 0.17), skinMat);
+    palm.position.y = -0.79;
+    forearmGroup.add(palm);
+    [-0.075, -0.025, 0.025, 0.075].forEach(x => {
+      const finger = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.25, 0.03), skinMat);
+      finger.position.set(x, -0.95, 0.03);
+      finger.rotation.z = -x * 0.8;
       forearmGroup.add(finger);
     });
     armGroup.add(forearmGroup);
-    armGroup.position.set(dirSign * 0.23, 2.1, 0);
+    armGroup.position.set(dirSign * 0.24, 1.86, 0.49);
     return armGroup;
   };
   group.add(buildArm(true));
   group.add(buildArm(false));
 
-  // Legs — spindly over-long stilts with knobby knees and elongated feet:
-  // [hip, thighGroup[thigh, knee, calfGroup]] keeps the shared walk-cycle indices valid.
+  // Legs — bent stilts carrying the folded torso: [hip, thighGroup[thigh, knee, calfGroup]].
   const buildLeg = (isLeft: boolean) => {
     const legGroup = new THREE.Group();
     legGroup.name = isLeft ? 'leg_left' : 'leg_right';
@@ -751,34 +759,35 @@ function buildL3EntityModel(): THREE.Group {
     const hip = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 6), skinMat);
     legGroup.add(hip);
     const thighGroup = new THREE.Group();
-    const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.6, 0.1), skinMat);
-    thigh.position.y = -0.3;
+    const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.55, 0.11), skinMat);
+    thigh.position.y = -0.275;
     thighGroup.add(thigh);
     const knee = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), skinMat);
-    knee.position.y = -0.6;
+    knee.position.y = -0.55;
     thighGroup.add(knee);
     const calfGroup = new THREE.Group();
-    calfGroup.position.y = -0.6;
-    const calf = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.58, 0.085), skinMat);
-    calf.position.y = -0.29;
+    calfGroup.position.y = -0.55;
+    const calf = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.55, 0.09), skinMat);
+    calf.position.y = -0.275;
     calfGroup.add(calf);
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.06, 0.32), skinMat);
-    foot.position.set(0, -0.58, 0.08);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.07, 0.3), skinMat);
+    foot.position.set(0, -0.55, 0.08);
     calfGroup.add(foot);
     thighGroup.add(calfGroup);
     legGroup.add(thighGroup);
-    legGroup.position.set(dirSign * 0.11, 1.18, 0);
+    legGroup.position.set(dirSign * 0.12, 1.15, -0.02);
+    legGroup.rotation.x = -0.12; // slight crouch set
     return legGroup;
   };
   group.add(buildLeg(true));
   group.add(buildLeg(false));
 
   group.userData = {
-    headBaseY: headGroup.position.y,
+    headBaseY: 1.32,
     armLBaseRotX: 0, armRBaseRotX: 0,
     armLBaseRotY: 0, armRBaseRotY: 0,
-    armLBaseRotZ: -0.12, armRBaseRotZ: 0.12,
-    legLBaseRotZ: -0.06, legRBaseRotZ: 0.06,
+    armLBaseRotZ: -0.1, armRBaseRotZ: 0.1,
+    legLBaseRotZ: -0.05, legRBaseRotZ: 0.05,
     bodyBaseY: 0,
   };
   group.traverse(obj => {
@@ -1617,6 +1626,39 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
             return;
           }
 
+          // Level 3 entity: dedicated knuckle-walker animation. The shared Demogorgon
+          // traversal below must NOT run here — its bent-forearm pose would fold these
+          // ground-scraping arms straight up.
+          if (isL3) {
+            const l3head = botGroup.getObjectByName('head');
+            if (l3head) {
+              l3head.rotation.x = 0.5 + Math.sin(time * 0.9) * 0.06;
+              l3head.rotation.z = Math.sin(time * 0.63) * 0.07;
+            }
+            const l3torso = botGroup.getObjectByName('torso');
+            if (l3torso) {
+              const br = 1 + Math.sin(time * 0.55) * 0.018;
+              l3torso.scale.set(1, br, 1);
+            }
+            const l3armL = botGroup.getObjectByName('arm_left');
+            if (l3armL) {
+              l3armL.rotation.x = Math.sin(time * 1.1) * 0.06;
+              l3armL.rotation.z = -0.1 + Math.sin(time * 0.8) * 0.02;
+              const l3foreL = l3armL.children[2];
+              if (l3foreL) l3foreL.rotation.x = -0.1 + Math.sin(time * 1.1) * 0.04;
+            }
+            const l3armR = botGroup.getObjectByName('arm_right');
+            if (l3armR) {
+              l3armR.rotation.x = Math.sin(time * 1.1 + Math.PI) * 0.06;
+              l3armR.rotation.z = 0.1 + Math.sin(time * 0.8 + Math.PI) * 0.02;
+              const l3foreR = l3armR.children[2];
+              if (l3foreR) l3foreR.rotation.x = -0.1 + Math.sin(time * 1.1 + Math.PI) * 0.04;
+            }
+            const l3legL = botGroup.getObjectByName('leg_left');
+            if (l3legL) l3legL.rotation.x = -0.12 + Math.sin(time * 1.5) * 0.3;
+            const l3legR = botGroup.getObjectByName('leg_right');
+            if (l3legR) l3legR.rotation.x = -0.02 + Math.sin(time * 1.5 - 1.2) * 0.26;
+          } else {
           // Search named children vectors to apply high-fidelity limb rotations
           botGroup.children.forEach(child => {
             if (child.name === 'head') {
@@ -1711,6 +1753,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
               }
             }
           });
+          }
 
           // Update actual coordinates
           botGroup.position.x = bot.pos.x;
