@@ -6,3 +6,7 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# 로컬 전용 스크립트 (프로젝트 배포 대상 아님)
+install.sh
+/test-*.ts

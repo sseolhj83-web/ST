@@ -13,7 +13,6 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { loadLocalStats, saveLocalMatchResult } from './game/localStats';
 import { L2_ESCAPE_WALL_POS } from './game/xonoticMapLevel2';
 import { L3_ESCAPE_WALL_POS } from './game/xonoticMapLevel3';
-import { L4_ESCAPE_WALL_POS } from './game/xonoticMapLevel4';
 
 type AppState = 'NICKNAME' | 'LOBBY' | 'PLAYING';
 
@@ -24,12 +23,12 @@ export default function App() {
   const [highScore, setHighScore] = useState(0);
   const [isPointerLocked, setIsPointerLocked] = useState(false);
   const [gameResult, setGameResult] = useState<'NONE' | 'VICTORY' | 'DEFEAT'>('NONE');
-  const [activeLevel, setActiveLevel] = useState<1 | 2 | 3 | 4>(1);
+  const [activeLevel, setActiveLevel] = useState<1 | 2 | 3>(1);
   const [roomContext, setRoomContext] = useState<{ roomId: string; isHost: boolean; players: any[] } | null>(null);
 
   const engineRef = useRef<XonoticEngine | null>(null);
   const gameStateRef = useRef<XonoticGameState | null>(null);
-  const pendingLevelRef = useRef<1 | 2 | 3 | 4>(1);
+  const pendingLevelRef = useRef<1 | 2 | 3>(1);
   const keysRef = useRef({ w: false, s: false, a: false, d: false, space: false, sneak: false, arrowleft: false, arrowright: false, arrowup: false, arrowdown: false });
   const mouseDeltaRef = useRef({ dx: 0, dy: 0 });
   const lastTimeRef = useRef(0);
@@ -269,7 +268,7 @@ export default function App() {
     mouseDeltaRef.current.dy += dy;
   }, []);
 
-  const handleStartGameFromLobby = useCallback((roomId: string, isHost: boolean, currentPlayers: any[], level: 1 | 2 | 3 | 4 = 1) => {
+  const handleStartGameFromLobby = useCallback((roomId: string, isHost: boolean, currentPlayers: any[], level: 1 | 2 | 3 = 1) => {
     pendingLevelRef.current = level;
     setRoomContext({ roomId, isHost, players: currentPlayers });
     startGame();
@@ -377,7 +376,7 @@ export default function App() {
                 fragFeed={gameState.fragFeed}
                 matchTime={gameState.matchTime}
                 level={activeLevel}
-                exitPos={activeLevel === 2 ? L2_ESCAPE_WALL_POS : activeLevel === 3 ? L3_ESCAPE_WALL_POS : activeLevel === 4 ? L4_ESCAPE_WALL_POS : null}
+                exitPos={activeLevel === 2 ? L2_ESCAPE_WALL_POS : activeLevel === 3 ? L3_ESCAPE_WALL_POS : null}
                 monsterWarning={gameState.monsterWarning}
                 entityDist={gameState.entityDist}
                 noise={gameState.noise}

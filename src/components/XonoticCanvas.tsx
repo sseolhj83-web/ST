@@ -865,7 +865,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     const lvl = getLevelModule(level);
     const isL2 = lvl.level === 2;
     const isL3 = lvl.level === 3;
-    const isL4 = lvl.level === 4;
+    const isL4 = (lvl.level as number) === 4;
     const isLean = isL2 || isL3 || isL4; // lean forward-renderer path (no AA/oversampling)
     const ESCAPE_WALL_ID = lvl.ESCAPE_WALL_ID;
 
