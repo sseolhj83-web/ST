@@ -1,7 +1,7 @@
 import { useRef, useCallback, useState } from 'react';
 
 interface MobileControlsProps {
-  keysRef: React.MutableRefObject<{ w: boolean; s: boolean; a: boolean; d: boolean; space: boolean; sneak: boolean; }>;
+  keysRef: React.MutableRefObject<{ w: boolean; s: boolean; a: boolean; d: boolean; space: boolean; }>;
   mouseDeltaRef: React.MutableRefObject<{ dx: number; dy: number }>;
 }
 
@@ -26,7 +26,6 @@ type LookState = {
 export function MobileControls({ keysRef, mouseDeltaRef }: MobileControlsProps) {
   const joystickState = useRef<JoystickState>({ active: false, touchId: -1, startX: 0, startY: 0 });
   const lookState = useRef<LookState>({ active: false, touchId: -1, lastX: 0, lastY: 0 });
-  const [sneakOn, setSneakOn] = useState(false);
 
   // Joystick base visual (shows where thumb landed)
   const joystickBaseRef = useRef<HTMLDivElement>(null);
@@ -175,29 +174,6 @@ export function MobileControls({ keysRef, mouseDeltaRef }: MobileControlsProps) 
           onTouchCancel={(e) => { e.preventDefault(); e.stopPropagation(); keysRef.current.space = false; }}
         >
           JUMP
-        </button>
-
-        {/* Sneak toggle (Level 4 quiet movement) – above the jump button */}
-        <button
-          className="absolute pointer-events-auto select-none flex items-center justify-center font-bold text-xs rounded-full text-white"
-          style={{
-            width: 56,
-            height: 56,
-            left: 24,
-            bottom: 96,
-            background: sneakOn ? 'rgba(16,185,129,0.65)' : 'rgba(100,116,139,0.65)',
-            border: '2px solid rgba(255,255,255,0.4)',
-            touchAction: 'none',
-          }}
-          onTouchStart={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const next = !keysRef.current.sneak;
-            keysRef.current.sneak = next;
-            setSneakOn(next);
-          }}
-        >
-          몰래
         </button>
       </div>
 

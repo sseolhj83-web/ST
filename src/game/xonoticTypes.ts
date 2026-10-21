@@ -41,7 +41,6 @@ export interface Bot {
   stuckTimer?: number;       // seconds a hunting monster has made near-zero progress toward its goal
   loseSightTimer?: number;   // Lv2 guards: seconds since last confirmed sightline while hunting —
                              // past GIVE_UP_AFTER_LOST_SIGHT they break off back to their post
-  sightLockTimer?: number;   // Lv4: sustained-sight seconds before a lock commits (storm grace)
 }
 
 export interface JumpPad {
@@ -89,12 +88,10 @@ export interface XonoticGameState {
   pickups: PickupItem[];
   fragFeed: FragLog[];
   matchTime: number;
-  level: 1 | 2 | 3 | 4;         // which level this run is in
+  level: 1 | 2 | 3;            // which level this run is in
   monsterWarning?: boolean; // the monster is within 7m of the player right now
   escaped?: boolean;        // found and dove through the flickering wall — the run is won
   lightsOn: boolean;        // Level 3 facility fluorescents — moving while dark is lethal
   lightTimer: number;       // seconds since run start on the light cycle clock
   entityDist: number;       // Level 3: metres to the long-armed entity (-1 when N/A)
-  noise: number;            // Level 4 sound gauge 0..100 — full pins every guard onto you
-  noiseFlash: number;       // seconds left on the "SPOTTED" banner after a pin
 }

@@ -10,7 +10,6 @@ import { PUDDLE_COLOR } from '../game/xonoticMap';
 import { getLevelModule, chunkKey } from '../game/levels';
 import { BLOCK as L2_BLOCK, L2_WALL_H, L2_ESCAPE_WALL_POS } from '../game/xonoticMapLevel2';
 import { L3_WALL_H, L3_ESCAPE_WALL_POS } from '../game/xonoticMapLevel3';
-import { L4_ESCAPE_WALL_POS } from '../game/xonoticMapLevel4';
 
 // Builds a single motionless, faceless human-shaped mannequin — static set dressing meant to
 // startle whoever's flashlight lands on it and briefly reads as "is that a person?" before it's
@@ -865,18 +864,16 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     const lvl = getLevelModule(level);
     const isL2 = lvl.level === 2;
     const isL3 = lvl.level === 3;
-    const isL4 = (lvl.level as number) === 4;
-    const isLean = isL2 || isL3 || isL4; // lean forward-renderer path (no AA/oversampling)
+    const isLean = isL2 || isL3; // lean forward-renderer path (no AA/oversampling)
     const ESCAPE_WALL_ID = lvl.ESCAPE_WALL_ID;
 
     // 1. Create Scene & haze. Level 1 fades to near-black (flashlight-only). Level 2's hotel is
     // fully, flatly fluorescent-lit — no flashlight — so its haze is a warm grey the lit corridor
     // fades into slowly, not darkness. Level 3 is a sealed concrete lab — cold near-black haze.
-    // Level 4 is open rainy night — deep blue-black.
     const scene = new THREE.Scene();
-    const hazeColor = isL4 ? '#05070d' : isL3 ? '#040607' : isL2 ? '#221e18' : '#0a0906';
+    const hazeColor = isL3 ? '#040607' : isL2 ? '#221e18' : '#0a0906';
     scene.background = new THREE.Color(hazeColor);
-    scene.fog = new THREE.FogExp2(hazeColor, isL4 ? 0.013 : isL3 ? 0.016 : isL2 ? 0.0085 : 0.006);
+    scene.fog = new THREE.FogExp2(hazeColor, isL3 ? 0.016 : isL2 ? 0.0085 : 0.006);
     sceneRef.current = scene;
 
     // 2. Camera Setup (Generous 85-degree Quake-style Field of View)
@@ -907,8 +904,8 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     //    floor gradient, and the point-light pool (below, updated in animate()) puts a brighter
     //    hotspot directly under whichever tubes are nearest the player.
     const ambientLight = new THREE.AmbientLight(
-      isL4 ? '#9fb4cc' : isL3 ? '#cfe0d6' : isL2 ? '#ffedc8' : '#fef9c3',
-      isL4 ? 0.12 : isL3 ? 0.03 : isL2 ? 0.6 : 0.02,
+      isL3 ? '#cfe0d6' : isL2 ? '#ffedc8' : '#fef9c3',
+      isL3 ? 0.03 : isL2 ? 0.6 : 0.02,
     );
     scene.add(ambientLight);
 
@@ -956,37 +953,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       exitLight3.castShadow = false;
       exitLight3.position.set(L3_ESCAPE_WALL_POS.x, L3_ESCAPE_WALL_POS.y + 0.6, L3_ESCAPE_WALL_POS.z);
       scene.add(exitLight3);
-    }
-
-    // Level 4 rig: night rain. Dim blue ambient (lightning spikes it — see animate), one green
-    // beacon over the helipad. The flashlight does the real work.
-    if (isL4) {
-      const padLight = new THREE.PointLight('#39ff88', 2.2, 32, 2);
-      padLight.castShadow = false;
-      padLight.position.set(L4_ESCAPE_WALL_POS.x, L4_ESCAPE_WALL_POS.y + 1.5, L4_ESCAPE_WALL_POS.z);
-      scene.add(padLight);
-    }
-
-    // Level 4 rain: one Points cloud recycled in a box around the camera (800 drops, wind slant).
-    const RAIN_COUNT = 800;
-    let rainGeo: THREE.BufferGeometry | null = null;
-    let rainMat: THREE.PointsMaterial | null = null;
-    if (isL4) {
-      rainGeo = new THREE.BufferGeometry();
-      const rainPos = new Float32Array(RAIN_COUNT * 3);
-      for (let i = 0; i < RAIN_COUNT; i++) {
-        rainPos[i * 3] = (Math.random() - 0.5) * 44;
-        rainPos[i * 3 + 1] = Math.random() * 24;
-        rainPos[i * 3 + 2] = (Math.random() - 0.5) * 44;
-      }
-      rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
-      rainMat = new THREE.PointsMaterial({
-        color: '#8fa3b8', size: 0.09, transparent: true, opacity: 0.55,
-        sizeAttenuation: true, depthWrite: false,
-      });
-      const rain = new THREE.Points(rainGeo, rainMat);
-      rain.frustumCulled = false;
-      scene.add(rain);
     }
 
     const floorMat = new THREE.MeshStandardMaterial({
@@ -1048,37 +1014,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       if (wall.emissive) return l3TubeMat!;
       if (wall.doorDecor) return l3DarkMat!;
       return l3WallMat!;
-    };
-
-    // ── Level 4 rooftop surfaces ────────────────────────────────────────────────────────────
-    // Wet night concrete + painted metal. Flat colors (rain + flashlight do the texturing).
-    const l4RoofMat = isL4 ? new THREE.MeshStandardMaterial({ color: new THREE.Color('#2e3134'), roughness: 0.55, metalness: 0.15 }) : null;
-    const l4BridgeMat = isL4 ? new THREE.MeshStandardMaterial({ color: new THREE.Color('#232629'), roughness: 0.6, metalness: 0.2 }) : null;
-    const l4AcMat = isL4 ? new THREE.MeshStandardMaterial({ color: new THREE.Color('#4a5054'), roughness: 0.45, metalness: 0.5 }) : null;
-    const l4DuctMat = isL4 ? new THREE.MeshStandardMaterial({ color: new THREE.Color('#3f4448'), roughness: 0.5, metalness: 0.45 }) : null;
-    const l4HutMat = isL4 ? new THREE.MeshStandardMaterial({ color: new THREE.Color('#6a6e6d'), roughness: 0.85, metalness: 0.05 }) : null;
-    const l4HutRoofMat = isL4 ? new THREE.MeshStandardMaterial({ color: new THREE.Color('#242627'), roughness: 0.9, metalness: 0.0 }) : null;
-    const l4PadMat = isL4 ? new THREE.MeshStandardMaterial({ color: '#04120a', emissive: new THREE.Color('#39ff88'), emissiveIntensity: 1.6, roughness: 0.5 }) : null;
-    const l4SignMat = isL4 ? new THREE.MeshStandardMaterial({ color: '#04120a', emissive: new THREE.Color('#39ff88'), emissiveIntensity: 2.2, roughness: 0.5 }) : null;
-    const l4BlinkerMat = isL4 ? new THREE.MeshStandardMaterial({ color: '#140505', emissive: new THREE.Color('#ff2222'), emissiveIntensity: 0.3, roughness: 0.4 }) : null;
-    const l4PoleMat = isL4 ? new THREE.MeshStandardMaterial({ color: new THREE.Color('#1c1e20'), roughness: 0.7, metalness: 0.3 }) : null;
-    const l4EdgeMat = isL4 ? new THREE.MeshStandardMaterial({ color: '#3a2f08', emissive: new THREE.Color('#ffd21f'), emissiveIntensity: 1.1, roughness: 0.6 }) : null;
-
-    const l4MaterialFor = (wall: { id: string; color: string; emissive?: boolean; doorDecor?: boolean }): THREE.Material => {
-      // The trigger itself renders as a green glow volume (collision-skipped by id) — walk in.
-      if (wall.id === 'l4_helipad_trigger') return l4PadMat!;
-      if (wall.id === 'l4_floor_bridge') return l4BridgeMat!;
-      if (wall.id.startsWith('l4_floor_')) return l4RoofMat!;
-      if (wall.id === 'l4_pad_ring') return l4PadMat!;
-      if (wall.id === 'l4_exitsign') return l4SignMat!;
-      if (wall.id.includes('_lamp')) return l4BlinkerMat!;
-      if (wall.id.includes('_pole')) return l4PoleMat!;
-      if (wall.id.startsWith('l4_edge_')) return l4EdgeMat!;
-      if (wall.id.startsWith('l4_ac_')) return l4AcMat!;
-      if (wall.id.startsWith('l4_duct_')) return l4DuctMat!;
-      if (wall.id === 'l4_hut_roof') return l4HutRoofMat!;
-      if (wall.id.startsWith('l4_hut_')) return l4HutMat!;
-      return l4RoofMat!;
     };
 
     // Procedural damp-wallpaper texture — a flat single color read as dull/lifeless across long
@@ -1247,9 +1182,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       const geometry = new THREE.BoxGeometry(wall.size.x, wall.size.y, wall.size.z);
 
       let material: THREE.Material;
-      if (isL4) {
-        material = l4MaterialFor(wall);
-      } else if (isL3) {
+      if (isL3) {
         material = l3MaterialFor(wall);
       } else if (isL2) {
         material = l2MaterialFor(wall);
@@ -1464,9 +1397,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     // Level 3 light driver: tracks the engine light state, strobes fixtures briefly on edges.
     let l3PrevLightsOn = true;
     let l3Strobe = 0;
-    // Level 4 storm driver: randomized lightning scheduler.
-    let l4NextFlash = 6 + Math.random() * 6;
-    let l4Flash = 0;
 
     // Continuous Frame Loop
     let animationId: number;
@@ -1591,45 +1521,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
           // Recording LEDs breathe slowly regardless of phase — something is always watching.
           if (l3LedMat) {
             l3LedMat.emissiveIntensity = 1.4 + Math.sin(botAnimTime * 2.2) * 0.9;
-          }
-        }
-
-        // B1d. Level 4 only: storm. Rain recycles around the camera; lightning spikes the
-        // ambient briefly on a random 7–16s schedule; aviation blinkers strobe.
-        if (isL4) {
-          if (rainGeo) {
-            const rp = rainGeo.attributes.position as THREE.BufferAttribute;
-            const arr = rp.array as Float32Array;
-            const fall = 24 * frameDelta, slant = -4 * frameDelta;
-            const cxp = camera.position.x, czp = camera.position.z;
-            for (let i = 0; i < RAIN_COUNT; i++) {
-              let y = arr[i * 3 + 1] - fall;
-              let x = arr[i * 3] + slant;
-              let z = arr[i * 3 + 2];
-              if (y < 0) {
-                y = 22 + Math.random() * 2;
-                x = cxp + (Math.random() - 0.5) * 44;
-                z = czp + (Math.random() - 0.5) * 44;
-              }
-              if (x < cxp - 22) x += 44; else if (x > cxp + 22) x -= 44;
-              if (z < czp - 22) z += 44; else if (z > czp + 22) z -= 44;
-              arr[i * 3] = x; arr[i * 3 + 1] = y; arr[i * 3 + 2] = z;
-            }
-            rp.needsUpdate = true;
-          }
-          l4NextFlash -= frameDelta;
-          if (l4NextFlash <= 0) {
-            l4Flash = 0.14;
-            l4NextFlash = 7 + Math.random() * 9;
-          }
-          if (l4Flash > 0) {
-            l4Flash -= frameDelta;
-            ambientLight.intensity = 1.6;
-          } else {
-            ambientLight.intensity += (0.12 - ambientLight.intensity) * Math.min(1, frameDelta * 3);
-          }
-          if (l4BlinkerMat) {
-            l4BlinkerMat.emissiveIntensity = (botAnimTime % 1.4) < 0.18 ? 3.0 : 0.25;
           }
         }
 
@@ -1979,9 +1870,6 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         [hotelWallMat, hotelPlainMat, hotelCeilingMat, hotelTubeMat].forEach(m => m?.dispose());
         concreteTexture?.dispose();
         [l3WallMat, l3FloorMat, l3CeilMat, l3TubeMat, l3MetalMat, l3ScreenMat, l3LedMat, l3ExitMat, l3SignMat, l3DarkMat].forEach(m => m?.dispose());
-        if (rainGeo) rainGeo.dispose();
-        if (rainMat) rainMat.dispose();
-        [l4RoofMat, l4BridgeMat, l4AcMat, l4DuctMat, l4HutMat, l4HutRoofMat, l4PadMat, l4SignMat, l4BlinkerMat, l4PoleMat, l4EdgeMat].forEach(m => m?.dispose());
         floorMat.dispose();
 
         renderer.dispose();

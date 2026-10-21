@@ -29,7 +29,7 @@ export default function App() {
   const engineRef = useRef<XonoticEngine | null>(null);
   const gameStateRef = useRef<XonoticGameState | null>(null);
   const pendingLevelRef = useRef<1 | 2 | 3>(1);
-  const keysRef = useRef({ w: false, s: false, a: false, d: false, space: false, sneak: false, arrowleft: false, arrowright: false, arrowup: false, arrowdown: false });
+  const keysRef = useRef({ w: false, s: false, a: false, d: false, space: false, arrowleft: false, arrowright: false, arrowup: false, arrowdown: false });
   const mouseDeltaRef = useRef({ dx: 0, dy: 0 });
   const lastTimeRef = useRef(0);
   const animationFrameIdRef = useRef<number | null>(null);
@@ -110,9 +110,6 @@ export default function App() {
         keysRef.current.space = true;
         e.preventDefault(); // prevent scroll jump
       }
-      // Shift = sneak (Level 4 quiet movement)
-      if (code === 'ShiftLeft' || code === 'ShiftRight') keysRef.current.sneak = true;
-      
       // Arrow keys for turning assistance
       if (code === 'ArrowLeft') { keysRef.current.arrowleft = true; e.preventDefault(); }
       if (code === 'ArrowRight') { keysRef.current.arrowright = true; e.preventDefault(); }
@@ -129,7 +126,6 @@ export default function App() {
       if (code === 'KeyA' || key === 'a' || key === 'ㅁ') keysRef.current.a = false;
       if (code === 'KeyD' || key === 'd' || key === 'ㅇ') keysRef.current.d = false;
       if (code === 'Space') keysRef.current.space = false;
-      if (code === 'ShiftLeft' || code === 'ShiftRight') keysRef.current.sneak = false;
       
       if (code === 'ArrowLeft') keysRef.current.arrowleft = false;
       if (code === 'ArrowRight') keysRef.current.arrowright = false;
@@ -233,7 +229,7 @@ export default function App() {
     }
     
     // Smooth reset controls states
-    keysRef.current = { w: false, s: false, a: false, d: false, space: false, sneak: false, arrowleft: false, arrowright: false, arrowup: false, arrowdown: false };
+    keysRef.current = { w: false, s: false, a: false, d: false, space: false, arrowleft: false, arrowright: false, arrowup: false, arrowdown: false };
     mouseDeltaRef.current = { dx: 0, dy: 0 };
     
     setGameResult('NONE');
@@ -379,8 +375,6 @@ export default function App() {
                 exitPos={activeLevel === 2 ? L2_ESCAPE_WALL_POS : activeLevel === 3 ? L3_ESCAPE_WALL_POS : null}
                 monsterWarning={gameState.monsterWarning}
                 entityDist={gameState.entityDist}
-                noise={gameState.noise}
-                noiseFlash={gameState.noiseFlash}
                 activeKeys={{
                   w: keysRef.current.w,
                   a: keysRef.current.a,

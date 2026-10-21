@@ -13,13 +13,11 @@ interface XonoticHUDProps {
   player: Player3D;
   fragFeed: FragLog[];
   matchTime: number;
-  level?: 1 | 2 | 3 | 4;
+  level?: 1 | 2 | 3;
   exitPos?: { x: number; y: number; z: number } | null;
   activeKeys?: { w: boolean; a: boolean; s: boolean; d: boolean; space: boolean };
   monsterWarning?: boolean;
   entityDist?: number; // Level 3: metres to the entity
-  noise?: number; // Level 4: sound gauge 0..100
-  noiseFlash?: number; // Level 4: seconds left on the SPOTTED banner
 }
 
 export const XonoticHUD: React.FC<XonoticHUDProps> = ({
@@ -31,8 +29,6 @@ export const XonoticHUD: React.FC<XonoticHUDProps> = ({
   activeKeys,
   monsterWarning,
   entityDist = -1,
-  noise = 0,
-  noiseFlash = 0,
 }) => {
   // Exit compass — in Level 2's endless identical grid you need a heading. Arrow rotates so "up" =
   // straight ahead. Forward = (sin yaw, -cos yaw); right = (cos yaw, sin yaw) — matches the engine.
@@ -114,25 +110,10 @@ export const XonoticHUD: React.FC<XonoticHUDProps> = ({
         <div className="text-center font-mono pointer-events-auto flex flex-col gap-2 items-center">
           <div className="bg-slate-900/80 backdrop-blur-md px-6 py-2.5 rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center">
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-              남은 시간 · {level === 4 ? 'LV.4 옥상' : level === 3 ? 'LV.3 연구시설' : level === 2 ? 'LV.2 호텔' : 'LV.1 미로'}
+              남은 시간 · {level === 3 ? 'LV.3 연구시설' : level === 2 ? 'LV.2 호텔' : 'LV.1 미로'}
             </span>
             <span className="text-2xl font-black text-rose-500 glow-rose">{formatTime(matchTime)}</span>
           </div>
-
-          {/* Level 4 sound gauge — running fills it, Shift-sneak creeps, stillness vents */}
-          {level === 4 && (
-            <div className="bg-slate-900/80 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center gap-1 w-56">
-              <span className={`text-[10px] font-black uppercase tracking-widest ${noiseFlash > 0 ? 'text-red-400 animate-pulse' : noise > 70 ? 'text-amber-400' : 'text-slate-400'}`}>
-                {noiseFlash > 0 ? '발각! 움직임 멈춰!' : '소음'}
-              </span>
-              <div className="w-full h-2 rounded-full bg-slate-950/80 overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-150 ${noise > 70 ? 'bg-red-500' : noise > 35 ? 'bg-amber-400' : 'bg-cyan-400'}`}
-                  style={{ width: `${Math.min(100, Math.max(0, noise))}%` }}
-                />
-              </div>
-            </div>
-          )}
 
           {exitBearing !== null && (
             <div className="bg-emerald-950/80 backdrop-blur-md px-4 py-2 rounded-2xl border border-emerald-500/40 shadow-2xl flex items-center gap-3">
