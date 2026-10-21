@@ -51,11 +51,25 @@ import {
   L3_MONSTER_SPAWN,
   L3_WALL_H,
 } from './xonoticMapLevel3';
+import {
+  getLevel4Map,
+  generateLevel4Chunk,
+  isLevel4HubChunk,
+  getLevel4Puddles,
+  getLevel4Mannequins,
+  L4_CHUNK_SIZE,
+  L4_CHUNK_LOAD_RADIUS,
+  L4_ESCAPE_WALL_ID,
+  L4_ESCAPE_WALL_POS,
+  L4_SPAWN_POINT,
+  L4_MONSTER_SPAWN,
+  L4_WALL_H,
+} from './xonoticMapLevel4';
 
 type XYZ = { x: number; y: number; z: number };
 
 export interface LevelModule {
-  level: 1 | 2 | 3;
+  level: 1 | 2 | 3 | 4;
   CHUNK_SIZE: number;
   CHUNK_LOAD_RADIUS: number;
   WALL_H: number;
@@ -120,6 +134,22 @@ const LEVEL_3: LevelModule = {
   getMannequins: getLevel3Mannequins,
 };
 
+const LEVEL_4: LevelModule = {
+  level: 4,
+  CHUNK_SIZE: L4_CHUNK_SIZE,
+  CHUNK_LOAD_RADIUS: L4_CHUNK_LOAD_RADIUS,
+  WALL_H: L4_WALL_H,
+  SPAWN_POINT: L4_SPAWN_POINT,
+  MONSTER_SPAWN: L4_MONSTER_SPAWN,
+  ESCAPE_WALL_ID: L4_ESCAPE_WALL_ID,
+  ESCAPE_WALL_POS: L4_ESCAPE_WALL_POS,
+  getMap: getLevel4Map,
+  generateChunk: generateLevel4Chunk,
+  isHubChunk: isLevel4HubChunk,
+  getPuddles: getLevel4Puddles,
+  getMannequins: getLevel4Mannequins,
+};
+
 export function getLevelModule(level: number): LevelModule {
-  return level === 3 ? LEVEL_3 : level === 2 ? LEVEL_2 : LEVEL_1;
+  return level === 4 ? LEVEL_4 : level === 3 ? LEVEL_3 : level === 2 ? LEVEL_2 : LEVEL_1;
 }

@@ -13,7 +13,7 @@ interface XonoticHUDProps {
   player: Player3D;
   fragFeed: FragLog[];
   matchTime: number;
-  level?: 1 | 2 | 3;
+  level?: 1 | 2 | 3 | 4;
   exitPos?: { x: number; y: number; z: number } | null;
   activeKeys?: { w: boolean; a: boolean; s: boolean; d: boolean; space: boolean };
   monsterWarning?: boolean;
@@ -110,7 +110,7 @@ export const XonoticHUD: React.FC<XonoticHUDProps> = ({
         <div className="text-center font-mono pointer-events-auto flex flex-col gap-2 items-center">
           <div className="bg-slate-900/80 backdrop-blur-md px-6 py-2.5 rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center">
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-              남은 시간 · {level === 3 ? 'LV.3 연구시설' : level === 2 ? 'LV.2 호텔' : 'LV.1 미로'}
+              남은 시간 · {level === 4 ? 'LV.4 무한 공간' : level === 3 ? 'LV.3 연구시설' : level === 2 ? 'LV.2 호텔' : 'LV.1 미로'}
             </span>
             <span className="text-2xl font-black text-rose-500 glow-rose">{formatTime(matchTime)}</span>
           </div>

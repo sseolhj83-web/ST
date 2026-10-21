@@ -5,7 +5,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { XonoticGameState, Bot, PickupItem } from '../game/xonoticTypes';
+import { XonoticGameState, Bot, PickupItem, MapWall } from '../game/xonoticTypes';
 import { PUDDLE_COLOR } from '../game/xonoticMap';
 import { getLevelModule, chunkKey } from '../game/levels';
 import { BLOCK as L2_BLOCK, L2_WALL_H, L2_ESCAPE_WALL_POS } from '../game/xonoticMapLevel2';
@@ -864,16 +864,18 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     const lvl = getLevelModule(level);
     const isL2 = lvl.level === 2;
     const isL3 = lvl.level === 3;
-    const isLean = isL2 || isL3; // lean forward-renderer path (no AA/oversampling)
+    const isL4 = lvl.level === 4;
+    const isLean = isL2 || isL3 || isL4; // lean forward-renderer path (no AA/oversampling)
     const ESCAPE_WALL_ID = lvl.ESCAPE_WALL_ID;
 
     // 1. Create Scene & haze. Level 1 fades to near-black (flashlight-only). Level 2's hotel is
     // fully, flatly fluorescent-lit — no flashlight — so its haze is a warm grey the lit corridor
     // fades into slowly, not darkness. Level 3 is a sealed concrete lab — cold near-black haze.
+    // Level 4 is the endless yellow Backrooms — bright, hazy yellow that hides the far rooms.
     const scene = new THREE.Scene();
-    const hazeColor = isL3 ? '#040607' : isL2 ? '#221e18' : '#0a0906';
+    const hazeColor = isL4 ? '#b3a655' : isL3 ? '#040607' : isL2 ? '#221e18' : '#0a0906';
     scene.background = new THREE.Color(hazeColor);
-    scene.fog = new THREE.FogExp2(hazeColor, isL3 ? 0.016 : isL2 ? 0.0085 : 0.006);
+    scene.fog = new THREE.FogExp2(hazeColor, isL4 ? 0.021 : isL3 ? 0.016 : isL2 ? 0.0085 : 0.006);
     sceneRef.current = scene;
 
     // 2. Camera Setup (Generous 85-degree Quake-style Field of View)
@@ -904,12 +906,12 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     //    floor gradient, and the point-light pool (below, updated in animate()) puts a brighter
     //    hotspot directly under whichever tubes are nearest the player.
     const ambientLight = new THREE.AmbientLight(
-      isL3 ? '#cfe0d6' : isL2 ? '#ffedc8' : '#fef9c3',
-      isL3 ? 0.03 : isL2 ? 0.6 : 0.02,
+      isL4 ? '#fff3c4' : isL3 ? '#cfe0d6' : isL2 ? '#ffedc8' : '#fef9c3',
+      isL4 ? 0.7 : isL3 ? 0.03 : isL2 ? 0.6 : 0.02,
     );
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight(isL2 ? '#fff2cf' : '#fdf6b2', isL2 ? 0.12 : 0.01);
+    const dirLight = new THREE.DirectionalLight(isL2 || isL4 ? '#fff2cf' : '#fdf6b2', isL2 ? 0.12 : isL4 ? 0.16 : 0.01);
     dirLight.position.set(30, 80, 30);
     dirLight.castShadow = false; // no sun-like directional shadow — flat, unlit look
     scene.add(dirLight);
@@ -953,6 +955,22 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       exitLight3.castShadow = false;
       exitLight3.position.set(L3_ESCAPE_WALL_POS.x, L3_ESCAPE_WALL_POS.y + 0.6, L3_ESCAPE_WALL_POS.z);
       scene.add(exitLight3);
+    }
+
+    // Level 4 rig: the endless yellow rooms are lit by their own ceiling tubes, so the ambient
+    // wash does the heavy lifting. A hemisphere light adds the ceiling/floor gradient, and two
+    // pooled point lights travel with the player to give the corridors a moving hotspot without
+    // paying for a light per fixture (there are hundreds of fixtures).
+    const l4PointLights: THREE.PointLight[] = [];
+    if (isL4) {
+      const hemi = new THREE.HemisphereLight('#fff6cf', '#7c6e34', 0.42);
+      scene.add(hemi);
+      for (let i = 0; i < 2; i++) {
+        const pl = new THREE.PointLight('#fff6d0', 1.1, 30, 2);
+        pl.castShadow = false;
+        scene.add(pl);
+        l4PointLights.push(pl);
+      }
     }
 
     const floorMat = new THREE.MeshStandardMaterial({
@@ -1058,6 +1076,27 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       tex.colorSpace = THREE.SRGBColorSpace;
       return tex;
     })();
+
+    // ── Level 4 surfaces ──────────────────────────────────────────────────────────────────────
+    // One material per surface type for the WHOLE level — every room is tinted per instance
+    // (InstancedMesh.setColorAt) so a hundred rooms share four materials instead of a hundred
+    // unique ones. That keeps the draw-call count at 4 per chunk no matter how many rooms are
+    // on screen.
+    const l4WallMat = isL4
+      ? new THREE.MeshStandardMaterial({ color: 0xffffff, map: wallpaperTexture, roughness: 0.9, metalness: 0.0 })
+      : null;
+    const l4FloorMat = isL4
+      ? new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0.0 })
+      : null;
+    const l4CeilMat = isL4
+      ? new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.96, metalness: 0.0 })
+      : null;
+    const l4TubeMat = isL4
+      ? new THREE.MeshStandardMaterial({ color: '#fffce8', emissive: new THREE.Color('#fff8dc'), emissiveIntensity: 2.4, roughness: 0.4 })
+      : null;
+    const l4ExitDoorMat = isL4
+      ? new THREE.MeshStandardMaterial({ color: '#0b2a14', emissive: new THREE.Color('#39ff88'), emissiveIntensity: 2.6, roughness: 0.5 })
+      : null;
 
     // ── Level 2 hotel surfaces ────────────────────────────────────────────────────────────────
     // One wall texture does all the work: dark walnut wainscoting on the bottom third, a chair rail,
@@ -1182,7 +1221,10 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       const geometry = new THREE.BoxGeometry(wall.size.x, wall.size.y, wall.size.z);
 
       let material: THREE.Material;
-      if (isL3) {
+      if (isL4) {
+        // Level 4's static map is just the exit door — a green-lit slab you walk into.
+        material = wall.id === ESCAPE_WALL_ID ? l4ExitDoorMat! : l4WallMat!;
+      } else if (isL3) {
         material = l3MaterialFor(wall);
       } else if (isL2) {
         material = l2MaterialFor(wall);
@@ -1272,12 +1314,66 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     let lastStreamCx = Number.NaN;
     let lastStreamCz = Number.NaN;
 
+    // Level 4 draws a whole chunk as four InstancedMeshes (walls / floor / ceiling / tubes)
+    // instead of one Mesh per wall — a chunk holds ~55 boxes, so the naive path would put
+    // ~1400 individual meshes on screen for the endless rooms.
+    const l4BoxGeo = new THREE.BoxGeometry(1, 1, 1);
+    const _l4Mat = new THREE.Matrix4();
+    const _l4Pos = new THREE.Vector3();
+    const _l4Scale = new THREE.Vector3();
+    const _l4Quat = new THREE.Quaternion();
+    const _l4Color = new THREE.Color();
+
+    const buildL4ChunkMeshes = (chunkWalls: MapWall[]): THREE.Mesh[] => {
+      const walls: MapWall[] = [];
+      const floors: MapWall[] = [];
+      const ceilings: MapWall[] = [];
+      const tubes: MapWall[] = [];
+      for (const w of chunkWalls) {
+        if (w.emissive) tubes.push(w);
+        else if (w.id.startsWith('l4_floor')) floors.push(w);
+        else if (w.id.endsWith('ceiling')) ceilings.push(w);
+        else walls.push(w);
+      }
+      const meshes: THREE.Mesh[] = [];
+      const build = (list: MapWall[], mat: THREE.Material | null, tinted: boolean) => {
+        if (!mat || list.length === 0) return;
+        const inst = new THREE.InstancedMesh(l4BoxGeo, mat, list.length);
+        list.forEach((w, i) => {
+          _l4Pos.set(w.pos.x, w.pos.y, w.pos.z);
+          _l4Scale.set(w.size.x, w.size.y, w.size.z);
+          _l4Mat.compose(_l4Pos, _l4Quat, _l4Scale);
+          inst.setMatrixAt(i, _l4Mat);
+          if (tinted) {
+            _l4Color.set(w.color);
+            inst.setColorAt(i, _l4Color);
+          }
+        });
+        inst.instanceMatrix.needsUpdate = true;
+        if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+        inst.frustumCulled = false; // the chunk is always close to the player
+        scene.add(inst);
+        meshes.push(inst);
+      };
+      build(walls, l4WallMat, true);
+      build(floors, l4FloorMat, true);
+      build(ceilings, l4CeilMat, true);
+      build(tubes, l4TubeMat, false);
+      return meshes;
+    };
+
     const disposeStreamedChunk = (key: string) => {
       const meshes = streamedChunkMeshes.get(key);
       if (!meshes) return;
       meshes.forEach(mesh => {
         scene.remove(mesh);
-        mesh.geometry.dispose();
+        if ((mesh as THREE.InstancedMesh).isInstancedMesh) {
+          // Releases the per-instance GPU buffers. The box geometry is shared by every chunk,
+          // so it is disposed once at teardown instead of here.
+          (mesh as THREE.InstancedMesh).dispose();
+        } else {
+          mesh.geometry.dispose();
+        }
       });
       streamedChunkMeshes.delete(key);
     };
@@ -1286,6 +1382,10 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       const key = chunkKey(cx, cz);
       if (streamedChunkMeshes.has(key)) return;
       const chunkWalls = lvl.generateChunk(cx, cz);
+      if (isL4) {
+        streamedChunkMeshes.set(key, buildL4ChunkMeshes(chunkWalls));
+        return;
+      }
       const meshes: THREE.Mesh[] = chunkWalls.map(wall => {
         const geometry = new THREE.BoxGeometry(wall.size.x, wall.size.y, wall.size.z);
         const material = isL2
@@ -1363,14 +1463,14 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
     flashlightGroup.add(flLens);
 
     scene.add(flashlightGroup);
-    flashlightGroup.visible = !isL2; // Level 2 is fully lit — no handheld flashlight
+    flashlightGroup.visible = !isL2 && !isL4; // Lv2/Lv4 are fully lit — no handheld flashlight
 
     // Always-on flashlight SpotLight — the player's light source in Level 1's pitch-dark maze.
     // Level 2 is fluorescent-lit, so its spotlight contributes nothing (intensity 0). Level 3
     // gets a real beam too: dark phases stay deadly to MOVE in, but you can at least watch it coming.
     // Long-throw beam: decay 1 (not physical 2) so it carries hundreds of metres instead of
     // dying after a few dozen. Near walls run hot like a real flashlight — intended.
-    const flashlightSpot = new THREE.SpotLight('#fff4d6', isL2 ? 0 : isL3 ? 40 : 120, isL3 ? 300 : 500, 0.75, 0.5, 1);
+    const flashlightSpot = new THREE.SpotLight('#fff4d6', isL2 || isL4 ? 0 : isL3 ? 40 : 120, isL3 ? 300 : 500, 0.75, 0.5, 1);
     flashlightSpot.castShadow = false;
     scene.add(flashlightSpot);
     const flashlightTarget = new THREE.Object3D();
@@ -1420,6 +1520,14 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         // A2. Stream the infinite maze in/out around wherever the player currently is
         updateStreamedChunks(player.pos.x, player.pos.z);
 
+        // A2b. Level 4: the two pooled point lights travel with the player so the endless yellow
+        // rooms always have a bright hotspot around them, no matter how far the ceiling tubes are.
+        if (isL4 && l4PointLights.length === 2) {
+          const ly = camera.position.y + 1.1;
+          l4PointLights[0].position.set(camera.position.x, ly, camera.position.z);
+          l4PointLights[1].position.set(camera.position.x + 10, ly, camera.position.z + 10);
+        }
+
         // Euler look angles using pre-allocated _targetLook vector
         _targetLook.set(
           camera.position.x + Math.sin(player.yaw) * Math.cos(player.pitch),
@@ -1433,7 +1541,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         camera.getWorldDirection(_camDir);
         _rightVec.crossVectors(_camDir, _upVec).normalize();
 
-        if (flashlightGroup && !isL2) {
+        if (flashlightGroup && !isL2 && !isL4) {
           const rightOffset = 0.22;
           const downOffset = -0.26;
           const forwardOffset = -0.58;
@@ -1870,6 +1978,8 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         [hotelWallMat, hotelPlainMat, hotelCeilingMat, hotelTubeMat].forEach(m => m?.dispose());
         concreteTexture?.dispose();
         [l3WallMat, l3FloorMat, l3CeilMat, l3TubeMat, l3MetalMat, l3ScreenMat, l3LedMat, l3ExitMat, l3SignMat, l3DarkMat].forEach(m => m?.dispose());
+        l4BoxGeo.dispose();
+        [l4WallMat, l4FloorMat, l4CeilMat, l4TubeMat, l4ExitDoorMat].forEach(m => m?.dispose());
         floorMat.dispose();
 
         renderer.dispose();

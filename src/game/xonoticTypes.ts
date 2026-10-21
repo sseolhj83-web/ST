@@ -88,7 +88,7 @@ export interface XonoticGameState {
   pickups: PickupItem[];
   fragFeed: FragLog[];
   matchTime: number;
-  level: 1 | 2 | 3;            // which level this run is in
+  level: 1 | 2 | 3 | 4;            // which level this run is in
   monsterWarning?: boolean; // the monster is within 7m of the player right now
   escaped?: boolean;        // found and dove through the flickering wall — the run is won
   lightsOn: boolean;        // Level 3 facility fluorescents — moving while dark is lethal

@@ -5,6 +5,7 @@
 
 import { XonoticGameState, Bot, JumpPad, PickupItem, MapWall } from './xonoticTypes';
 import { getLevelModule, LevelModule, chunkKey } from './levels';
+import { L4_CELL } from './xonoticMapLevel4';
 
 // Spawn grace: monsters neither lock on nor deal damage during the first seconds of a run.
 // Lv2's stalker spawns metres from the player with a clear sightline — without this the run
@@ -33,7 +34,7 @@ export const L3_EDGE_KILL_SUPPRESS = 0.7;
 
 export class XonoticEngine {
   public state: XonoticGameState;
-  public level: 1 | 2 | 3;
+  public level: 1 | 2 | 3 | 4;
   private lvl: LevelModule;
   public roomId: string | null = null;
   public userId: string | null = null;
@@ -49,6 +50,14 @@ export class XonoticEngine {
   private timeoutManifested: boolean = false;
   private tickCount: number = 0; // frame counter for staggering expensive LOS checks
   private lastMoveInput: boolean = false; // WASD/space held on the latest input frame (L3 dark rule)
+  // ── Lv4 spatial index ──────────────────────────────────────────────────────────────────────
+  // The infinite yellow space keeps ~1300 walls resident at once. Testing every one of them on
+  // every axis of every entity is what made the streamed levels stutter, so Lv4 buckets its walls
+  // into the same 20m room grid the map is generated on and only ever looks at the 3x3
+  // neighbourhood around whoever is moving.
+  private cellIndex: Map<string, MapWall[]> | null = null;
+  private scratchPool: MapWall[][] = [[], [], [], [], [], []];
+  private scratchCursor: number = 0;
   private darkElapsed: number = 0; // seconds since the L3 lights went out (input forgiveness window)
   private onStateChange: (state: XonoticGameState) => void;
 
@@ -63,7 +72,7 @@ export class XonoticEngine {
   private readonly maxBhopSpeed = 40; // hard cap on horizontal speed so chained bunny-hops can't build up
                                        // enough velocity to tunnel through a wall/ceiling in a single frame
 
-  constructor(onStateChange: (state: XonoticGameState) => void, level: 1 | 2 | 3 = 1) {
+  constructor(onStateChange: (state: XonoticGameState) => void, level: 1 | 2 | 3 | 4 = 1) {
     this.onStateChange = onStateChange;
     this.level = level;
     this.lvl = getLevelModule(level);
@@ -186,7 +195,8 @@ export class XonoticEngine {
         invulnerable: true,
         // Level 3's entity is always visible — seeing it approach is the horror.
         // Interceptors (1+) are a visible blockade from the start; only the stalker (0) hides.
-        isHidden: this.level === 3 ? false : i === 0,
+        // Level 4's wanderer is always visible too — it crosses those endless yellow rooms.
+        isHidden: this.level === 3 || this.level === 4 ? false : i === 0,
         packIndex: i,
       });
     }
@@ -291,6 +301,83 @@ export class XonoticEngine {
     player.vel.y += this.gravity * dt;
   }
 
+  // ── Lv4 spatial index helpers ───────────────────────────────────────────────────────────────
+  // Which 20m room cells does this wall's footprint touch? A wall lying exactly on a cell
+  // boundary belongs to both sides, so a mover standing next to it still finds it.
+  private wallCellKeys(wall: MapWall): string[] {
+    const keys: string[] = [];
+    const minI = Math.floor((wall.pos.x - wall.size.x / 2) / L4_CELL);
+    const maxI = Math.floor((wall.pos.x + wall.size.x / 2) / L4_CELL);
+    const minJ = Math.floor((wall.pos.z - wall.size.z / 2) / L4_CELL);
+    const maxJ = Math.floor((wall.pos.z + wall.size.z / 2) / L4_CELL);
+    for (let i = minI; i <= maxI; i++) {
+      for (let j = minJ; j <= maxJ; j++) keys.push(`${i}_${j}`);
+    }
+    return keys;
+  }
+
+  private indexChunkWalls(chunkWalls: MapWall[]) {
+    if (!this.cellIndex) this.cellIndex = new Map();
+    for (const wall of chunkWalls) {
+      if (wall.doorDecor) continue;
+      for (const key of this.wallCellKeys(wall)) {
+        let bucket = this.cellIndex.get(key);
+        if (!bucket) { bucket = []; this.cellIndex.set(key, bucket); }
+        bucket.push(wall);
+      }
+    }
+  }
+
+  private unindexChunkWalls(chunkWalls: MapWall[]) {
+    if (!this.cellIndex) return;
+    for (const wall of chunkWalls) {
+      for (const key of this.wallCellKeys(wall)) {
+        const bucket = this.cellIndex.get(key);
+        if (!bucket) continue;
+        const at = bucket.indexOf(wall);
+        if (at >= 0) bucket.splice(at, 1);
+        if (bucket.length === 0) this.cellIndex.delete(key);
+      }
+    }
+  }
+
+  // The walls around a point (3x3 room cells). Results live in a rotating pool of buffers so the
+  // hot path never allocates.
+  private nearbyWalls(x: number, z: number): MapWall[] {
+    const buf = this.scratchPool[this.scratchCursor];
+    this.scratchCursor = (this.scratchCursor + 1) % this.scratchPool.length;
+    buf.length = 0;
+    if (!this.cellIndex) return buf;
+    const ci = Math.floor(x / L4_CELL);
+    const cj = Math.floor(z / L4_CELL);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        const bucket = this.cellIndex.get(`${ci + dx}_${cj + dz}`);
+        if (!bucket) continue;
+        for (const wall of bucket) buf.push(wall);
+      }
+    }
+    return buf;
+  }
+
+  // Every wall inside a world-space box (used for line-of-sight along a segment).
+  private wallsInBox(minX: number, minZ: number, maxX: number, maxZ: number): MapWall[] {
+    const buf = this.scratchPool[this.scratchCursor];
+    this.scratchCursor = (this.scratchCursor + 1) % this.scratchPool.length;
+    buf.length = 0;
+    if (!this.cellIndex) return buf;
+    const i0 = Math.floor(minX / L4_CELL), i1 = Math.floor(maxX / L4_CELL);
+    const j0 = Math.floor(minZ / L4_CELL), j1 = Math.floor(maxZ / L4_CELL);
+    for (let i = i0; i <= i1; i++) {
+      for (let j = j0; j <= j1; j++) {
+        const bucket = this.cellIndex.get(`${i}_${j}`);
+        if (!bucket) continue;
+        for (const wall of bucket) buf.push(wall);
+      }
+    }
+    return buf;
+  }
+
   // Keeps the maze loaded around wherever the player currently is, streaming in fresh procedural
   // chunks as they walk and dropping ones that fall well behind — the map has no edge. Short-circuits
   // unless the player has actually crossed into a new chunk, so standing still (e.g. pressed up
@@ -316,6 +403,7 @@ export class XonoticEngine {
         const chunkWalls = this.lvl.generateChunk(cx, cz);
         this.loadedStreamChunks.set(key, chunkWalls);
         this.walls.push(...chunkWalls);
+        if (this.level === 4) this.indexChunkWalls(chunkWalls);
       }
     }
 
@@ -326,6 +414,7 @@ export class XonoticEngine {
         const chunkWalls = this.loadedStreamChunks.get(key)!;
         const ids = new Set(chunkWalls.map(w => w.id));
         this.walls = this.walls.filter(w => !ids.has(w.id));
+        if (this.level === 4) this.unindexChunkWalls(chunkWalls);
         this.loadedStreamChunks.delete(key);
       }
     }
@@ -724,7 +813,10 @@ export class XonoticEngine {
         const leashPulling = distToPlayer > LEASH;
         if (leashPulling) {
           goalX = player.pos.x; goalZ = player.pos.z;
-          speed = this.maxGroundSpeed * 1.3;
+          // Lv4's wanderer closes at exactly the player's sprint speed (15) instead of Lv1's 1.3x
+          // (19.5) — a full sprint barely outruns it, and it never gives up, but a sprinting
+          // player is never simply run down from 30m away.
+          speed = this.maxGroundSpeed * (this.level === 4 ? 1.0 : 1.3);
           bot.targetPos = { ...player.pos };
         } else if (bot.state !== 'hunting') {
           if (inGrace && distToPlayer < 10 && distToPlayer > 0.01) {
@@ -905,12 +997,21 @@ export class XonoticEngine {
   private hasClearLineOfSight(from: { x: number; y: number; z: number }, to: { x: number; y: number; z: number }): boolean {
     const dx = to.x - from.x;
     const dz = to.z - from.z;
-    for (const wall of this.walls) {
+    // Lv4 only tests the walls inside the segment's bounding box (a handful of room cells)
+    // instead of every wall in the loaded world.
+    const walls = this.level === 4
+      ? this.wallsInBox(
+        Math.min(from.x, to.x) - 1, Math.min(from.z, to.z) - 1,
+        Math.max(from.x, to.x) + 1, Math.max(from.z, to.z) + 1
+      )
+      : this.walls;
+    for (const wall of walls) {
       if (wall.id === this.lvl.ESCAPE_WALL_ID || wall.emissive || wall.doorDecor) continue;
       const isPlatform =
         wall.id.startsWith('floor') ||
         wall.id.startsWith('l2_floor') || // Lv2 floors ('l2_floor_main', 'l2_floor_l2s_..') — huge slabs, never block sight
         wall.id.startsWith('l3_floor') || // Lv3 facility floor slab
+        wall.id.startsWith('l4_floor') || // Lv4 room floor slabs (one per 20m room)
         wall.id.startsWith('bridge') ||
         wall.id.endsWith('roof') ||
         wall.id.endsWith('ceiling') ||
@@ -1017,7 +1118,8 @@ export class XonoticEngine {
 
   // Pure wall geometries bound checks
   private checkWallCollision(pos: { x: number; y: number; z: number }, radius: number): boolean {
-    for (const wall of this.walls) {
+    const walls = this.level === 4 ? this.nearbyWalls(pos.x, pos.z) : this.walls;
+    for (const wall of walls) {
       if (wall.id === this.lvl.ESCAPE_WALL_ID) continue; // not a real wall — projectiles pass through it too
       if (wall.doorDecor) continue; // flush hotel door set-dressing — never collidable
       const halfSize = { x: wall.size.x / 2, y: wall.size.y / 2, z: wall.size.z / 2 };
@@ -1051,7 +1153,8 @@ export class XonoticEngine {
     }
 
     // Check dynamic wall objects
-    for (const wall of this.walls) {
+    const walls = this.level === 4 ? this.nearbyWalls(pos.x, pos.z) : this.walls;
+    for (const wall of walls) {
       // The escape wall is a trigger, not a wall — walk straight through it (see checkEscapeWall)
       if (wall.id === this.lvl.ESCAPE_WALL_ID) continue;
       // Flush hotel-door set-dressing sits on a solid block face — never collide with it
@@ -1064,6 +1167,7 @@ export class XonoticEngine {
         wall.id.startsWith('floor') ||
         wall.id.startsWith('l2_floor') || // Lv2 floors are huge slabs — without this they shove the player/monsters sideways every frame
         wall.id.startsWith('l3_floor') || // Lv3 facility floor slab (same trap)
+        wall.id.startsWith('l4_floor') || // Lv4 room floor slabs (same trap)
         wall.id.startsWith('bridge') ||
         wall.id.endsWith('roof') ||
         wall.id.endsWith('ceiling') || // streamed chunk ceilings ('*_ceiling')
