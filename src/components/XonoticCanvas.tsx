@@ -1043,7 +1043,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
       canvas.width = size;
       canvas.height = size;
       const ctx = canvas.getContext('2d')!;
-      ctx.fillStyle = '#C9BE6D'; // bright yellow wallpaper base
+      ctx.fillStyle = '#aaa652'; // damp yellow wallpaper base
       ctx.fillRect(0, 0, size, size);
 
       const imgData = ctx.getImageData(0, 0, size, size);
