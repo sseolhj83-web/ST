@@ -35,9 +35,9 @@ export const L4_CHUNK_SIZE = L4_CELL * 2;  // streamed chunk = 2x2 cells = 40 m
 export const L4_CHUNK_LOAD_RADIUS = 2;     // 5x5 chunks resident (200 m span, hidden by fog)
 export const L4_WALL_H = 5.2;              // office ceiling height — matches the reference photo
 
-export const L4_WALL_COLOR = '#d9c84a';    // 연한 노란색 벽지
+export const L4_WALL_COLOR = '#c1b648';    // 오리지널 느낌 노란색 벽지
 export const L4_CEILING_COLOR = '#bfbfbf'; // 연한 회색 천장
-export const L4_FLOOR_COLOR = '#c1b648';   // 오리지널 느낌 노란색 바닥
+export const L4_FLOOR_COLOR = '#d9c84a';   // 연한 노란색 바닥
 export const L4_LIGHT_COLOR = '#fffce8';   // fluorescent tube
 
 export const L4_ESCAPE_WALL_ID = 'l4_exit_door';
