@@ -33,7 +33,7 @@ import { mulberry32, hashSeed } from './xonoticMap';
 export const L4_CELL = 20;                 // one room cell (20 x 20 m)
 export const L4_CHUNK_SIZE = L4_CELL * 2;  // streamed chunk = 2x2 cells = 40 m
 export const L4_CHUNK_LOAD_RADIUS = 2;     // 5x5 chunks resident (200 m span, hidden by fog)
-export const L4_WALL_H = 4.6;              // office ceiling height — matches the reference photo
+export const L4_WALL_H = 5.2;              // office ceiling height — matches the reference photo
 
 export const L4_WALL_COLOR = '#c9b95f';    // damp yellow wallpaper
 export const L4_CEILING_COLOR = '#d6d0ae'; // ceiling tile
