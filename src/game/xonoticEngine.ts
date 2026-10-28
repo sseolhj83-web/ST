@@ -580,10 +580,11 @@ export class XonoticEngine {
 
     if (this.timeFrozen) {
       this.state.timeFrozen = true;
-      // Keep monster warnings/current AI state frozen but don't advance time
-      this.updatePickups(0);
+      // Allow player movement/physics even while time is frozen
+      this.updatePlayerPhysics(dt);
       this.checkEscapeWall();
       this.checkTimeoutDeath();
+      this.updatePickups(0);
       this.onStateChange({ ...this.state });
       return;
     }
