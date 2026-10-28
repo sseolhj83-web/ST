@@ -48,9 +48,9 @@ export const L3_EDGE_KILL_SUPPRESS = 0.7;
 //    SEEN position, not the live one.
 //  - The horde never thins out: an entity that falls far behind is re-seeded out in the fog
 //    ahead of the player, so the pressure keeps coming from the direction you're heading.
-export const L4_HORDE_SIZE = 16;             // how many entities share the endless space
-export const L4_MAX_HUNTERS = 4;             // lethal pursuers at once
-export const L4_MAX_HUNTERS_NEAR_EXIT = 5;   // the finale allows one more
+export const L4_HORDE_SIZE = 5;             // how many entities share the endless space
+export const L4_MAX_HUNTERS = 2;             // lethal pursuers at once
+export const L4_MAX_HUNTERS_NEAR_EXIT = 3;   // the finale allows one more
 export const L4_HUNT_SPEED_MULT = 0.88;      // 13.2 u/s — always under the player's 15 u/s sprint
 export const L4_WANDER_SPEED = 6;            // drifting pace for the ones that are not hunting
 export const L4_SIGHT_RANGE = 45;            // how far an entity can spot the player (needs LOS)
