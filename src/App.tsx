@@ -376,6 +376,7 @@ export default function App() {
                 exitPos={activeLevel === 2 ? L2_ESCAPE_WALL_POS : activeLevel === 3 ? L3_ESCAPE_WALL_POS : activeLevel === 4 ? L4_ESCAPE_WALL_POS : null}
                 monsterWarning={gameState.monsterWarning}
                 entityDist={gameState.entityDist}
+                hordeCount={gameState.hordeCount}
                 activeKeys={{
                   w: keysRef.current.w,
                   a: keysRef.current.a,

@@ -18,6 +18,7 @@ interface XonoticHUDProps {
   activeKeys?: { w: boolean; a: boolean; s: boolean; d: boolean; space: boolean };
   monsterWarning?: boolean;
   entityDist?: number; // Level 3: metres to the entity
+  hordeCount?: number; // Level 4: entities sharing the player's neighbourhood
 }
 
 export const XonoticHUD: React.FC<XonoticHUDProps> = ({
@@ -29,6 +30,7 @@ export const XonoticHUD: React.FC<XonoticHUDProps> = ({
   activeKeys,
   monsterWarning,
   entityDist = -1,
+  hordeCount = 0,
 }) => {
   // Exit compass — in Level 2's endless identical grid you need a heading. Arrow rotates so "up" =
   // straight ahead. Forward = (sin yaw, -cos yaw); right = (cos yaw, sin yaw) — matches the engine.
@@ -130,6 +132,19 @@ export const XonoticHUD: React.FC<XonoticHUDProps> = ({
                 <span className="block text-[9px] text-emerald-500/80 font-bold uppercase tracking-wider">출구</span>
                 <span className="block text-sm font-black text-emerald-300">
                   {exitDist < 3 ? '바로 앞!' : `${Math.round(exitDist)}m`}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Level 4: how much of the horde is sharing your room right now */}
+          {level === 4 && (
+            <div className="bg-stone-950/80 backdrop-blur-md px-4 py-2 rounded-2xl border border-amber-500/30 shadow-2xl flex items-center gap-3">
+              <span className="text-lg leading-none">👁</span>
+              <div className="text-left leading-tight">
+                <span className="block text-[9px] text-amber-500/80 font-bold uppercase tracking-wider">근처 개체</span>
+                <span className={`block text-sm font-black ${hordeCount > 4 ? 'text-rose-400' : 'text-amber-300'}`}>
+                  {hordeCount}마리
                 </span>
               </div>
             </div>

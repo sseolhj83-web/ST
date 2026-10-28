@@ -94,4 +94,5 @@ export interface XonoticGameState {
   lightsOn: boolean;        // Level 3 facility fluorescents — moving while dark is lethal
   lightTimer: number;       // seconds since run start on the light cycle clock
   entityDist: number;       // Level 3: metres to the long-armed entity (-1 when N/A)
+  hordeCount?: number;      // Level 4: entities within the HUD radius of the player
 }

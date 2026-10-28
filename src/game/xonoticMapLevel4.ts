@@ -33,7 +33,7 @@ import { mulberry32, hashSeed } from './xonoticMap';
 export const L4_CELL = 20;                 // one room cell (20 x 20 m)
 export const L4_CHUNK_SIZE = L4_CELL * 2;  // streamed chunk = 2x2 cells = 40 m
 export const L4_CHUNK_LOAD_RADIUS = 2;     // 5x5 chunks resident (200 m span, hidden by fog)
-export const L4_WALL_H = 3.6;              // office ceiling height — matches the reference photo
+export const L4_WALL_H = 4.6;              // office ceiling height — matches the reference photo
 
 export const L4_WALL_COLOR = '#c9b95f';    // damp yellow wallpaper
 export const L4_CEILING_COLOR = '#d6d0ae'; // ceiling tile
@@ -372,6 +372,29 @@ function bestCorner(i: number, j: number): { x: number; z: number; ax: boolean; 
   ];
   candidates.sort((a, b) => b.clearance - a.clearance);
   return candidates[0];
+}
+
+// ── navigation (used by the Lv4 horde) ─────────────────────────────────────────────────────────
+// Which 20m room cell holds a world position.
+export function l4CellOf(x: number, z: number): { i: number; j: number } {
+  return { i: Math.floor(x / L4_CELL), j: Math.floor(z / L4_CELL) };
+}
+
+// Is the wall on this edge passable? 'v' = the wall standing at x = i*CELL (the west face of
+// room i,j), 'h' = the wall standing at z = j*CELL (the north face of room i,j).
+export function l4EdgeOpen(i: number, j: number, axis: 'v' | 'h'): boolean {
+  return edgeInfo(i, j, axis).open;
+}
+
+// The doorway cut into one edge, in world coordinates — the centre of the gap an entity has to
+// walk through. This is the same gap the renderer cut (see edgeWallSegments), so the horde
+// always aims at holes that actually exist. Returns null for a solid edge.
+export function l4Doorway(i: number, j: number, axis: 'v' | 'h'): { x: number; z: number; width: number } | null {
+  const e = edgeInfo(i, j, axis);
+  if (!e.open) return null;
+  const centre = L4_CELL * (0.25 + e.offset * 0.5);
+  if (axis === 'v') return { x: i * L4_CELL, z: j * L4_CELL + centre, width: e.doorW };
+  return { x: i * L4_CELL + centre, z: j * L4_CELL, width: e.doorW };
 }
 
 // ── one room cell ─────────────────────────────────────────────────────────────────────────────

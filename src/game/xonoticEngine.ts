@@ -5,7 +5,7 @@
 
 import { XonoticGameState, Bot, JumpPad, PickupItem, MapWall } from './xonoticTypes';
 import { getLevelModule, LevelModule, chunkKey } from './levels';
-import { L4_CELL } from './xonoticMapLevel4';
+import { L4_CELL, l4CellOf, l4Doorway, l4EdgeOpen } from './xonoticMapLevel4';
 
 // Spawn grace: monsters neither lock on nor deal damage during the first seconds of a run.
 // Lv2's stalker spawns metres from the player with a clear sightline — without this the run
@@ -31,6 +31,40 @@ export const L3_ENTITY_KILL_DIST = 1.7;
 export const L3_DARK_INPUT_FORGIVENESS = 0.9; // lights-out edge reaction + input latency budget
 // Seconds after an edge-blink during which the contact kill is suppressed (see advanceEntityToward).
 export const L3_EDGE_KILL_SUPPRESS = 0.7;
+
+// ── LEVEL 4 ("무한한 공간") horde rules ───────────────────────────────────────────────────────
+// The endless yellow space is not a corridor race — it is a building full of things that want you
+// in it. A dozen entities share the space and close on the player from every direction.
+//
+// Every rule below exists to keep the level BEATABLE. The horde is meant to be terrifying, not
+// unfair:
+//  - No entity is ever faster than the player's sprint (15 u/s). The hunt speed is 0.88x, so a
+//    player who keeps running always gains ground. Everything that kills the player comes from
+//    stopping, turning or being cornered — never from raw speed.
+//  - Only a handful may hunt at once. The rest drift through the rooms, block sightlines and
+//    crowd the doorways, but they cannot touch the player.
+//  - A hunter that loses the sightline gives up after GIVE_UP_AFTER_LOST_SIGHT and drifts off.
+//    Ducking behind a column really does break the chase — the horde tracks the player's LAST
+//    SEEN position, not the live one.
+//  - The horde never thins out: an entity that falls far behind is re-seeded out in the fog
+//    ahead of the player, so the pressure keeps coming from the direction you're heading.
+export const L4_HORDE_SIZE = 16;             // how many entities share the endless space
+export const L4_MAX_HUNTERS = 4;             // lethal pursuers at once
+export const L4_MAX_HUNTERS_NEAR_EXIT = 5;   // the finale allows one more
+export const L4_HUNT_SPEED_MULT = 0.88;      // 13.2 u/s — always under the player's 15 u/s sprint
+export const L4_WANDER_SPEED = 6;            // drifting pace for the ones that are not hunting
+export const L4_SIGHT_RANGE = 45;            // how far an entity can spot the player (needs LOS)
+export const L4_RELOCATE_DIST = 130;         // further than this and the entity is re-seeded
+export const L4_RELOCATE_MIN = 55;           // re-seed band (m) — deep enough to stay in the fog
+export const L4_RELOCATE_MAX = 95;
+export const L4_EXIT_PULL_DIST = 70;         // inside this radius the horde drifts toward the exit
+export const L4_HORDE_HUD_RANGE = 70;        // HUD "nearby entities" counter radius
+export const L4_NAV_RADIUS = 14;             // rooms of reachability explored around a target room
+
+// The four neighbour offsets of the room grid, in the order the navigation walks them.
+const L4_STEPS: ReadonlyArray<readonly [number, number]> = [
+  [1, 0], [-1, 0], [0, 1], [0, -1],
+];
 
 export class XonoticEngine {
   public state: XonoticGameState;
@@ -163,13 +197,21 @@ export class XonoticEngine {
   // the exit pad, indices 1-4 are visible guards in a zigzag gauntlet up the corridor. Nobody
   // roams the map: they chase only what they can see (see updateMonsterAI).
   private createMonsters(): Bot[] {
-    const count = this.level === 2 ? 5 : 1;
+    const count = this.level === 2 ? 5 : this.level === 4 ? L4_HORDE_SIZE : 1;
 
     const monsters: Bot[] = [];
     for (let i = 0; i < count; i++) {
       // Level 1/3 keep the lone far spawn. Level 2 opens on posts (exit gauntlet).
       let px: number, pz: number;
-      if (count === 1) {
+      if (this.level === 4) {
+        // The horde is seeded in a wide ring around the player — close enough to be the first
+        // thing you hear, far enough that the opening is a held breath rather than a jump scare.
+        // Evenly spread bearings keep the ring from bunching up on one side.
+        const bearing = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+        const dist = 38 + Math.random() * 62;
+        px = this.lvl.SPAWN_POINT.x + Math.cos(bearing) * dist;
+        pz = this.lvl.SPAWN_POINT.z + Math.sin(bearing) * dist;
+      } else if (count === 1) {
         px = this.lvl.MONSTER_SPAWN.x;
         pz = this.lvl.MONSTER_SPAWN.z;
       } else {
@@ -179,7 +221,7 @@ export class XonoticEngine {
       }
       monsters.push({
         id: count === 1 ? 'the_monster' : `the_monster_${i}`,
-        name: this.level === 3 ? '긴팔' : '데모고르곤',
+        name: this.level === 3 ? '긴팔' : this.level === 4 ? (i === 0 ? '우두머리 데모고르곤' : '데모고르곤') : '데모고르곤',
         pos: { x: px, y: 2, z: pz },
         vel: { x: 0, y: 0, z: 0 },
         health: 999999,
@@ -378,6 +420,107 @@ export class XonoticEngine {
     return buf;
   }
 
+  // ── Lv4 horde navigation ────────────────────────────────────────────────────────────────────
+  // The horde does not cheat: it walks the room grid through the doorways that actually exist.
+  // A breadth-first "how many rooms away from the target room" field is computed once per target
+  // room and shared by every entity, so a dozen monsters cost one BFS instead of a dozen.
+  // The field is cached per target room and the cache is trimmed to a handful of rooms.
+  private l4NavFields: Map<string, Map<string, number>> = new Map();
+  private l4NavOrder: string[] = [];
+  // The room each entity is considered to be standing in. Kept separately from the raw position
+  // because an entity standing exactly in a doorway belongs to two rooms — without this
+  // hysteresis it would flip rooms every frame and pace back and forth through the gap.
+  private l4NavRooms: Map<string, { i: number; j: number }> = new Map();
+
+  private l4NavField(targetI: number, targetJ: number): Map<string, number> {
+    const key = `${targetI}_${targetJ}`;
+    const cached = this.l4NavFields.get(key);
+    if (cached) return cached;
+
+    const field = new Map<string, number>();
+    field.set(key, 0);
+    let frontier: Array<{ i: number; j: number }> = [{ i: targetI, j: targetJ }];
+    for (let depth = 1; depth <= L4_NAV_RADIUS && frontier.length > 0; depth++) {
+      const next: Array<{ i: number; j: number }> = [];
+      for (const cell of frontier) {
+        for (let s = 0; s < 4; s++) {
+          const di = L4_STEPS[s][0], dj = L4_STEPS[s][1];
+          const ni = cell.i + di, nj = cell.j + dj;
+          const nkey = `${ni}_${nj}`;
+          if (field.has(nkey)) continue;
+          // The edge shared by this room and its neighbour. A step along x crosses a 'v' wall,
+          // a step along z crosses an 'h' wall.
+          const ei = di !== 0 ? (di > 0 ? ni : cell.i) : cell.i;
+          const ej = di !== 0 ? cell.j : (dj > 0 ? nj : cell.j);
+          if (!l4EdgeOpen(ei, ej, di !== 0 ? 'v' : 'h')) continue;
+          field.set(nkey, depth);
+          next.push({ i: ni, j: nj });
+        }
+      }
+      frontier = next;
+    }
+
+    this.l4NavFields.set(key, field);
+    this.l4NavOrder.push(key);
+    while (this.l4NavOrder.length > 6) {
+      const old = this.l4NavOrder.shift()!;
+      this.l4NavFields.delete(old);
+    }
+    return field;
+  }
+
+  // The room an entity is considered to be in, with hysteresis so it does not flip rooms while
+  // standing in a doorway.
+  private l4NavRoom(bot: Bot, x: number, z: number): { i: number; j: number } {
+    const cell = l4CellOf(x, z);
+    const known = this.l4NavRooms.get(bot.id);
+    if (!known) {
+      this.l4NavRooms.set(bot.id, cell);
+      return cell;
+    }
+    if (cell.i === known.i && cell.j === known.j) return known;
+    // Only leave the remembered room once the entity is clearly inside the next one.
+    const knownCx = (known.i + 0.5) * L4_CELL, knownCz = (known.j + 0.5) * L4_CELL;
+    const cellCx = (cell.i + 0.5) * L4_CELL, cellCz = (cell.j + 0.5) * L4_CELL;
+    const dKnown = Math.hypot(x - knownCx, z - knownCz);
+    const dCell = Math.hypot(x - cellCx, z - cellCz);
+    if (dCell < dKnown - 1) {
+      this.l4NavRooms.set(bot.id, cell);
+      return cell;
+    }
+    return known;
+  }
+
+  // The next point an entity should walk to on its way from its current room to the target room.
+  // Returns a point just past the doorway it has to use, so the entity commits to the crossing
+  // instead of stalling in the gap.
+  private l4NextWaypoint(bot: Bot, tx: number, tz: number): { x: number; z: number } {
+    const from = this.l4NavRoom(bot, bot.pos.x, bot.pos.z);
+    const to = l4CellOf(tx, tz);
+    if (from.i === to.i && from.j === to.j) return { x: tx, z: tz }; // same room — straight in
+
+    const field = this.l4NavField(to.i, to.j);
+    let best: { i: number; j: number; d: number } | null = null;
+    for (let s = 0; s < 4; s++) {
+      const ni = from.i + L4_STEPS[s][0], nj = from.j + L4_STEPS[s][1];
+      const d = field.get(`${ni}_${nj}`);
+      if (d === undefined) continue;
+      if (!best || d < best.d) best = { i: ni, j: nj, d };
+    }
+    if (!best) return { x: tx, z: tz }; // no known route — fall back to a straight line
+
+    const axis: 'v' | 'h' = best.i !== from.i ? 'v' : 'h';
+    const ei = axis === 'v' ? Math.max(from.i, best.i) : from.i;
+    const ej = axis === 'h' ? Math.max(from.j, best.j) : from.j;
+    const door = l4Doorway(ei, ej, axis);
+    if (!door) return { x: tx, z: tz };
+
+    // Aim a few metres PAST the gap so the entity ends up clearly inside the next room.
+    const step = 3;
+    if (axis === 'v') return { x: door.x + (best.i > from.i ? step : -step), z: door.z };
+    return { x: door.x, z: door.z + (best.j > from.j ? step : -step) };
+  }
+
   // Keeps the maze loaded around wherever the player currently is, streaming in fresh procedural
   // chunks as they walk and dropping ones that fall well behind — the map has no edge. Short-circuits
   // unless the player has actually crossed into a new chunk, so standing still (e.g. pressed up
@@ -466,8 +609,10 @@ export class XonoticEngine {
 
     this.state.bots.filter(b => b.isMonster).forEach((monster, i, arr) => {
       const angle = (i / arr.length) * Math.PI * 2 + Math.random() * 0.6;
-      const dist = 2.5 + Math.random() * 3.5; // 2.5-6m away
-      monster.pos = { x: player.pos.x + Math.cos(angle) * dist, y: player.pos.y, z: player.pos.z + Math.sin(angle) * dist };
+      // Lv4's horde closes in as a ring instead of landing on top of the player — with a dozen
+      // entities, materialising them at 2.5-6m would be an unavoidable death.
+      const near = this.level === 4 ? 16 + Math.random() * 14 : 2.5 + Math.random() * 3.5;
+      monster.pos = { x: player.pos.x + Math.cos(angle) * near, y: player.pos.y, z: player.pos.z + Math.sin(angle) * near };
       monster.isHidden = false;
       monster.state = 'hunting';
       monster.stateTimer = 9999; // never gives up once manifested
@@ -668,6 +813,30 @@ export class XonoticEngine {
     bot.teleportCooldown = 5 + Math.random() * 3; // fair pursuit window before it's allowed to blink
   }
 
+  // Re-seed an entity that fell too far behind (or wedged itself into a corner). It reappears
+  // out in the fog, ahead on the exit bearing, so the horde keeps pressing from the direction
+  // the player is heading instead of quietly thinning out over a 300m trek.
+  private l4ReseedMonster(bot: Bot, playerPos: { x: number; z: number }, exit: { x: number; z: number }) {
+    const bearing = Math.atan2(exit.z - playerPos.z, exit.x - playerPos.x);
+    for (let attempt = 0; attempt < 12; attempt++) {
+      // ±60° around the exit bearing, so they arrive spread out instead of in one clump.
+      const ang = bearing + (Math.random() - 0.5) * 2.1;
+      const dist = L4_RELOCATE_MIN + Math.random() * (L4_RELOCATE_MAX - L4_RELOCATE_MIN);
+      const cx = playerPos.x + Math.cos(ang) * dist;
+      const cz = playerPos.z + Math.sin(ang) * dist;
+      if (this.checkWallCollision({ x: cx, y: bot.pos.y, z: cz }, 1.2)) continue;
+      bot.pos.x = cx; bot.pos.z = cz;
+      bot.vel.x = 0; bot.vel.z = 0;
+      bot.targetPos = null;
+      bot.state = 'wandering';
+      bot.loseSightTimer = 0;
+      bot.stuckTimer = 0;
+      this.l4NavRooms.delete(bot.id);
+      return true;
+    }
+    return false;
+  }
+
   // Monster AI.
   //  - The stalker (Level 1's lone monster / Level 2 pack index 0) lurks unseen on a short leash and
   //    rolls to ambush, then vanishes again if it can't catch the player.
@@ -688,8 +857,25 @@ export class XonoticEngine {
     const exit = this.lvl.ESCAPE_WALL_POS;
     const playerExitDist = Math.hypot(exit.x - player.pos.x, exit.z - player.pos.z);
     const huntingCount = bots.filter(b => b.isMonster && b.state === 'hunting').length;
-    const SEP = 5.5; // pack members repel each other within this radius — never a single clump
+    const SEP = this.level === 4 ? 7 : 5.5; // pack members repel each other within this radius — never a single clump
     const TELEPORT_TRIGGER_DIST = 20; // a hunter this far behind is presumed stuck/outpaced, not just lagging
+
+    // ── Lv4 horde bookkeeping ────────────────────────────────────────────────────────────────
+    // How many entities may be hunting at once. The finale (player near the exit) allows one
+    // more than the rest of the level.
+    const l4Cap = playerExitDist < L4_EXIT_PULL_DIST ? L4_MAX_HUNTERS_NEAR_EXIT : L4_MAX_HUNTERS;
+    // Running count of hunters this frame — monsters that lock on during the frame count
+    // against the cap immediately, so a dozen entities can't all pounce on the same frame.
+    let l4HuntingNow = huntingCount;
+    // Rank the current hunters by distance to the player. When the cap shrinks (the player
+    // walked away from the exit zone) the furthest hunters are the ones that stand down.
+    const l4HunterRank = new Map<string, number>();
+    if (this.level === 4) {
+      bots.filter(b => b.isMonster && b.state === 'hunting')
+        .sort((a, b) => Math.hypot(a.pos.x - player.pos.x, a.pos.z - player.pos.z)
+                      - Math.hypot(b.pos.x - player.pos.x, b.pos.z - player.pos.z))
+        .forEach((h, idx) => l4HunterRank.set(h.id, idx));
+    }
 
     bots.forEach((bot, botIndex) => {
       if (bot.isRemotePlayer) {
@@ -710,7 +896,10 @@ export class XonoticEngine {
 
       // Lv2: every monster holds the exit (index 0 is the hidden pad ambusher). Lv1's lone
       // monster keeps the roaming stalker brain.
-      const isInterceptor = this.level === 2 ? true : (bot.packIndex ?? 0) >= 1;
+      const isL4 = this.level === 4;
+      // Lv4's horde has no exit post to hold and no hidden ambusher — every entity roams the
+      // endless space, so none of them are interceptors.
+      const isInterceptor = this.level === 2 ? true : isL4 ? false : (bot.packIndex ?? 0) >= 1;
       let goalX: number, goalZ: number, speed: number;
       let holdingPost = false; // idle interceptor sitting on its own assigned formation spot —
                                 // separation would just fight the packed formation, so skip it
@@ -726,7 +915,7 @@ export class XonoticEngine {
       // it's the surprise). Without this all 5 collapse on the player the instant anyone gets seen.
       const underHunterCap = !isInterceptor || (this.level === 2 && bot.packIndex === 0) || huntingCount < 3;
       const trackingTick = (this.tickCount + botIndex) % 3 === 0;
-      const seenNow = underHunterCap && distToPlayer < SIGHT_DETECT_RANGE &&
+      const seenNow = !isL4 && underHunterCap && distToPlayer < SIGHT_DETECT_RANGE &&
         trackingTick && this.hasClearLineOfSight(bot.pos, player.pos);
       if (bot.state !== 'hunting' && this.state.matchTime >= SPAWN_GRACE_SECONDS) {
         if (seenNow) {
@@ -734,7 +923,90 @@ export class XonoticEngine {
         }
       }
 
-      if (isInterceptor) {
+      if (isL4) {
+        // ── Lv4: the horde ───────────────────────────────────────────────────────────────
+        // Everything the horde does is bounded by one rule: the player can always break away.
+        // No entity outruns the player's sprint, only a few may hunt at once, and a hunter that
+        // loses the sightline loses the player. Everything else is atmosphere.
+
+        // 0. Fell too far behind? Re-seed out in the fog ahead of the player, so the horde
+        //    never thins out over a 300m trek and the pressure keeps coming from the front.
+        if (distToPlayer > L4_RELOCATE_DIST) {
+          this.l4ReseedMonster(bot, player.pos, exit);
+          goalX = bot.pos.x; goalZ = bot.pos.z; speed = 0;
+        } else {
+          // 1. See the player? Needs range AND a clear line — a room full of columns hides
+          //    them just as well as a closed door does.
+          const canSee = trackingTick && distToPlayer < L4_SIGHT_RANGE &&
+            this.hasClearLineOfSight(bot.pos, player.pos);
+
+          // The cap just shrank (the player left the exit zone): the furthest hunters stand
+          // down so the level keeps its difficulty ceiling everywhere.
+          const rank = l4HunterRank.get(bot.id);
+          if (bot.state === 'hunting' && rank !== undefined && rank >= l4Cap && l4HunterRank.size > l4Cap) {
+            bot.state = 'wandering';
+            bot.loseSightTimer = 0;
+            bot.stateTimer = 1 + Math.random() * 2;
+            l4HuntingNow = Math.max(0, l4HuntingNow - 1);
+          }
+
+          if (bot.state === 'hunting') {
+            if (canSee) {
+              // Fresh eyes on the player: the hunt target becomes the live position.
+              bot.targetPos = { ...player.pos };
+              bot.loseSightTimer = 0;
+            } else {
+              bot.loseSightTimer = (bot.loseSightTimer ?? 0) + dt * 3;
+              if ((bot.loseSightTimer ?? 0) > GIVE_UP_AFTER_LOST_SIGHT) {
+                // Lost you. Stand down and drift — this is the escape hatch that keeps the
+                // level beatable. Duck a corner and the chase is genuinely broken.
+                bot.state = 'wandering';
+                bot.loseSightTimer = 0;
+                bot.stateTimer = 1 + Math.random() * 2;
+                l4HuntingNow = Math.max(0, l4HuntingNow - 1);
+              }
+            }
+          } else if (canSee && l4HuntingNow < l4Cap && this.state.matchTime >= SPAWN_GRACE_SECONDS) {
+            // Lock on. The cap is what stops twelve entities from collapsing on the player at once.
+            bot.state = 'hunting';
+            bot.isHidden = false;
+            bot.stateTimer = 9999;
+            bot.teleportCooldown = 5 + Math.random() * 3;
+            bot.targetPos = { ...player.pos };
+            bot.loseSightTimer = 0;
+            l4HuntingNow++;
+          }
+
+          if (bot.state === 'hunting') {
+            // Chase the LAST SEEN position through the room grid — through the doorways that
+            // actually exist, never straight through a wall.
+            const wp = this.l4NextWaypoint(bot, bot.targetPos?.x ?? player.pos.x, bot.targetPos?.z ?? player.pos.z);
+            goalX = wp.x; goalZ = wp.z;
+            speed = this.maxGroundSpeed * L4_HUNT_SPEED_MULT;
+          } else {
+            // Drifting. Spread out around the player so the horde surrounds them instead of
+            // stacking into one blob, and converge on the exit once the player nears it.
+            if (!bot.targetPos || bot.stateTimer <= 0) {
+              bot.stateTimer = 5 + Math.random() * 6;
+              const bearing = Math.random() * Math.PI * 2;
+              const ring = 24 + Math.random() * 42;
+              let tx = player.pos.x + Math.cos(bearing) * ring;
+              let tz = player.pos.z + Math.sin(bearing) * ring;
+              if (playerExitDist < L4_EXIT_PULL_DIST) {
+                // Near the exit the horde drifts toward it — the finale should feel like the
+                // space itself is closing in.
+                const pull = 1 - playerExitDist / L4_EXIT_PULL_DIST;
+                tx = tx * (1 - pull * 0.65) + exit.x * pull * 0.65;
+                tz = tz * (1 - pull * 0.65) + exit.z * pull * 0.65;
+              }
+              bot.targetPos = { x: tx, y: 1.5, z: tz };
+            }
+            const wp = this.l4NextWaypoint(bot, bot.targetPos.x, bot.targetPos.z);
+            goalX = wp.x; goalZ = wp.z;
+            speed = L4_WANDER_SPEED;
+          }
+        }
+      } else if (isInterceptor) {
         // Guard the exit. Off-alert it holds a post ringing the exit. As the player closes on the
         // exit it moves to interpose just in front of them; inside the commit radius it charges.
         const post = this.guardPost(bot.packIndex ?? 1);
@@ -857,7 +1129,9 @@ export class XonoticEngine {
       // presumed stuck on a maze wall (or just outpaced) — it blinks near the player instead of
       // trailing forever. Lv2 guards never blink: with sight-tracked pursuit + give-up, falling
       // behind means the player earned the escape, not a bug.
-      if (bot.state === 'hunting' && !isInterceptor) {
+      // Lv4 never blinks either: with a dozen entities in the level, popping one in on top of
+      // the player is a death sentence, not a scare. The horde re-seeds out in the fog instead.
+      if (bot.state === 'hunting' && !isInterceptor && !isL4) {
         bot.teleportCooldown = (bot.teleportCooldown ?? 5) - dt;
         if (bot.teleportCooldown <= 0 && distToPlayer > TELEPORT_TRIGGER_DIST) {
           this.teleportMonsterNearPlayer(bot, player.pos);
@@ -940,7 +1214,15 @@ export class XonoticEngine {
               bot.loseSightTimer = 0;
             }
           } else {
-            this.teleportMonsterNearPlayer(bot, player.pos);
+            if (isL4) {
+              // Wedged in the endless rooms: the horde re-forms out in the fog instead of
+              // blinking in on top of the player.
+              this.l4ReseedMonster(bot, player.pos, exit);
+              bot.state = 'wandering';
+              bot.loseSightTimer = 0;
+            } else {
+              this.teleportMonsterNearPlayer(bot, player.pos);
+            }
           }
           bot.stuckTimer = 0;
           bot.teleportCooldown = 6 + Math.random() * 3;
@@ -988,7 +1270,18 @@ export class XonoticEngine {
     });
 
     // The monster is close — warn the player.
-    this.state.monsterWarning = nearestMonsterDist < 3;
+    this.state.monsterWarning = nearestMonsterDist < (this.level === 4 ? 4 : 3);
+
+    // Lv4: how many entities are sharing the player's neighbourhood right now. The horde is
+    // meant to be felt, so the HUD counts it.
+    if (this.level === 4) {
+      let near = 0;
+      for (const b of bots) {
+        if (!b.isMonster) continue;
+        if (Math.hypot(b.pos.x - player.pos.x, b.pos.z - player.pos.z) < L4_HORDE_HUD_RANGE) near++;
+      }
+      this.state.hordeCount = near;
+    }
   }
 
   // 2D (XZ) segment-vs-wall visibility check via the slab method — used to stop the monster from
