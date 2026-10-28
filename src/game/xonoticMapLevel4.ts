@@ -35,9 +35,9 @@ export const L4_CHUNK_SIZE = L4_CELL * 2;  // streamed chunk = 2x2 cells = 40 m
 export const L4_CHUNK_LOAD_RADIUS = 2;     // 5x5 chunks resident (200 m span, hidden by fog)
 export const L4_WALL_H = 5.2;              // office ceiling height — matches the reference photo
 
-export const L4_WALL_COLOR = '#c9b95f';    // damp yellow wallpaper
-export const L4_CEILING_COLOR = '#d6d0ae'; // ceiling tile
-export const L4_FLOOR_COLOR = '#b39a52';   // carpet
+export const L4_WALL_COLOR = '#aaa652';    // damp yellow wallpaper
+export const L4_CEILING_COLOR = '#c9c28a'; // ceiling tile
+export const L4_FLOOR_COLOR = '#9a9146';   // carpet
 export const L4_LIGHT_COLOR = '#fffce8';   // fluorescent tube
 
 export const L4_ESCAPE_WALL_ID = 'l4_exit_door';
