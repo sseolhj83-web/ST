@@ -1355,7 +1355,7 @@ export const XonoticCanvas: React.FC<XonoticCanvasProps> = React.memo(({
         scene.add(inst);
         meshes.push(inst);
       };
-      build(walls, l4WallMat, true);
+      build(walls, l4WallMat, false);
       build(floors, l4FloorMat, true);
       build(ceilings, l4CeilMat, true);
       build(tubes, l4TubeMat, false);
