@@ -404,7 +404,7 @@ function generateCell(i: number, j: number): MapWall[] {
   const cx = x0 + L4_CELL / 2, cz = z0 + L4_CELL / 2;
   const rand = mulberry32(hashSeed(i, j, 9300));
 
-  const wallColor = jitterColor(L4_WALL_COLOR, rand(), rand());
+  const wallColor = L4_WALL_COLOR;
   const floorColor = jitterColor(L4_FLOOR_COLOR, rand(), rand());
   const ceilColor = jitterColor(L4_CEILING_COLOR, rand(), rand());
 
