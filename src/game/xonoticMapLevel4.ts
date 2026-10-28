@@ -111,7 +111,7 @@ function edgeInfo(i: number, j: number, axis: 'v' | 'h'): EdgeInfo {
   const seed = axis === 'v' ? hashSeed(i, j, 9101) : hashSeed(i, j, 9102);
   const r = mulberry32(seed);
   const open = r() < OPEN_CHANCE;
-  const doorW = 3.2 + r() * 4.2;      // 3.2 - 7.4 m gaps
+  const doorW = 3.8 + r() * 2.8;      // 3.8 - 6.6 m gaps (narrowed slightly from 3.2-7.4)
   const offset = r();                  // gap centre along the edge
   const thickness = 0.3 + r() * 0.45;  // 0.3 - 0.75 m thick walls
   return { open, doorW, offset, thickness };
