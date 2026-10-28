@@ -37,6 +37,8 @@ export default function App() {
   const appStateRef = useRef<AppState>('NICKNAME');
   const userRef = useRef<any>(null);
   const saveStatsRef = useRef<(score: number, deaths: number) => void>(() => {});
+  const timeFrozenRef = useRef(false);
+  const [timeFrozen, setTimeFrozen] = useState(false);
 
   // Auto-dismiss game result banner after 3 seconds
   useEffect(() => {
@@ -102,6 +104,18 @@ export default function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
       const code = e.code;
+
+      // F key: toggle time stop (monsters + timer frozen, player can move)
+      if (code === 'KeyF') {
+        const eng = engineRef.current;
+        if (eng && appStateRef.current === 'PLAYING') {
+          const on = eng.toggleTimeFreeze();
+          timeFrozenRef.current = on;
+          setTimeFrozen(on);
+          e.preventDefault();
+        }
+        return;
+      }
 
       if (code === 'KeyW' || key === 'w' || key === 'ㅈ') keysRef.current.w = true;
       if (code === 'KeyS' || key === 's' || key === 'ㄴ') keysRef.current.s = true;
@@ -211,7 +225,10 @@ export default function App() {
         animationFrameIdRef.current = null;
       }
       try { if (engine.supabaseChannel) engine.supabaseChannel.unsubscribe(); } catch {}
+      if (engineRef.current?.timeFrozen) engineRef.current.timeFrozen = false;
       engineRef.current = null;
+      timeFrozenRef.current = false;
+      setTimeFrozen(false);
       setGameResult(isDefeat ? 'DEFEAT' : 'VICTORY');
       setAppState('LOBBY');
       // Save stats via ref — always uses current user/saveStats function
@@ -232,6 +249,8 @@ export default function App() {
     // Smooth reset controls states
     keysRef.current = { w: false, s: false, a: false, d: false, space: false, arrowleft: false, arrowright: false, arrowup: false, arrowdown: false };
     mouseDeltaRef.current = { dx: 0, dy: 0 };
+    timeFrozenRef.current = false;
+    setTimeFrozen(false);
     
     setGameResult('NONE');
     setAppState('PLAYING');
@@ -251,9 +270,11 @@ export default function App() {
     if (engineRef.current?.supabaseChannel) {
       engineRef.current.supabaseChannel.unsubscribe();
     }
+    engineRef.current?.timeFrozen && (engineRef.current.timeFrozen = false);
     engineRef.current = null;
     setGameResult('NONE');
     setAppState('LOBBY');
+    setTimeFrozen(false);
   }, []);
 
   const handlePointerLockChange = useCallback((locked: boolean) => {

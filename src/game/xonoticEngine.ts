@@ -84,6 +84,7 @@ export class XonoticEngine {
   private timeoutManifested: boolean = false;
   private tickCount: number = 0; // frame counter for staggering expensive LOS checks
   private lastMoveInput: boolean = false; // WASD/space held on the latest input frame (L3 dark rule)
+  public timeFrozen: boolean = false; // F-key debug/ability: freezes monsters and match time
   // ── Lv4 spatial index ──────────────────────────────────────────────────────────────────────
   // The infinite yellow space keeps ~1300 walls resident at once. Testing every one of them on
   // every axis of every entity is what made the streamed levels stutter, so Lv4 buckets its walls
@@ -563,9 +564,30 @@ export class XonoticEngine {
     }
   }
 
+  public toggleTimeFreeze(): boolean {
+    this.timeFrozen = !this.timeFrozen;
+    if (this.timeFrozen) {
+      for (const b of this.state.bots) {
+        if (b.isMonster) { b.vel.x = 0; b.vel.z = 0; b.vel.y = 0; }
+      }
+    }
+    return this.timeFrozen;
+  }
+
   public stepSimulator(dt: number) {
     this.tickCount++;
     this.updateStreamedChunks();
+
+    if (this.timeFrozen) {
+      this.state.timeFrozen = true;
+      // Keep monster warnings/current AI state frozen but don't advance time
+      this.updatePickups(0);
+      this.checkEscapeWall();
+      this.checkTimeoutDeath();
+      this.onStateChange({ ...this.state });
+      return;
+    }
+    this.state.timeFrozen = false;
 
     this.state.matchTime += dt;
 
@@ -887,6 +909,10 @@ export class XonoticEngine {
         return;
       }
       if (!bot.isMonster) return;
+      if (this.timeFrozen) {
+        bot.vel.x = 0; bot.vel.z = 0;
+        return;
+      }
 
       const pdx = player.pos.x - bot.pos.x;
       const pdz = player.pos.z - bot.pos.z;
