@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "postinstall": "node -e \"const p=require('path'),c=process.env.INIT_CWD||p.cwd(),r=p.join(c,'scripts','patch-vite-unc.cjs');try{require(r)}catch(e){if(e.code!=='MODULE_NOT_FOUND')throw e;console.log('[patch-vite-unc] 스크립트를 찾을 수 없어 건너뜁니다:',r)}\""
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -27,6 +28,8 @@
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@types/three": "^0.184.1",
     "autoprefixer": "^10.4.21",
     "tailwindcss": "^4.1.14",
