@@ -4,9 +4,9 @@ import { ArrowLeft } from 'lucide-react';
 import { StartScreen } from './components/StartScreen';
 import { RoleSelect } from './components/RoleSelect';
 import { NameInput } from './components/NameInput';
-import { CharacterCustomizer } from './components/CharacterCustomizer';
-import { CharacterPreview } from './components/CharacterPreview';
-import { HeroCharacter, Role, DEFAULT_COLORS } from './game/types';
+import { DrawingCustomizer } from './components/DrawingCustomizer';
+import { DrawingPreview } from './components/DrawingPreview';
+import { HeroCharacter, Role } from './game/types';
 
 type Step = 'START' | 'ROLE' | 'NAME' | 'CUSTOMIZE' | 'COMPLETE';
 
@@ -19,11 +19,7 @@ export function HeroFactoryRoot({ onExit }: HeroFactoryRootProps) {
   const [character, setCharacter] = useState<HeroCharacter>({
     name: '',
     role: 'HERO',
-    hairstyle: 'SHORT',
-    face: 'NORMAL',
-    outfit: 'CLASSIC',
-    cape: 'NONE',
-    colors: DEFAULT_COLORS,
+    drawing: [],
   });
 
   const handleRoleSelect = (role: Role) => {
@@ -104,7 +100,7 @@ export function HeroFactoryRoot({ onExit }: HeroFactoryRootProps) {
             exit={{ opacity: 0, x: -100 }}
             transition={{ duration: 0.4 }}
           >
-            <CharacterCustomizer
+            <DrawingCustomizer
               character={character}
               onUpdate={handleUpdateCharacter}
               onComplete={handleComplete}
@@ -144,7 +140,7 @@ export function HeroFactoryRoot({ onExit }: HeroFactoryRootProps) {
                 className="mb-8 flex justify-center"
               >
                 <div className="p-8 bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl border-2 border-green-500/50">
-                  <CharacterPreview character={character} size={250} />
+                  <DrawingPreview character={character} size={250} className="rounded-2xl" />
                 </div>
               </motion.div>
 
@@ -172,11 +168,7 @@ export function HeroFactoryRoot({ onExit }: HeroFactoryRootProps) {
                     setCharacter({
                       name: '',
                       role: 'HERO',
-                      hairstyle: 'SHORT',
-                      face: 'NORMAL',
-                      outfit: 'CLASSIC',
-                      cape: 'NONE',
-                      colors: DEFAULT_COLORS,
+                      drawing: [],
                     });
                     setStep('START');
                   }}
