@@ -13,6 +13,8 @@ interface DrawingCustomizerProps {
   onUpdate: (updates: Partial<HeroCharacter>) => void;
   onComplete: () => void;
   onBack: () => void;
+  /** SKILL 모드에서는 캐릭터 그림 대신 전투 기술을 편집한다. */
+  mode?: 'HERO' | 'SKILL';
 }
 
 type Tool = 'BRUSH' | 'ERASER';
@@ -22,9 +24,12 @@ export function DrawingCustomizer({
   onUpdate,
   onComplete,
   onBack,
+  mode = 'HERO',
 }: DrawingCustomizerProps) {
-  const [strokes, setStrokes] = useState<DrawingStroke[]>(character.drawing);
-  const strokesRef = useRef<DrawingStroke[]>(character.drawing);
+  const isSkill = mode === 'SKILL';
+  const initialStrokes = isSkill ? (character.skill ?? []) : character.drawing;
+  const [strokes, setStrokes] = useState<DrawingStroke[]>(initialStrokes);
+  const strokesRef = useRef<DrawingStroke[]>(initialStrokes);
   const [tool, setTool] = useState<Tool>('BRUSH');
   const [color, setColor] = useState(DRAWING_COLORS[0]);
   const [brushWidth, setBrushWidth] = useState(8);
@@ -33,12 +38,14 @@ export function DrawingCustomizer({
 
   // 획을 그리는 중에는 로컬 상태만 갱신해 전체 화면 리렌더링을 막고,
   // 획이 끝날 때 한 번만 캐릭터 데이터에 반영한다. (그리는 동안 끊김 방지)
+  const persist = (next: DrawingStroke[]) =>
+    onUpdate(isSkill ? { skill: next } : { drawing: next });
   const applyStrokes = (next: DrawingStroke[], commit = false) => {
     strokesRef.current = next;
     setStrokes(next);
-    if (commit) onUpdate({ drawing: next });
+    if (commit) persist(next);
   };
-  const commitStrokes = () => onUpdate({ drawing: strokesRef.current });
+  const commitStrokes = () => persist(strokesRef.current);
 
   const pointFromEvent = (e: ReactPointerEvent<SVGSVGElement>) => {
     const rect = svgRef.current!.getBoundingClientRect();
@@ -118,7 +125,7 @@ export function DrawingCustomizer({
       {/* ── 왼쪽: 실시간 미리보기 ── */}
       <aside className="w-full lg:w-[330px] xl:w-[380px] shrink-0 bg-slate-900/40 border-b lg:border-b-0 lg:border-r border-slate-700/60 backdrop-blur-sm flex flex-col items-center justify-center gap-5 p-6 pt-20 lg:pt-6">
         <p className="text-xs font-bold tracking-[0.3em] text-cyan-300/80 uppercase">
-          Live Preview
+          {isSkill ? 'Skill Preview' : 'Live Preview'}
         </p>
         <div className="p-4 rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-600/50 shadow-2xl">
           <DrawingPreview
@@ -136,12 +143,14 @@ export function DrawingCustomizer({
               : 'bg-red-500/20 text-red-300 border-red-400/40'
           }`}
         >
-          {isHero ? '히어로' : '빌런'}
+          {isSkill ? '기술' : isHero ? '히어로' : '빌런'}
         </span>
         <p className="text-xs text-slate-400 text-center">
           {strokes.length === 0
-            ? '아직 그림이 없습니다. 캔버스에 첫 획을 그려보세요!'
-            : `${strokes.length}개의 획으로 만들어진 나만의 캐릭터`}
+            ? isSkill
+              ? '아직 기술이 없습니다. 캔버스에 기술을 그려보세요!'
+              : '아직 그림이 없습니다. 캔버스에 첫 획을 그려보세요!'
+            : `${strokes.length}개의 획으로 만들어진 ${isSkill ? '나만의 기술' : '나만의 캐릭터'}`}
         </p>
       </aside>
 
@@ -150,10 +159,12 @@ export function DrawingCustomizer({
         <header className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="text-2xl md:text-3xl font-black bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent">
-              캐릭터 직접 그리기
+              {isSkill ? '필살기 직접 그리기' : '캐릭터 직접 그리기'}
             </h2>
             <p className="text-sm text-slate-400 mt-1">
-              마우스나 손가락으로 그린 그림이 그대로 캐릭터가 됩니다 · 획 단위로 지우려면 되돌리기, 부분 지우개는 지우개 도구를 쓰세요
+              {isSkill
+                ? '그린 그림이 전투에서 날아가는 기술이 됩니다 · 비워 두면 기본 기술을 사용합니다'
+                : '마우스나 손가락으로 그린 그림이 그대로 캐릭터가 됩니다 · 획 단위로 지우려면 되돌리기, 부분 지우개는 지우개 도구를 쓰세요'}
             </p>
           </div>
           <div className="flex gap-2">
@@ -271,7 +282,7 @@ export function DrawingCustomizer({
           {strokes.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <p className="px-5 py-3 rounded-xl bg-slate-900/70 text-slate-200 text-sm md:text-base font-bold text-center">
-                여기에 캐릭터를 그려보세요!
+                {isSkill ? '여기에 기술을 그려보세요!' : '여기에 캐릭터를 그려보세요!'}
               </p>
             </div>
           )}
@@ -283,7 +294,7 @@ export function DrawingCustomizer({
             onClick={onComplete}
             className="w-full max-w-[560px] py-4 text-lg font-black rounded-xl bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-600 hover:shadow-lg hover:shadow-blue-500/40 transition-all"
           >
-            캐릭터 완성
+            {isSkill ? '기술 완성' : '캐릭터 완성'}
           </button>
         </div>
       </main>

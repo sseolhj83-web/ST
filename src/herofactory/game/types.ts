@@ -19,6 +19,8 @@ export interface HeroCharacter {
   name: string;
   role: Role;
   drawing: DrawingStroke[];
+  /** 전투에서 사용하는 기술 그림. 비어 있으면 기본 기술을 쓴다. */
+  skill?: DrawingStroke[];
 }
 
 /** 드로잉/미리보기에서 공통으로 쓰는 정사각 기준 좌표계 */

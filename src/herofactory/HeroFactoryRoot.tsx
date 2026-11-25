@@ -6,9 +6,10 @@ import { RoleSelect } from './components/RoleSelect';
 import { NameInput } from './components/NameInput';
 import { DrawingCustomizer } from './components/DrawingCustomizer';
 import { DrawingPreview } from './components/DrawingPreview';
+import { StageGame } from './components/StageGame';
 import { HeroCharacter, Role } from './game/types';
 
-type Step = 'START' | 'ROLE' | 'NAME' | 'CUSTOMIZE' | 'COMPLETE';
+type Step = 'START' | 'ROLE' | 'NAME' | 'CUSTOMIZE' | 'COMPLETE' | 'SKILL' | 'STAGE';
 
 interface HeroFactoryRootProps {
   onExit: () => void;
@@ -40,10 +41,16 @@ export function HeroFactoryRoot({ onExit }: HeroFactoryRootProps) {
     setStep('COMPLETE');
   };
 
+  const handleSkillComplete = () => {
+    setStep('STAGE');
+  };
+
   const goBack = () => {
     if (step === 'ROLE') setStep('START');
     else if (step === 'NAME') setStep('ROLE');
     else if (step === 'CUSTOMIZE') setStep('NAME');
+    else if (step === 'SKILL') setStep('COMPLETE');
+    else if (step === 'STAGE') setStep('COMPLETE');
   };
 
   return (
@@ -154,21 +161,28 @@ export function HeroFactoryRoot({ onExit }: HeroFactoryRootProps) {
                 <p className={`text-lg font-semibold mb-4 ${character.role === 'HERO' ? 'text-blue-400' : 'text-red-400'}`}>
                   {character.role === 'HERO' ? '히어로' : '빌런'}
                 </p>
-                <p className="text-slate-400">전투와 퀘스트 기능은 추후 업데이트 예정입니다</p>
+                <p className="text-slate-400">이제 직접 그린 기술로 스테이지에 도전하세요!</p>
               </motion.div>
 
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.8, delay: 0.9 }}
-                className="flex gap-4 justify-center"
+                className="flex flex-wrap gap-3 justify-center"
               >
+                <button
+                  onClick={() => setStep('SKILL')}
+                  className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:shadow-lg hover:shadow-blue-500/40 rounded-lg font-bold transition-all"
+                >
+                  기술 만들고 전투 시작
+                </button>
                 <button
                   onClick={() => {
                     setCharacter({
                       name: '',
                       role: 'HERO',
                       drawing: [],
+                      skill: [],
                     });
                     setStep('START');
                   }}
@@ -184,6 +198,40 @@ export function HeroFactoryRoot({ onExit }: HeroFactoryRootProps) {
                 </button>
               </motion.div>
             </div>
+          </motion.div>
+        )}
+
+        {step === 'SKILL' && (
+          <motion.div
+            key="skill"
+            initial={{ opacity: 0, x: 100 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -100 }}
+            transition={{ duration: 0.4 }}
+          >
+            <DrawingCustomizer
+              character={character}
+              onUpdate={handleUpdateCharacter}
+              onComplete={handleSkillComplete}
+              onBack={goBack}
+              mode="SKILL"
+            />
+          </motion.div>
+        )}
+
+        {step === 'STAGE' && (
+          <motion.div
+            key="stage"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="w-full h-screen"
+          >
+            <StageGame
+              character={character}
+              onExit={onExit}
+              onBackToCharacter={() => setStep('COMPLETE')}
+            />
           </motion.div>
         )}
       </AnimatePresence>
