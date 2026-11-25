@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { ArrowLeft, Brush, Eraser, Undo2, Trash2 } from 'lucide-react';
 import { DrawingPreview } from './DrawingPreview';
 import {
@@ -24,18 +24,21 @@ export function DrawingCustomizer({
   onBack,
 }: DrawingCustomizerProps) {
   const [strokes, setStrokes] = useState<DrawingStroke[]>(character.drawing);
+  const strokesRef = useRef<DrawingStroke[]>(character.drawing);
   const [tool, setTool] = useState<Tool>('BRUSH');
   const [color, setColor] = useState(DRAWING_COLORS[0]);
   const [brushWidth, setBrushWidth] = useState(8);
   const drawingRef = useRef(false);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  // 한 획이 바뀔 때마다 캐릭터 데이터에 반영 → 왼쪽 미리보기/완성 화면이 같은 그림을 본다.
-  useEffect(() => {
-    onUpdate({ drawing: strokes });
-    // onUpdate는 렌더마다 새 함수지만 strokes가 같으면 다시 실행할 필요가 없다.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [strokes]);
+  // 획을 그리는 중에는 로컬 상태만 갱신해 전체 화면 리렌더링을 막고,
+  // 획이 끝날 때 한 번만 캐릭터 데이터에 반영한다. (그리는 동안 끊김 방지)
+  const applyStrokes = (next: DrawingStroke[], commit = false) => {
+    strokesRef.current = next;
+    setStrokes(next);
+    if (commit) onUpdate({ drawing: next });
+  };
+  const commitStrokes = () => onUpdate({ drawing: strokesRef.current });
 
   const pointFromEvent = (e: ReactPointerEvent<SVGSVGElement>) => {
     const rect = svgRef.current!.getBoundingClientRect();
@@ -64,21 +67,23 @@ export function DrawingCustomizer({
       width: brushWidth,
       tool,
     };
-    setStrokes((prev) => [...prev, stroke]);
+    applyStrokes([...strokesRef.current, stroke]);
   };
 
   const handlePointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
     if (!drawingRef.current) return;
     e.preventDefault();
     const point = pointFromEvent(e);
-    setStrokes((prev) => {
-      if (prev.length === 0) return prev;
-      const last = prev[prev.length - 1];
-      const prevPoint = last.points[last.points.length - 1];
-      // 같은 자리 근처의 중복 점은 버려 금방 큰 용량이 되는 걸 막는다.
-      if (Math.abs(point.x - prevPoint.x) + Math.abs(point.y - prevPoint.y) < 1) return prev;
-      return [...prev.slice(0, -1), { ...last, points: [...last.points, point] }];
-    });
+    const prev = strokesRef.current;
+    if (prev.length === 0) return;
+    const last = prev[prev.length - 1];
+    const prevPoint = last.points[last.points.length - 1];
+    // 같은 자리 근처의 중복 점은 버려 용량이 커지는 걸 막는다.
+    if (Math.abs(point.x - prevPoint.x) + Math.abs(point.y - prevPoint.y) < 0.8) return;
+    applyStrokes([
+      ...prev.slice(0, -1),
+      { ...last, points: [...last.points, point] },
+    ]);
   };
 
   const handlePointerEnd = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -91,14 +96,16 @@ export function DrawingCustomizer({
     } catch {
       // 캡처가 없었으면 해제할 것도 없다.
     }
+    // 드로잉 중에는 부모에 알리지 않았으므로 획이 끝날 때 반영한다.
+    commitStrokes();
   };
 
-  const undo = () => setStrokes((prev) => prev.slice(0, -1));
-  const clearAll = () => setStrokes([]);
+  const undo = () => applyStrokes(strokesRef.current.slice(0, -1), true);
+  const clearAll = () => applyStrokes([], true);
   const isHero = character.role === 'HERO';
 
   return (
-    <div className="w-full min-h-screen lg:h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-purple-950 text-white flex flex-col lg:flex-row overflow-x-hidden">
+    <div className="w-full min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-purple-950 text-white flex flex-col lg:flex-row overflow-x-hidden">
       {/* ── 뒤로가기 (고정) ── */}
       <button
         onClick={onBack}
@@ -114,7 +121,12 @@ export function DrawingCustomizer({
           Live Preview
         </p>
         <div className="p-4 rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-600/50 shadow-2xl">
-          <DrawingPreview character={character} size={230} className="rounded-2xl" />
+          <DrawingPreview
+            character={character}
+            strokes={strokes}
+            size={230}
+            className="rounded-2xl"
+          />
         </div>
         <h3 className="text-3xl font-black text-center break-words">{character.name}</h3>
         <span
@@ -253,6 +265,7 @@ export function DrawingCustomizer({
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerEnd}
             onPointerCancel={handlePointerEnd}
+            onLostPointerCapture={handlePointerEnd}
             aria-label="캐릭터 그리기 캔버스"
           />
           {strokes.length === 0 && (
