@@ -6,12 +6,11 @@ export interface DrawingPoint {
   y: number;
 }
 
-/** 사용자가 그린 한 획. 지우개 획도 같은 구조로 저장한다. */
+/** 사용자가 그린 한 획. 수정은 획 단위 되돌리기로만 한다. */
 export interface DrawingStroke {
   points: DrawingPoint[];
   color: string;
   width: number;
-  tool: 'BRUSH' | 'ERASER';
 }
 
 /** 그린 그림 자체가 캐릭터의 외형이다. */

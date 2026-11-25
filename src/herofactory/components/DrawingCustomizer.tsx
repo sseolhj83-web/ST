@@ -1,5 +1,5 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { ArrowLeft, Brush, Eraser, Undo2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Brush, Undo2, Trash2 } from 'lucide-react';
 import { DrawingPreview } from './DrawingPreview';
 import {
   CANVAS_SIZE,
@@ -15,8 +15,6 @@ interface DrawingCustomizerProps {
   onBack: () => void;
 }
 
-type Tool = 'BRUSH' | 'ERASER';
-
 export function DrawingCustomizer({
   character,
   onUpdate,
@@ -25,7 +23,6 @@ export function DrawingCustomizer({
 }: DrawingCustomizerProps) {
   const [strokes, setStrokes] = useState<DrawingStroke[]>(character.drawing);
   const strokesRef = useRef<DrawingStroke[]>(character.drawing);
-  const [tool, setTool] = useState<Tool>('BRUSH');
   const [color, setColor] = useState(DRAWING_COLORS[0]);
   const [brushWidth, setBrushWidth] = useState(8);
   const drawingRef = useRef(false);
@@ -63,9 +60,8 @@ export function DrawingCustomizer({
     }
     const stroke: DrawingStroke = {
       points: [pointFromEvent(e)],
-      color: tool === 'BRUSH' ? color : '#000000',
+      color,
       width: brushWidth,
-      tool,
     };
     applyStrokes([...strokesRef.current, stroke]);
   };
@@ -153,7 +149,7 @@ export function DrawingCustomizer({
               캐릭터 직접 그리기
             </h2>
             <p className="text-sm text-slate-400 mt-1">
-              마우스나 손가락으로 그린 그림이 그대로 캐릭터가 됩니다
+              마우스나 손가락으로 그린 그림이 그대로 캐릭터가 됩니다 · 잘못 그린 획은 되돌리기로 지웁니다
             </p>
           </div>
           <div className="flex gap-2">
@@ -163,7 +159,7 @@ export function DrawingCustomizer({
               className="flex items-center gap-1.5 px-3 py-2 bg-slate-800/80 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed border border-white/10 rounded-lg text-sm font-bold transition-colors"
             >
               <Undo2 className="w-4 h-4" />
-              실행 취소
+              되돌리기
             </button>
             <button
               onClick={clearAll}
@@ -178,27 +174,9 @@ export function DrawingCustomizer({
 
         {/* 도구 모음 */}
         <div className="flex flex-wrap items-center gap-3 p-3 rounded-2xl bg-slate-900/60 border border-slate-700/60">
-          <div className="flex gap-1 p-1 bg-slate-800 rounded-xl">
-            <button
-              onClick={() => setTool('BRUSH')}
-              aria-pressed={tool === 'BRUSH'}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-colors ${
-                tool === 'BRUSH' ? 'bg-cyan-500 text-slate-950' : 'text-slate-300 hover:bg-slate-700'
-              }`}
-            >
-              <Brush className="w-4 h-4" />
-              브러시
-            </button>
-            <button
-              onClick={() => setTool('ERASER')}
-              aria-pressed={tool === 'ERASER'}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-colors ${
-                tool === 'ERASER' ? 'bg-cyan-500 text-slate-950' : 'text-slate-300 hover:bg-slate-700'
-              }`}
-            >
-              <Eraser className="w-4 h-4" />
-              지우개
-            </button>
+          <div className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 rounded-xl text-sm font-bold text-cyan-300">
+            <Brush className="w-4 h-4" />
+            브러시
           </div>
 
           <div className="h-8 w-px bg-slate-700" />
@@ -211,14 +189,11 @@ export function DrawingCustomizer({
                 type="button"
                 title={c}
                 aria-label={`색상 ${c}`}
-                aria-pressed={tool === 'BRUSH' && color === c}
-                onClick={() => {
-                  setColor(c);
-                  setTool('BRUSH');
-                }}
+                aria-pressed={color === c}
+                onClick={() => setColor(c)}
                 style={{ backgroundColor: c }}
                 className={`w-8 h-8 rounded-full border-2 transition-transform ${
-                  tool === 'BRUSH' && color === c
+                  color === c
                     ? 'border-white scale-110 shadow-lg'
                     : 'border-slate-600 hover:border-slate-300 hover:scale-105'
                 }`}
@@ -258,9 +233,7 @@ export function DrawingCustomizer({
           <svg
             ref={svgRef}
             viewBox={`0 0 ${CANVAS_SIZE} ${CANVAS_SIZE}`}
-            className={`absolute inset-0 w-full h-full touch-none ${
-              tool === 'ERASER' ? 'cursor-cell' : 'cursor-crosshair'
-            }`}
+            className="absolute inset-0 w-full h-full touch-none cursor-crosshair"
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerEnd}
