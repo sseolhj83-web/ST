@@ -81,3 +81,63 @@ export const ENEMY_STATS: Record<
   MID: { w: 62, h: 72, hp: 100, speed: 78, damage: 11, range: 340, cooldown: 1.2, shotSpeed: 295, name: '중간 보스' },
   BOSS: { w: 84, h: 96, hp: 190, speed: 58, damage: 15, range: 460, cooldown: 1.0, shotSpeed: 330, name: '최종 보스' },
 };
+
+/** 폐허가 된 미래 도시의 5개 구역. 경계는 모두 월드 좌표다. */
+export interface StageSection {
+  from: number;
+  to: number;
+  name: string;
+  skyTop: string;
+  skyBottom: string;
+  accent: string;
+}
+
+export const STAGE_SECTIONS: StageSection[] = [
+  { from: 0, to: 420, name: '시작 구역', skyTop: '#171336', skyBottom: '#5b356d', accent: '#38bdf8' },
+  { from: 420, to: 1480, name: '무너진 도심 구역', skyTop: '#151734', skyBottom: '#4d355e', accent: '#a78bfa' },
+  { from: 1480, to: 2700, name: '일반 적 전투 구역', skyTop: '#1b1233', skyBottom: '#592c5e', accent: '#f472b6' },
+  { from: 2700, to: 3050, name: '중간 보스 구역', skyTop: '#25102e', skyBottom: '#6b2445', accent: '#fb7185' },
+  { from: 3050, to: WORLD_WIDTH, name: '최종 보스 구역', skyTop: '#1b0a20', skyBottom: '#4b142f', accent: '#fbbf24' },
+];
+
+export function sectionAt(x: number): StageSection {
+  return (
+    STAGE_SECTIONS.find((section) => x < section.to) ??
+    STAGE_SECTIONS[STAGE_SECTIONS.length - 1]
+  );
+}
+
+/** 구역 이름 표지판의 고정 월드 좌표. */
+export const SECTION_MARKERS = [
+  { x: 70, name: '시작 구역', accent: '#38bdf8' },
+  { x: 470, name: '무너진 도심', accent: '#a78bfa' },
+  { x: 1580, name: '전투 구역', accent: '#f472b6' },
+  { x: 2760, name: '중간 보스', accent: '#fb7185' },
+  { x: 3120, name: '최종 보스 구역', accent: '#fbbf24' },
+  { x: 5020, name: '보스의 성채', accent: '#fbbf24' },
+];
+
+/** 바닥 위의 고정 좌표 장애물. PLATFORMS와 함께 충돌 처리한다. */
+export interface Obstacle extends Platform {
+  style: 'CONCRETE' | 'CAR' | 'PIPE';
+}
+
+export const OBSTACLES: Obstacle[] = [
+  { x: 800, y: GROUND_Y - 26, w: 38, h: 26, style: 'CONCRETE' },
+  { x: 2090, y: GROUND_Y - 30, w: 44, h: 30, style: 'CAR' },
+  { x: 3620, y: GROUND_Y - 24, w: 34, h: 24, style: 'PIPE' },
+  { x: 4700, y: GROUND_Y - 28, w: 40, h: 28, style: 'CONCRETE' },
+];
+
+/** 보스전에서는 카메라를 고정해 전장 밖으로 시점이 새지 않게 한다. */
+export interface CameraArena {
+  name: string;
+  from: number;
+  to: number;
+  cameraX: number;
+}
+
+export const CAMERA_ARENAS: CameraArena[] = [
+  { name: '중간 보스', from: 2700, to: 2990, cameraX: 2410 },
+  { name: '최종 보스', from: 5000, to: WORLD_WIDTH, cameraX: WORLD_WIDTH - VIEW_WIDTH },
+];

@@ -3,16 +3,28 @@ import { RotateCcw, Sparkles, Swords, UserRound } from 'lucide-react';
 import { HeroCharacter } from '../game/types';
 import { rasterizeDrawing } from '../game/drawing';
 import {
+  CAMERA_ARENAS,
   ENEMY_SPAWNS,
   ENEMY_STATS,
   GATES,
   GROUND_Y,
+  OBSTACLES,
   PLATFORMS,
+  SECTION_MARKERS,
+  STAGE_SECTIONS,
   VIEW_HEIGHT,
   VIEW_WIDTH,
   WORLD_WIDTH,
+  sectionAt,
   type EnemyKind,
+  type Obstacle,
+  type StageSection,
 } from '../game/stage';
+
+const CAMERA_SMOOTH = 7;
+const CAMERA_DEAD_ZONE = 0.35;
+const CAMERA_MAX_SPEED = 1100;
+const SOLIDS = [...PLATFORMS, ...OBSTACLES];
 
 const GRAVITY = 2100;
 const MAX_FALL = 900;
@@ -121,6 +133,7 @@ interface Hud {
   kills: number;
   time: number;
   zone: number;
+  sectionName: string;
   objective: string;
   notice: string;
   damageFlash: number;
@@ -184,6 +197,15 @@ function activeZone(state: GameState) {
   if (!zoneCleared(state, 1)) return 1;
   if (!zoneCleared(state, 2)) return 2;
   return 3;
+}
+
+/** 플레이어를 화면 중앙에 두되 보스 전장에서는 카메라를 고정한다. */
+function cameraTargetFor(playerCenterX: number) {
+  const arena = CAMERA_ARENAS.find(
+    (entry) => playerCenterX >= entry.from && playerCenterX <= entry.to,
+  );
+  const desired = arena ? arena.cameraX : playerCenterX - VIEW_WIDTH / 2;
+  return clamp(desired, 0, WORLD_WIDTH - VIEW_WIDTH);
 }
 
 function createState(): GameState {
@@ -284,7 +306,7 @@ function damagePlayer(state: GameState, amount: number, sourceX: number) {
   p.invuln = 1.1;
   p.flash = 0.25;
   state.damageFlash = 0.55;
-  state.shake = 9;
+  state.shake = 6;
   p.vx = (p.x + p.w / 2 < sourceX ? -1 : 1) * 210;
   p.vy = -280;
   p.onGround = false;
@@ -296,7 +318,7 @@ function damagePlayer(state: GameState, amount: number, sourceX: number) {
 function killEnemy(state: GameState, enemy: Enemy) {
   enemy.alive = false;
   state.kills += 1;
-  state.shake = enemy.kind === 'GRUNT' ? 5 : 12;
+  state.shake = enemy.kind === 'GRUNT' ? 3 : 8;
   burst(
     state,
     enemy.x + enemy.w / 2,
@@ -423,19 +445,33 @@ function update(state: GameState, input: Input, dt: number, assets: Assets) {
   }
 
   p.onGround = false;
+  let landedOn: (typeof SOLIDS)[number] | null = null;
   if (p.vy >= 0) {
-    for (const plat of PLATFORMS) {
+    for (const solid of SOLIDS) {
       if (
-        p.x + p.w > plat.x &&
-        p.x < plat.x + plat.w &&
-        prevBottom <= plat.y + 2 &&
-        p.y + p.h >= plat.y
+        p.x + p.w > solid.x &&
+        p.x < solid.x + solid.w &&
+        prevBottom <= solid.y + 2 &&
+        p.y + p.h >= solid.y
       ) {
-        p.y = plat.y - p.h;
+        p.y = solid.y - p.h;
         p.vy = 0;
         p.onGround = true;
+        landedOn = solid;
         break;
       }
+    }
+  }
+  // 장애물 옆면도 월드 좌표로 판정한다. 카메라가 움직여도 판정은 흔들리지 않는다.
+  // 바닥에 서 있는 경우도 있으므로 "그 장애물 위에 착지한 경우"만 제외한다.
+  for (const solid of OBSTACLES) {
+    if (landedOn === solid || !overlap(p, solid)) continue;
+    if (prevX + p.w <= solid.x + 2) {
+      p.x = solid.x - p.w;
+      p.vx = 0;
+    } else if (prevX >= solid.x + solid.w - 2) {
+      p.x = solid.x + solid.w;
+      p.vx = 0;
     }
   }
   if (p.onGround) p.coyote = 0.1;
@@ -561,12 +597,19 @@ function update(state: GameState, input: Input, dt: number, assets: Assets) {
     }
   });
 
-  const targetCamera = clamp(
-    p.x - VIEW_WIDTH * 0.35,
-    0,
-    WORLD_WIDTH - VIEW_WIDTH,
-  );
-  state.cameraX += (targetCamera - state.cameraX) * Math.min(1, dt * 6);
+  // 프레임 속도와 무관한 지수 감쇠 + 데드존으로 부드럽게 따라가고, 멈추면 딱 멈춘다.
+  const desiredCamera = cameraTargetFor(p.x + p.w / 2);
+  const cameraDelta = desiredCamera - state.cameraX;
+  if (Math.abs(cameraDelta) > CAMERA_DEAD_ZONE) {
+    const step = cameraDelta * (1 - Math.exp(-dt * CAMERA_SMOOTH));
+    state.cameraX = clamp(
+      state.cameraX + clamp(step, -CAMERA_MAX_SPEED * dt, CAMERA_MAX_SPEED * dt),
+      0,
+      WORLD_WIDTH - VIEW_WIDTH,
+    );
+  } else {
+    state.cameraX = desiredCamera;
+  }
 
   const finalBoss = state.enemies.find((e) => e.kind === 'BOSS');
   if (finalBoss && !finalBoss.alive) state.status = 'CLEAR';
@@ -582,6 +625,226 @@ function drawCloud(ctx: CanvasRenderingContext2D, x: number, y: number, scale: n
   ctx.ellipse(-28, 6, 30, 13, 0, 0, Math.PI * 2);
   ctx.ellipse(30, 5, 34, 14, 0, 0, Math.PI * 2);
   ctx.fill();
+  ctx.restore();
+}
+
+function lerpHex(a: string, b: string, t: number) {
+  const from = parseInt(a.slice(1), 16);
+  const to = parseInt(b.slice(1), 16);
+  const mix = (shift: number) =>
+    Math.round(((from >> shift) & 255) * (1 - t) + ((to >> shift) & 255) * t);
+  return `rgb(${mix(16)}, ${mix(8)}, ${mix(0)})`;
+}
+
+/** 구역을 지날 때 하늘 색이 급격히 바뀌지 않도록 서서히 보간한다. */
+function skyAt(cameraX: number): StageSection {
+  const centers = STAGE_SECTIONS.map((section) => (section.from + section.to) / 2);
+  const x = cameraX + VIEW_WIDTH / 2;
+  let index = 0;
+  while (index < centers.length - 1 && x > centers[index + 1]) index += 1;
+  const current = STAGE_SECTIONS[index];
+  const next = STAGE_SECTIONS[index + 1];
+  if (!next) return current;
+  const t = clamp((x - centers[index]) / (centers[index + 1] - centers[index]), 0, 1);
+  return {
+    ...current,
+    skyTop: lerpHex(current.skyTop, next.skyTop, t),
+    skyBottom: lerpHex(current.skyBottom, next.skyBottom, t),
+  };
+}
+
+function hash01(n: number) {
+  const value = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+/** 타일 인덱스로 패턴을 정해 화면 양 끝에서 끊김 없이 반복되게 한다. */
+function drawParallax(
+  ctx: CanvasRenderingContext2D,
+  cameraX: number,
+  parallax: number,
+  tileWidth: number,
+  patternTiles: number,
+  drawTile: (ctx: CanvasRenderingContext2D, x: number, pattern: number) => void,
+) {
+  const offset = cameraX * parallax;
+  const first = Math.floor(offset / tileWidth) - 1;
+  const last = Math.ceil((offset + VIEW_WIDTH) / tileWidth) + 1;
+  for (let i = first; i <= last; i += 1) {
+    const pattern = ((i % patternTiles) + patternTiles) % patternTiles;
+    drawTile(ctx, i * tileWidth - offset, pattern);
+  }
+}
+
+function drawCloudTile(ctx: CanvasRenderingContext2D, x: number, pattern: number) {
+  drawCloud(
+    ctx,
+    x + 52 + hash01(pattern + 7) * 34,
+    62 + (pattern % 3) * 44,
+    0.65 + hash01(pattern + 2) * 0.4,
+  );
+  ctx.save();
+  ctx.globalAlpha = 0.6;
+  drawCloud(ctx, x + 200, 96 + ((pattern + 1) % 3) * 38, 0.5);
+  ctx.restore();
+}
+
+function drawFarSkylineTile(ctx: CanvasRenderingContext2D, x: number, pattern: number) {
+  const h1 = 78 + hash01(pattern * 3 + 1) * 66;
+  const h2 = 58 + hash01(pattern * 3 + 2) * 84;
+  ctx.save();
+  ctx.fillStyle = 'rgba(24,22,52,0.9)';
+  ctx.fillRect(x + 8, 340 - h1, 96, h1 + 200);
+  ctx.fillRect(x + 118, 340 - h2, 88, h2 + 200);
+  ctx.fillStyle = 'rgba(148,163,184,0.12)';
+  for (let r = 0; r < 5; r += 1) {
+    for (let c = 0; c < 3; c += 1) {
+      if (hash01(pattern * 19 + r * 5 + c) > 0.58) {
+        ctx.fillRect(x + 20 + c * 27, 340 - h1 + 14 + r * 24, 9, 9);
+      }
+    }
+  }
+  ctx.restore();
+}
+
+function drawMidBuildingTile(ctx: CanvasRenderingContext2D, x: number, pattern: number) {
+  const h = 108 + hash01(pattern * 5 + 11) * 84;
+  const top = 404 - h;
+  ctx.save();
+  ctx.fillStyle = '#2d2444';
+  ctx.beginPath();
+  ctx.moveTo(x + 26, 404);
+  ctx.lineTo(x + 26, top + 16);
+  ctx.lineTo(x + 66, top);
+  ctx.lineTo(x + 112, top + 12);
+  ctx.lineTo(x + 148, top + 30);
+  ctx.lineTo(x + 148, 404);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(251,113,133,0.45)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x + 66, top);
+  ctx.lineTo(x + 70, top - 22);
+  ctx.moveTo(x + 112, top + 12);
+  ctx.lineTo(x + 116, top - 14);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(251,191,36,0.3)';
+  for (let r = 0; r < 3; r += 1) {
+    for (let c = 0; c < 2; c += 1) {
+      if (hash01(pattern * 13 + r * 3 + c) > 0.42) {
+        ctx.fillRect(x + 42 + c * 46, top + 26 + r * 30, 15, 12);
+      }
+    }
+  }
+  const tx = x + 214;
+  ctx.strokeStyle = '#241c38';
+  ctx.lineWidth = 6;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(tx, 404);
+  ctx.lineTo(tx - 5, 340);
+  ctx.moveTo(tx - 4, 364);
+  ctx.lineTo(tx - 30, 340);
+  ctx.moveTo(tx - 2, 354);
+  ctx.lineTo(tx + 24, 328);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawNearTile(ctx: CanvasRenderingContext2D, x: number, pattern: number) {
+  ctx.save();
+  ctx.fillStyle = '#3b3552';
+  for (let i = 0; i < 3; i += 1) {
+    const cx = x + 28 + i * 66 + hash01(pattern * 7 + i) * 12;
+    const size = 12 + hash01(pattern * 11 + i) * 10;
+    ctx.beginPath();
+    ctx.moveTo(cx - size, GROUND_Y + 64);
+    ctx.lineTo(cx - size * 0.6, GROUND_Y + 64 - size);
+    ctx.lineTo(cx + size * 0.8, GROUND_Y + 64 - size * 0.6);
+    ctx.lineTo(cx + size, GROUND_Y + 64);
+    ctx.closePath();
+    ctx.fill();
+  }
+  if (hash01(pattern * 3 + 5) > 0.4) {
+    const lx = x + 170;
+    ctx.strokeStyle = '#231d38';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(lx, GROUND_Y + 66);
+    ctx.lineTo(lx - 6, GROUND_Y + 10);
+    ctx.lineTo(lx + 18, GROUND_Y + 4);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(251,191,36,0.5)';
+    ctx.beginPath();
+    ctx.arc(lx + 20, GROUND_Y + 5, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawObstacle(ctx: CanvasRenderingContext2D, obstacle: Obstacle) {
+  const { x, y, w, h, style } = obstacle;
+  ctx.save();
+  ctx.translate(x, y);
+  if (style === 'CAR') {
+    roundRect(ctx, 0, 7, w, h - 7, 6);
+    ctx.fillStyle = '#7f1d1d';
+    ctx.fill();
+    roundRect(ctx, 7, 0, w - 16, h * 0.56, 5);
+    ctx.fillStyle = '#be123c';
+    ctx.fill();
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath();
+    ctx.arc(9, h, 5, 0, Math.PI * 2);
+    ctx.arc(w - 9, h, 5, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (style === 'PIPE') {
+    roundRect(ctx, 0, 4, w, h - 4, 6);
+    ctx.fillStyle = '#334155';
+    ctx.fill();
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#475569';
+    ctx.fillRect(5, 9, w - 10, 4);
+  } else {
+    ctx.fillStyle = '#475569';
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    ctx.lineTo(3, 8);
+    ctx.lineTo(w * 0.4, 0);
+    ctx.lineTo(w, 6);
+    ctx.lineTo(w, h);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawSectionSign(ctx: CanvasRenderingContext2D, marker: (typeof SECTION_MARKERS)[number]) {
+  const boardWidth = Math.max(126, marker.name.length * 17 + 28);
+  ctx.save();
+  ctx.translate(marker.x, 118);
+  ctx.strokeStyle = 'rgba(226,232,240,0.5)';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(0, GROUND_Y - 118);
+  ctx.stroke();
+  roundRect(ctx, -12, -39, boardWidth, 43, 6);
+  ctx.fillStyle = 'rgba(15,23,42,0.88)';
+  ctx.fill();
+  ctx.strokeStyle = marker.accent;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = marker.accent;
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(marker.name, -12 + boardWidth / 2, -10);
   ctx.restore();
 }
 
@@ -895,53 +1158,46 @@ function render(
 ) {
   ctx.clearRect(0, 0, VIEW_WIDTH, VIEW_HEIGHT);
 
+  const skyColors = skyAt(state.cameraX);
   const sky = ctx.createLinearGradient(0, 0, 0, VIEW_HEIGHT);
-  sky.addColorStop(0, '#171336');
-  sky.addColorStop(0.55, '#34255f');
-  sky.addColorStop(1, '#5b356d');
+  sky.addColorStop(0, skyColors.skyTop);
+  sky.addColorStop(0.6, skyColors.skyBottom);
+  sky.addColorStop(1, '#120a22');
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, VIEW_WIDTH, VIEW_HEIGHT);
 
-  ctx.fillStyle = 'rgba(253,224,71,0.22)';
+  // 먼 레이어: 퇴색한 태양, 구름, 먼 스카이라인
+  const sunX = 800 - state.cameraX * 0.02;
+  ctx.fillStyle = 'rgba(253,224,71,0.18)';
   ctx.beginPath();
-  ctx.arc(800, 110, 58, 0, Math.PI * 2);
+  ctx.arc(sunX, 110, 58, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = 'rgba(253,224,71,0.35)';
+  ctx.fillStyle = 'rgba(253,224,71,0.3)';
   ctx.beginPath();
-  ctx.arc(800, 110, 34, 0, Math.PI * 2);
+  ctx.arc(sunX, 110, 34, 0, Math.PI * 2);
   ctx.fill();
+  drawParallax(ctx, state.cameraX, 0.06, 320, 4, drawCloudTile);
+  drawParallax(ctx, state.cameraX, 0.12, 240, 5, drawFarSkylineTile);
 
-  for (let i = 0; i < 6; i++) {
-    const span = VIEW_WIDTH + 320;
-    const x = (((i * 250 - state.cameraX * 0.16) % span) + span) % span - 160;
-    drawCloud(ctx, x, 70 + (i % 3) * 46, 0.7 + (i % 2) * 0.35);
-  }
+  // 중간 레이어: 무너진 건물과 구조물, 고사목
+  drawParallax(ctx, state.cameraX, 0.32, 300, 4, drawMidBuildingTile);
 
-  // 원근감 있는 만화풍 배경 언덕
-  for (const layer of [
-    { offset: 0.22, base: 265, amp: 28, color: '#2b2350' },
-    { offset: 0.42, base: 350, amp: 22, color: '#3b2b5f' },
-  ]) {
-    ctx.fillStyle = layer.color;
-    ctx.beginPath();
-    ctx.moveTo(-100, VIEW_HEIGHT);
-    for (let x = -100; x <= VIEW_WIDTH + 100; x += 20) {
-      const wave =
-        Math.sin((x + state.cameraX * layer.offset) * 0.006) * layer.amp +
-        Math.sin((x + state.cameraX * layer.offset) * 0.014) * 11;
-      ctx.lineTo(x, layer.base + wave);
-    }
-    ctx.lineTo(VIEW_WIDTH + 100, VIEW_HEIGHT);
-    ctx.closePath();
-    ctx.fill();
-  }
+  // 가까운 레이어: 바닥 주변 잔해와 가로등
+  drawParallax(ctx, state.cameraX, 0.68, 220, 4, drawNearTile);
 
-  const shakeX = state.shake > 0 ? (Math.random() - 0.5) * state.shake : 0;
-  const shakeY = state.shake > 0 ? (Math.random() - 0.5) * state.shake : 0;
+  // 피격 흔들림은 카메라 상태와 분리해 부드러운 사인파로 처리한다.
+  const shakeX = state.shake > 0 ? Math.sin(state.time * 92) * state.shake : 0;
+  const shakeY = state.shake > 0 ? Math.cos(state.time * 77) * state.shake * 0.5 : 0;
   ctx.save();
-  ctx.translate(-Math.round(state.cameraX) + shakeX, shakeY);
+  ctx.translate(-state.cameraX + shakeX, shakeY);
 
   for (const plat of PLATFORMS) drawPlatform(ctx, plat);
+  for (const obstacle of OBSTACLES) drawObstacle(ctx, obstacle);
+  for (const marker of SECTION_MARKERS) {
+    if (marker.x > state.cameraX - 200 && marker.x < state.cameraX + VIEW_WIDTH + 200) {
+      drawSectionSign(ctx, marker);
+    }
+  }
   for (const gate of GATES) {
     if (!gateOpen(state, gate.zone)) drawGate(ctx, gate, state.time);
   }
@@ -999,6 +1255,7 @@ function syncHud(state: GameState): Hud {
     kills: state.kills,
     time: state.time,
     zone,
+    sectionName: sectionAt(state.player.x).name,
     objective,
     notice: state.noticeTimer > 0 ? state.notice : '',
     damageFlash: state.damageFlash,
@@ -1015,6 +1272,7 @@ const INITIAL_HUD: Hud = {
   kills: 0,
   time: 0,
   zone: 1,
+  sectionName: '시작 구역',
   objective: '빌런을 쓰러뜨리고 오른쪽으로 진행하세요!',
   notice: '',
   damageFlash: 0,
@@ -1190,7 +1448,7 @@ export function StageGame({ character, onExit, onBackToCharacter }: StageGamePro
           </div>
 
           <div className="bg-slate-950/75 backdrop-blur rounded-xl px-3 py-2 border border-white/10 text-center max-w-[45%]">
-            <p className="text-[10px] tracking-widest text-cyan-300 font-bold">{hud.zone}구역 진행 중</p>
+            <p className="text-[10px] tracking-widest text-cyan-300 font-bold">{hud.sectionName}</p>
             <p className="text-xs md:text-sm font-bold text-white truncate">{hud.objective}</p>
           </div>
         </div>
