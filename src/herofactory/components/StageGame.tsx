@@ -128,6 +128,7 @@ interface Hud {
   bossName: string;
   bossHp: number;
   bossMaxHp: number;
+  attackReady: boolean;
 }
 
 interface Assets {
@@ -1005,6 +1006,7 @@ function syncHud(state: GameState): Hud {
     bossName: boss ? ENEMY_STATS[boss.kind].name : '',
     bossHp: boss?.hp ?? 0,
     bossMaxHp: boss?.maxHp ?? 1,
+    attackReady: state.player.attackCd <= 0,
   };
 }
 
@@ -1020,6 +1022,7 @@ const INITIAL_HUD: Hud = {
   bossName: '',
   bossHp: 0,
   bossMaxHp: 1,
+  attackReady: true,
 };
 
 interface StageGameProps {
@@ -1129,6 +1132,15 @@ export function StageGame({ character, onExit, onBackToCharacter }: StageGamePro
     if (action === 'right') input.right = false;
   };
 
+  const queueAttack = () => {
+    inputRef.current.attackQueued = true;
+  };
+  const canvasAttack = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    queueAttack();
+  };
+
   const restart = () => setRunKey((key) => key + 1);
 
   return (
@@ -1139,8 +1151,9 @@ export function StageGame({ character, onExit, onBackToCharacter }: StageGamePro
       >
         <canvas
           ref={canvasRef}
-          className="w-full h-full"
+          className="w-full h-full touch-none"
           style={{ cursor: 'default' }}
+          onPointerDown={canvasAttack}
           aria-label="HERO FACTORY 스테이지"
         />
 
@@ -1206,12 +1219,12 @@ export function StageGame({ character, onExit, onBackToCharacter }: StageGamePro
         )}
 
         {/* 조작 안내 */}
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 hidden lg:block bg-slate-950/70 rounded-lg px-4 py-1.5 text-[11px] text-slate-200 border border-white/10 pointer-events-none">
-          ← → / A D 이동 · ↑ / W / 스페이스 점프 · J / Z / X 기술 공격
+        <div className="absolute bottom-3 left-3 hidden lg:block bg-slate-950/70 rounded-lg px-4 py-1.5 text-[11px] text-slate-200 border border-white/10 pointer-events-none">
+          ← → / A D 이동 · ↑ / W / 스페이스 점프 · J / Z / X 기술 공격 · 화면 클릭도 공격
         </div>
 
-        {/* 모바일 조작 */}
-        <div className="absolute bottom-4 left-4 right-4 flex justify-between lg:hidden pointer-events-none">
+        {/* 모바일 이동 버튼 */}
+        <div className="absolute bottom-4 left-4 flex gap-2 lg:hidden pointer-events-none">
           <div className="flex gap-2 pointer-events-auto">
             <button
               onPointerDown={touchDown('left')}
@@ -1234,6 +1247,10 @@ export function StageGame({ character, onExit, onBackToCharacter }: StageGamePro
               →
             </button>
           </div>
+        </div>
+
+        {/* 데스크톱·모바일 공통 점프/공격 버튼 */}
+        <div className="absolute bottom-4 right-4 flex gap-2 pointer-events-none">
           <div className="flex gap-2 pointer-events-auto">
             <button
               onPointerDown={touchDown('jump')}
@@ -1244,9 +1261,14 @@ export function StageGame({ character, onExit, onBackToCharacter }: StageGamePro
             </button>
             <button
               onPointerDown={touchDown('attack')}
-              className="w-14 h-14 rounded-full bg-slate-900/70 border border-white/25 text-xs font-bold active:bg-fuchsia-500/60 touch-none"
+              className={`w-16 h-16 rounded-full border-2 flex flex-col items-center justify-center gap-0.5 text-[11px] font-black touch-none transition-all ${
+                hud.attackReady
+                  ? 'bg-gradient-to-br from-fuchsia-500 to-purple-700 border-fuchsia-300/70 shadow-lg shadow-fuchsia-500/40 active:scale-95'
+                  : 'bg-slate-800/80 border-white/20 text-slate-400 opacity-70'
+              }`}
               aria-label="기술 공격"
             >
+              <Swords className="w-5 h-5" />
               기술
             </button>
           </div>
