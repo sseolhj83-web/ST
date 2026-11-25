@@ -106,7 +106,6 @@ export function DrawingPreview({
 }: DrawingPreviewProps) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   const maskId = `erase-${uid}`;
-  const dotsId = `dots-${uid}`;
   const glowId = `glow-${uid}`;
   const c = CANVAS_SIZE;
   const isHero = character.role === 'HERO';
@@ -122,9 +121,6 @@ export function DrawingPreview({
       aria-label={`${character.name} 캐릭터 그림`}
     >
       <defs>
-        <pattern id={dotsId} width="14" height="14" patternUnits="userSpaceOnUse">
-          <circle cx="2" cy="2" r="1.4" fill="#64748b" />
-        </pattern>
         <radialGradient id={glowId} cx="50%" cy="45%" r="70%">
           <stop offset="0%" stopColor={isHero ? '#fbbf24' : '#ef4444'} stopOpacity="0.18" />
           <stop offset="100%" stopColor={isHero ? '#fbbf24' : '#ef4444'} stopOpacity="0" />
@@ -139,9 +135,8 @@ export function DrawingPreview({
         )}
       </defs>
 
-      {/* 만화 원고지 느낌의 밝은 배경 */}
+      {/* 밝은 배경 */}
       <rect x="0" y="0" width={c} height={c} rx="18" fill="#fbfaf6" />
-      <rect x="0" y="0" width={c} height={c} rx="18" fill={`url(#${dotsId})`} opacity="0.35" />
       <rect x="0" y="0" width={c} height={c} rx="18" fill={`url(#${glowId})`} />
 
       {/* 사용자가 그린 그림: 그린 순서대로, 뒤에 나온 지우개만 적용 */}
